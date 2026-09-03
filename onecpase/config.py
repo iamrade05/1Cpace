@@ -41,7 +41,7 @@ class Config:
     ITENSITY_TIMEOUT = float(os.environ.get("ITENSITY_TIMEOUT", "10"))
 
     # NuPay DebiCheck — merchant.nupay.co.za, driven natively by
-    # onecpase/nupay_new_driver.py (Playwright + TOTP 2FA). NuPay has no
+    # onecpase/nupay_driver.py (Playwright + TOTP 2FA). NuPay has no
     # supported public API.
     NUPAY_MERCHANT_ID = os.environ.get("NUPAY_MERCHANT_ID", "000025500014054")
     NUPAY_NEW_EMAIL = os.environ.get("NUPAY_NEW_EMAIL", "")

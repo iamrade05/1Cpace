@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
-from onecpase import debicheck, nupay_new_driver
-from onecpase.nupay_new_driver import MandateStatusResult, PushResult
+from onecpase import debicheck, nupay_driver
+from onecpase.nupay_driver import MandateStatusResult, PushResult
 
 
 def _valid_mandate(**overrides):
@@ -27,33 +27,33 @@ def _valid_mandate(**overrides):
 # ── Pure validation logic — no network, no Playwright ────────────────────────
 
 def test_validate_mandate_accepts_a_complete_mandate():
-    assert nupay_new_driver._validate_mandate(_valid_mandate()) == []
+    assert nupay_driver._validate_mandate(_valid_mandate()) == []
 
 
 def test_validate_mandate_flags_missing_required_fields():
-    errors = nupay_new_driver._validate_mandate({})
+    errors = nupay_driver._validate_mandate({})
     assert any("Account name" in e for e in errors)
     assert any("Merchant" in e for e in errors)
     assert any("Client reference 1" in e for e in errors)
 
 
 def test_validate_mandate_rejects_unsupported_branch_code():
-    errors = nupay_new_driver._validate_mandate(_valid_mandate(branch_code="000000"))
+    errors = nupay_driver._validate_mandate(_valid_mandate(branch_code="000000"))
     assert any("Unsupported branch code" in e for e in errors)
 
 
 def test_validate_mandate_rejects_past_submit_date():
-    errors = nupay_new_driver._validate_mandate(_valid_mandate(submit_date="2020-01-01"))
+    errors = nupay_driver._validate_mandate(_valid_mandate(submit_date="2020-01-01"))
     assert any("cannot be in the past" in e for e in errors)
 
 
 def test_validate_mandate_rejects_zero_amount():
-    errors = nupay_new_driver._validate_mandate(_valid_mandate(instalment_amount=0))
+    errors = nupay_driver._validate_mandate(_valid_mandate(instalment_amount=0))
     assert any("greater than zero" in e for e in errors)
 
 
 def test_validate_mandate_requires_passport_when_id_type_is_passport():
-    errors = nupay_new_driver._validate_mandate(_valid_mandate(id_type="1", id_number="", passport=""))
+    errors = nupay_driver._validate_mandate(_valid_mandate(id_type="1", id_number="", passport=""))
     assert any("Passport number is required" in e for e in errors)
 
 
@@ -64,8 +64,8 @@ def test_push_mandate_reports_missing_credentials_without_touching_playwright(mo
     monkeypatch.delenv("NUPAY_NEW_PASSWORD", raising=False)
     monkeypatch.delenv("NUPAY_TOTP_SECRET", raising=False)
 
-    with patch("onecpase.nupay_new_driver.sync_playwright") as sync_playwright:
-        result = nupay_new_driver.push_mandate(_valid_mandate())
+    with patch("onecpase.nupay_driver.sync_playwright") as sync_playwright:
+        result = nupay_driver.push_mandate(_valid_mandate())
 
     assert result.success is False
     assert "NUPAY_NEW_EMAIL" in result.message
@@ -75,8 +75,8 @@ def test_push_mandate_reports_missing_credentials_without_touching_playwright(mo
 def test_refresh_status_reports_missing_credentials_without_touching_playwright(monkeypatch):
     monkeypatch.delenv("NUPAY_NEW_EMAIL", raising=False)
 
-    with patch("onecpase.nupay_new_driver.sync_playwright") as sync_playwright:
-        result = nupay_new_driver.refresh_mandate_status(_valid_mandate())
+    with patch("onecpase.nupay_driver.sync_playwright") as sync_playwright:
+        result = nupay_driver.refresh_mandate_status(_valid_mandate())
 
     assert result.found is False
     sync_playwright.assert_not_called()
@@ -87,7 +87,7 @@ def test_refresh_status_reports_missing_credentials_without_touching_playwright(
 
 def test_push_mandate_to_nupay_delegates_to_driver_and_unpacks_result():
     with patch(
-        "onecpase.debicheck.nupay_new_driver.push_mandate",
+        "onecpase.debicheck.nupay_driver.push_mandate",
         return_value=PushResult(True, "Accepted", "raw"),
     ) as push:
         success, message = debicheck.push_mandate_to_nupay(_valid_mandate())
@@ -98,7 +98,7 @@ def test_push_mandate_to_nupay_delegates_to_driver_and_unpacks_result():
 
 def test_check_mandate_status_on_nupay_delegates_to_driver_and_unpacks_result():
     with patch(
-        "onecpase.debicheck.nupay_new_driver.refresh_mandate_status",
+        "onecpase.debicheck.nupay_driver.refresh_mandate_status",
         return_value=MandateStatusResult(True, "active", "Contract X: active"),
     ) as refresh:
         found, status, message = debicheck.check_mandate_status_on_nupay(_valid_mandate())

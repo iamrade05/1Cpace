@@ -7,7 +7,7 @@ from typing import Any
 
 from flask import current_app
 
-from . import nupay_new_driver
+from . import nupay_driver
 
 
 ACCOUNT_TYPE_CODES = {
@@ -174,7 +174,7 @@ def push_mandate_to_nupay(mandate: dict[str, Any]) -> tuple[bool, str]:
     error = _undecrypted_fields_error(mandate)
     if error:
         return False, error
-    result = nupay_new_driver.push_mandate(mandate)
+    result = nupay_driver.push_mandate(mandate)
     return bool(result.success), str(result.message)
 
 
@@ -185,7 +185,7 @@ def push_mandate_to_nupay_manual_review(mandate: dict[str, Any]) -> tuple[bool, 
     error = _undecrypted_fields_error(mandate)
     if error:
         return False, error
-    result = nupay_new_driver.push_mandate_manual_review(mandate)
+    result = nupay_driver.push_mandate_manual_review(mandate)
     return bool(result.success), str(result.message)
 
 
@@ -193,7 +193,7 @@ def check_mandate_status_on_nupay(mandate: dict[str, Any]) -> tuple[bool, str, s
     """Look up a mandate's live status on NuPay without pushing anything.
 
     Returns (found, status, message)."""
-    result = nupay_new_driver.refresh_mandate_status(mandate)
+    result = nupay_driver.refresh_mandate_status(mandate)
     return bool(result.found), str(result.status), str(result.message)
 
 
