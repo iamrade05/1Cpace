@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Add Equipment | 1Cpase{% endblock %}
+{% block page_title %}Add Equipment{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <form method="post">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Name *</label>
+        <input name="name" required placeholder="e.g. Treadmill #1">
+      </div>
+      <div class="form-group">
+        <label>Type</label>
+        <select name="equipment_type">
+          {% for t in types %}
+          <option value="{{ t }}">{{ t | capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Condition</label>
+        <select name="condition">
+          {% for c in conditions %}
+          <option value="{{ c }}">{{ c | capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Location</label>
+        <input name="location" placeholder="e.g. Cardio Floor, Weight Room…">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Serial Number</label>
+        <input name="serial_number" placeholder="Optional">
+      </div>
+      <div class="form-group">
+        <label>Purchase Date</label>
+        <input type="date" name="purchase_date">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea name="notes" rows="3" placeholder="Any additional details…"></textarea>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Add Equipment</button>
+      <a href="{{ url_for('operations.equipment_index') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

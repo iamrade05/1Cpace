@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Collections | 1Cpase{% endblock %}
+{% block page_title %}Collections{% endblock %}
+
+{% block content %}
+
+<!-- Tab Navigation -->
+<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #e4e8f0;">
+  <a href="{{ url_for('collections.collections_index') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid #1769aa;margin-bottom:-2px;color:#1769aa;">
+    💳 Payment Records
+  </a>
+  <a href="{{ url_for('collections.call_queue') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid transparent;color:#6b7280;">
+    ☎ Collections Call Queue
+  </a>
+  <a href="{{ url_for('ptp.ptp_dashboard') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid transparent;color:#6b7280;">
+    🔴 PTP / Collection
+  </a>
+  <a href="{{ url_for('ptp.legal_referrals') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid transparent;color:#6b7280;">
+    ⚖ Legal Referrals
+  </a>
+  <a href="{{ url_for('access_report.index') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid transparent;color:#6b7280;">
+    📋 Access Report
+  </a>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card green">
+    <div class="kpi-label">Total Collected</div>
+    <div class="kpi-value">R{{ "%.2f"|format(totals.total_paid or 0) }}</div>
+    <div class="kpi-sub">All time</div>
+  </div>
+  <div class="kpi-card blue">
+    <div class="kpi-label">This Month</div>
+    <div class="kpi-value">R{{ "%.2f"|format(monthly.month_paid or 0) }}</div>
+    <div class="kpi-sub">Paid / Partial</div>
+  </div>
+  <div class="kpi-card orange">
+    <div class="kpi-label">Outstanding</div>
+    <div class="kpi-value">R{{ "%.2f"|format(totals.total_outstanding or 0) }}</div>
+    <div class="kpi-sub">All records</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Payment Records</h2>
+    <a href="{{ url_for('collections.collections_add') }}" class="btn btn-primary btn-sm">+ Add Payment</a>
+  </div>
+
+  <!-- Filter bar -->
+  <div style="padding: 12px 20px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+    <form method="get" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; flex: 1;">
+      <input type="text" name="q" value="{{ search }}" placeholder="Search member name or ID…"
+             style="padding: 7px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem; min-width: 220px;">
+      <select name="status" style="padding: 7px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.85rem;">
+        <option value="">All Statuses</option>
+        {% for s in statuses %}
+        <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s|capitalize }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+      {% if search or status_filter %}
+      <a href="{{ url_for('collections.collections_index') }}" class="btn btn-ghost btn-sm">Clear</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="card-body">
+    {% if collections %}
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Member</th>
+          <th>Package</th>
+          <th>Outstanding</th>
+          <th>Discount</th>
+          <th>Paid</th>
+          <th>Method</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in collections %}
+        <tr>
+          <td>{{ c.collection_date or '—' }}</td>
+          <td>
+            <a href="{{ url_for('members.member_detail', mid=c.member_id) }}"
+               style="color: #0f3460; text-decoration: none; font-weight: 500;">
+              {{ c.first_name }} {{ c.last_name }}
+            </a>
+          </td>
+          <td>{{ c.package or '—' }}</td>
+          <td>R{{ "%.2f"|format(c.outstanding_balance or 0) }}</td>
+          <td>{{ c.discount_pct or 0 }}%</td>
+          <td style="font-weight: 600; color: #065f46;">R{{ "%.2f"|format(c.amount_paid or 0) }}</td>
+          <td><span class="badge badge-gray">{{ (c.method or 'cash')|upper }}</span></td>
+          <td>
+            {% set s = c.status %}
+            {% if s == 'paid' %}<span class="badge badge-success">Paid</span>
+            {% elif s == 'partial' %}<span class="badge badge-warning">Partial</span>
+            {% elif s == 'pending' %}<span class="badge badge-info">Pending</span>
+            {% elif s == 'failed' %}<span class="badge badge-danger">Failed</span>
+            {% else %}<span class="badge badge-gray">{{ s|capitalize }}</span>{% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('collections.collections_edit', cid=c.id) }}" class="btn btn-ghost btn-sm">Edit</a>
+            <form method="post" action="{{ url_for('collections.collections_delete', cid=c.id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Delete this record?')">
+              <button type="submit" class="btn btn-danger btn-sm">Del</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">💳</div>
+      <p>No collection records found.</p>
+      <a href="{{ url_for('collections.collections_add') }}" class="btn btn-primary">Record First Payment</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

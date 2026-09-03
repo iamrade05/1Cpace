@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ s.first_name }} {{ s.last_name }} — Timesheet | 1Cpase{% endblock %}
+{% block page_title %}{{ s.first_name }} {{ s.last_name }} — Weekly Timesheet{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+  <div style="display:flex; gap:8px;">
+    <a href="{{ url_for('hr.timesheet_staff_week', sid=s.id, week=prev_week) }}" class="btn btn-ghost btn-sm">&larr; Prev Week</a>
+    <span style="align-self:center; color:#6b7280; font-size:0.85rem;">Week of {{ week_start }}</span>
+    <a href="{{ url_for('hr.timesheet_staff_week', sid=s.id, week=next_week) }}" class="btn btn-ghost btn-sm">Next Week &rarr;</a>
+  </div>
+  <a href="{{ url_for('hr.timesheets_index', week=week_start) }}" class="btn btn-ghost btn-sm">All Staff</a>
+</div>
+
+<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; margin-bottom:20px;">
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.6rem; font-weight:700;">{{ total_hrs }}h</div>
+    <div style="font-size:0.75rem; color:#6b7280;">Total Hours</div>
+  </div></div>
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.6rem; font-weight:700; color:{% if overtime > 0 %}#f59e0b{% else %}#111827{% endif %};">{{ overtime }}h</div>
+    <div style="font-size:0.75rem; color:#6b7280;">Overtime (&gt;45h)</div>
+  </div></div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <table>
+      <thead>
+        <tr><th>Day</th><th>Time In</th><th>Lunch Out</th><th>Lunch In</th><th>Time Out</th><th>Hours</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        {% for d in week %}
+        {% set ds = d.isoformat() %}
+        {% set row = ts_map.get(ds) %}
+        <tr>
+          <td style="font-weight:600; white-space:nowrap;">{{ d.strftime('%a %d %b') }}</td>
+          <td>{{ row.time_in if row else '—' }}</td>
+          <td>{{ row.lunch_out if row else '—' }}</td>
+          <td>{{ row.lunch_in if row else '—' }}</td>
+          <td>{{ row.time_out if row else '—' }}</td>
+          <td style="font-weight:600;">{{ row.hours_worked if row else 0 }}h</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ row.notes if row and row.notes else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

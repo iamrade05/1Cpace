@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ full_name }} — Supplements | 1Cpase{% endblock %}
+{% block page_title %}{{ full_name }} — Supplements{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+  <a href="{{ url_for('members.member_detail', mid=m.id) }}" class="btn btn-ghost btn-sm">&larr; Back to Member</a>
+  <a href="{{ url_for('fitness.supplements_index') }}" class="btn btn-ghost btn-sm">Supplements Guide</a>
+</div>
+
+{% if assignments %}
+<div class="card">
+  <div class="card-body">
+    <table>
+      <thead>
+        <tr><th>Supplement</th><th>Type</th><th>Goal</th><th>Risk</th><th>Start</th><th>End</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for a in assignments %}
+        <tr>
+          <td style="font-weight:600;">
+            <a href="{{ url_for('fitness.supplement_detail', sid=a.supplement_id) }}">{{ a.supp_name }}</a>
+          </td>
+          <td>{{ a.supp_type | replace('_',' ') | capitalize }}</td>
+          <td>{{ a.supp_goal | replace('_',' ') | capitalize }}</td>
+          <td>
+            <span style="color:{{ risk_colors[a.risk_level] }}; background:{{ risk_bg[a.risk_level] }};
+                         padding:2px 8px; border-radius:6px; font-size:0.78rem; font-weight:600;">
+              {{ risk_labels[a.risk_level] }}
+            </span>
+          </td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ a.start_date or '—' }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ a.end_date or '—' }}</td>
+          <td>
+            {% if a.active %}<span class="badge badge-success">Active</span>
+            {% else %}<span class="badge badge-gray">Ended</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">💊</div>
+  <p>No supplements assigned to this member yet.</p>
+  <a href="{{ url_for('fitness.supplements_index') }}" class="btn btn-primary">Browse Supplements</a>
+</div>
+{% endif %}
+{% endblock %}

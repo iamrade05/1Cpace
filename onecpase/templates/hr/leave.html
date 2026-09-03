@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Leave Requests | 1Cpase{% endblock %}
+{% block page_title %}Leave Requests{% endblock %}
+
+{% block content %}
+<div style="display:flex; gap:10px; margin-bottom:20px;">
+  <a href="{{ url_for('hr.leave_request') }}" class="btn btn-primary btn-sm">+ Request Leave</a>
+  {% for s in ['pending', 'approved', 'rejected'] %}
+  <a href="{{ url_for('hr.leave_index', status=s) }}"
+     class="btn btn-sm {% if status_filter == s %}btn-secondary{% else %}btn-ghost{% endif %}">
+    {{ s|capitalize }}
+  </a>
+  {% endfor %}
+  {% if status_filter %}
+  <a href="{{ url_for('hr.leave_index') }}" class="btn btn-ghost btn-sm">All</a>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Leave Requests{% if status_filter %} — {{ status_filter|capitalize }}{% endif %}</h2>
+  </div>
+  <div class="card-body">
+    {% if leaves %}
+    <table>
+      <thead>
+        <tr>
+          <th>Staff Member</th>
+          <th>Dept</th>
+          <th>Type</th>
+          <th>From</th>
+          <th>To</th>
+          <th>Days</th>
+          <th>Reason</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in leaves %}
+        <tr>
+          <td style="font-weight:600;">{{ l.full_name }}</td>
+          <td style="color:#6b7280; font-size:0.8rem;">{{ l.department }}</td>
+          <td><span class="badge badge-gray">{{ l.leave_type|capitalize }}</span></td>
+          <td>{{ l.start_date }}</td>
+          <td>{{ l.end_date }}</td>
+          <td>{{ l.days }}</td>
+          <td style="max-width:180px; font-size:0.8rem; color:#6b7280;">{{ l.reason or '—' }}</td>
+          <td>
+            {% if l.status == 'approved' %}<span class="badge badge-success">Approved</span>
+            {% elif l.status == 'rejected' %}<span class="badge badge-danger">Rejected</span>
+            {% else %}<span class="badge badge-warning">Pending</span>{% endif %}
+          </td>
+          <td>
+            {% if l.status == 'pending' %}
+            <form method="post" action="{{ url_for('hr.leave_approve', lid=l.id) }}" style="display:inline">
+              <button type="submit" class="btn btn-success btn-sm">Approve</button>
+            </form>
+            <form method="post" action="{{ url_for('hr.leave_reject', lid=l.id) }}" style="display:inline">
+              <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+            </form>
+            {% else %}
+            <span style="color:#9ca3af; font-size:0.78rem;">by {{ l.approver_name or '—' }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">📅</div>
+      <p>No leave requests{% if status_filter %} with status "{{ status_filter }}"{% endif %}.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

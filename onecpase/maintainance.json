@@ -1,0 +1,571 @@
+{
+    "title": "maintainance",
+    "steps": [
+        {
+            "type": "setViewport",
+            "width": 1920,
+            "height": 332,
+            "deviceScaleFactor": 1,
+            "isMobile": false,
+            "hasTouch": false,
+            "isLandscape": false
+        },
+        {
+            "type": "navigate",
+            "url": "https://merchant.nupay.co.za/dashboard",
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/dashboard",
+                    "title": "NuPayments"
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/DebiCheck"
+                ],
+                [
+                    "div.px-4 div:nth-of-type(2) > a"
+                ],
+                [
+                    "xpath//html/body/div[2]/div[2]/nav/div[1]/div/div[1]/div/div[2]/a"
+                ],
+                [
+                    "pierce/div.px-4 div:nth-of-type(2) > a"
+                ],
+                [
+                    "text/DebiCheck"
+                ]
+            ],
+            "offsetY": 19,
+            "offsetX": 85.03125,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Please Select",
+                    "aria/[role=\"generic\"]"
+                ],
+                [
+                    "div.relative > nav button > span.text-xs"
+                ],
+                [
+                    "xpath///*[@id=\"merchantSelect\"]/div/button/span[2]"
+                ],
+                [
+                    "pierce/div.relative > nav button > span.text-xs"
+                ]
+            ],
+            "offsetY": 33.171875,
+            "offsetX": 77
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "#accessList span.text-xs"
+                ],
+                [
+                    "xpath///*[@id=\"option-0\"]/div/div/span[2]"
+                ],
+                [
+                    "pierce/#accessList span.text-xs"
+                ],
+                [
+                    "text/Kwa-Thema Gym"
+                ]
+            ],
+            "offsetY": 2.171875,
+            "offsetX": 62
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(4) > div.flex span"
+                ],
+                [
+                    "xpath//html/body/div[2]/nav/div[3]/div[1]/div[4]/div[1]/div/span"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) > div.flex span"
+                ]
+            ],
+            "offsetY": 14.171875,
+            "offsetX": 64
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Transaction Maintenance",
+                    "aria/[role=\"generic\"]"
+                ],
+                [
+                    "div:nth-of-type(4) > div.ml-6 > div:nth-of-type(1) span"
+                ],
+                [
+                    "xpath//html/body/div[2]/nav/div[3]/div[1]/div[4]/div[2]/div[1]/a/span"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) > div.ml-6 > div:nth-of-type(1) span"
+                ]
+            ],
+            "offsetY": 14.171875,
+            "offsetX": 94
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Transaction Maintenance",
+                    "aria/[role=\"generic\"]"
+                ],
+                [
+                    "div:nth-of-type(4) > div.ml-6 > div:nth-of-type(1) span"
+                ],
+                [
+                    "xpath//html/body/div[1]/nav/div[3]/div[1]/div[4]/div[2]/div[1]/a/span"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) > div.ml-6 > div:nth-of-type(1) span"
+                ]
+            ],
+            "offsetY": 18.171875,
+            "offsetX": 123
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "form > div:nth-of-type(2) select"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/form/div[2]/div/select"
+                ],
+                [
+                    "pierce/form > div:nth-of-type(2) select"
+                ]
+            ],
+            "offsetY": 17,
+            "offsetX": 565.5
+        },
+        {
+            "type": "change",
+            "value": "MandateMaintenanceNoAuth",
+            "selectors": [
+                [
+                    "form > div:nth-of-type(2) select"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/form/div[2]/div/select"
+                ],
+                [
+                    "pierce/form > div:nth-of-type(2) select"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.relative div:nth-of-type(4) select"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/form/div[4]/div/select"
+                ],
+                [
+                    "pierce/div.relative div:nth-of-type(4) select"
+                ],
+                [
+                    "text/TC"
+                ]
+            ],
+            "offsetY": 14,
+            "offsetX": 268.5
+        },
+        {
+            "type": "change",
+            "value": "CC",
+            "selectors": [
+                [
+                    "div.relative div:nth-of-type(4) select"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/form/div[4]/div/select"
+                ],
+                [
+                    "pierce/div.relative div:nth-of-type(4) select"
+                ],
+                [
+                    "text/TC"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(6) select"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/form/div[6]/div/select"
+                ],
+                [
+                    "pierce/div:nth-of-type(6) select"
+                ],
+                [
+                    "text/submit_date"
+                ]
+            ],
+            "offsetY": 20,
+            "offsetX": 217.5
+        },
+        {
+            "type": "change",
+            "value": "date_created",
+            "selectors": [
+                [
+                    "div:nth-of-type(6) select"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/form/div[6]/div/select"
+                ],
+                [
+                    "pierce/div:nth-of-type(6) select"
+                ],
+                [
+                    "text/submit_date"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(7) select"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/form/div[7]/div/select"
+                ],
+                [
+                    "pierce/div:nth-of-type(7) select"
+                ]
+            ],
+            "offsetY": 20,
+            "offsetX": 358.5
+        },
+        {
+            "type": "change",
+            "value": "debtor_id",
+            "selectors": [
+                [
+                    "div:nth-of-type(7) select"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/form/div[7]/div/select"
+                ],
+                [
+                    "pierce/div:nth-of-type(7) select"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/From Date"
+                ],
+                [
+                    "#from_date"
+                ],
+                [
+                    "xpath///*[@id=\"from_date\"]"
+                ],
+                [
+                    "pierce/#from_date"
+                ]
+            ],
+            "offsetY": 26,
+            "offsetX": 181
+        },
+        {
+            "type": "doubleClick",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.arrowDown"
+                ],
+                [
+                    "xpath//html/body/div[3]/div[1]/div/div/div/span[2]"
+                ],
+                [
+                    "pierce/div.open span.arrowDown"
+                ]
+            ],
+            "offsetY": 7,
+            "offsetX": 6.703125
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/July 1, 2024"
+                ],
+                [
+                    "div.open div.flatpickr-days span:nth-of-type(2)"
+                ],
+                [
+                    "xpath//html/body/div[3]/div[2]/div/div[2]/div/span[2]"
+                ],
+                [
+                    "pierce/div.open div.flatpickr-days span:nth-of-type(2)"
+                ]
+            ],
+            "offsetY": 17,
+            "offsetX": 33
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Debtor Id"
+                ],
+                [
+                    "#searchText"
+                ],
+                [
+                    "xpath///*[@id=\"searchText\"]"
+                ],
+                [
+                    "pierce/#searchText"
+                ]
+            ],
+            "offsetY": 20,
+            "offsetX": 147.5
+        },
+        {
+            "type": "change",
+            "value": "0000000000000",
+            "selectors": [
+                [
+                    "aria/Debtor Id"
+                ],
+                [
+                    "#searchText"
+                ],
+                [
+                    "xpath///*[@id=\"searchText\"]"
+                ],
+                [
+                    "pierce/#searchText"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "keyDown",
+            "target": "main",
+            "key": "Escape"
+        },
+        {
+            "type": "keyUp",
+            "key": "Escape",
+            "target": "main"
+        },
+        {
+            "type": "keyDown",
+            "target": "main",
+            "key": "AudioVolumeMute"
+        },
+        {
+            "type": "keyUp",
+            "key": "AudioVolumeMute",
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/CONTINUE"
+                ],
+                [
+                    "#btnContinue"
+                ],
+                [
+                    "xpath///*[@id=\"btnContinue\"]"
+                ],
+                [
+                    "pierce/#btnContinue"
+                ],
+                [
+                    "text/Continue"
+                ]
+            ],
+            "offsetY": 14,
+            "offsetX": 58.5,
+            "duration": 1951.8000000715256,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck/000025500014054/maintenance-results",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Select Row[role=\"gridcell\"]",
+                    "aria/[role=\"checkbox\"]"
+                ],
+                [
+                    "div.tabulator-tableholder input"
+                ],
+                [
+                    "xpath///*[@id=\"maintenance\"]/div[2]/div/div/div[2]/input"
+                ],
+                [
+                    "pierce/div.tabulator-tableholder input"
+                ]
+            ],
+            "offsetY": 10,
+            "offsetX": 5
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/FILTER SELECTED"
+                ],
+                [
+                    "div.mt-4 > button:nth-of-type(1)"
+                ],
+                [
+                    "xpath///*[@id=\"maintenanceForm\"]/div[3]/button[1]"
+                ],
+                [
+                    "pierce/div.mt-4 > button:nth-of-type(1)"
+                ],
+                [
+                    "text/Filter Selected"
+                ]
+            ],
+            "offsetY": 23,
+            "offsetX": 58.890625
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Select Row[role=\"gridcell\"]",
+                    "aria/[role=\"checkbox\"]"
+                ],
+                [
+                    "div.tabulator-tableholder input"
+                ],
+                [
+                    "xpath///*[@id=\"maintenance\"]/div[2]/div/div/div[2]/input"
+                ],
+                [
+                    "pierce/div.tabulator-tableholder input"
+                ]
+            ],
+            "offsetY": 7,
+            "offsetX": 6
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/SUBMIT"
+                ],
+                [
+                    "#btnMaintain"
+                ],
+                [
+                    "xpath///*[@id=\"btnMaintain\"]"
+                ],
+                [
+                    "pierce/#btnMaintain"
+                ],
+                [
+                    "text/Submit"
+                ]
+            ],
+            "offsetY": 14,
+            "offsetX": 35.890625,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck/000025500014054/maintenance-ws",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/BACK[role=\"button\"]"
+                ],
+                [
+                    "a > button"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/a/button"
+                ],
+                [
+                    "pierce/a > button"
+                ],
+                [
+                    "text/Back"
+                ]
+            ],
+            "offsetY": 21,
+            "offsetX": 41,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck/000025500014054/maintenance-search",
+                    "title": ""
+                }
+            ]
+        }
+    ]
+}

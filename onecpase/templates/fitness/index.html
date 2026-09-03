@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Fitness Classes | 1Cpase{% endblock %}
+{% block page_title %}Fitness Classes{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+  <form method="get" style="display:flex; gap:8px;">
+    <input name="q" value="{{ search }}" placeholder="Search classes or instructor…"
+           style="padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:0.875rem; width:260px;">
+    <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;color:#6b7280;">
+      <input type="checkbox" name="inactive" value="1" {% if show_inactive %}checked{% endif %}
+             onchange="this.form.submit()"> Show inactive
+    </label>
+    <button type="submit" class="btn btn-ghost btn-sm">Search</button>
+    {% if search %}<a href="{{ url_for('fitness.fitness_index') }}" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
+  </form>
+  <a href="{{ url_for('fitness.fitness_add') }}" class="btn btn-primary">+ New Class</a>
+</div>
+
+{% if classes %}
+<div class="card">
+  <div class="card-body">
+    <table>
+      <thead>
+        <tr>
+          <th>Class</th>
+          <th>Instructor</th>
+          <th>Schedule</th>
+          <th>Capacity</th>
+          <th>Bookings</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in classes %}
+        <tr>
+          <td style="font-weight:600;">{{ c.name }}</td>
+          <td style="color:#6b7280;">{{ c.instructor_name or '—' }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">
+            {% if c.schedule_day %}{{ c.schedule_day }}{% endif %}
+            {% if c.schedule_time %} @ {{ c.schedule_time }}{% endif %}
+            {% if not c.schedule_day and not c.schedule_time %}—{% endif %}
+          </td>
+          <td style="text-align:center;">{{ c.capacity }}</td>
+          <td style="text-align:center;">
+            <span style="font-weight:600; color:{% if c.booking_count >= c.capacity %}#ef4444{% else %}#10b981{% endif %};">
+              {{ c.booking_count }}
+            </span>
+            <span style="color:#9ca3af; font-size:0.8rem;"> / {{ c.capacity }}</span>
+          </td>
+          <td>
+            {% if c.active %}<span class="badge badge-success">Active</span>
+            {% else %}<span class="badge badge-gray">Inactive</span>{% endif %}
+          </td>
+          <td style="white-space:nowrap;">
+            <a href="{{ url_for('fitness.fitness_bookings', fid=c.id) }}" class="btn btn-ghost btn-sm">Bookings</a>
+            <a href="{{ url_for('fitness.fitness_edit', fid=c.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">🏋️</div>
+  <p>No fitness classes found.</p>
+  <a href="{{ url_for('fitness.fitness_add') }}" class="btn btn-primary">Create First Class</a>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Capture Prospect | 1Cpase{% endblock %}
+{% block page_title %}Capture New Prospect{% endblock %}
+
+{% block content %}
+<div class="form-card" style="max-width:760px;">
+  <div class="alert alert-info" style="margin-bottom:18px;">
+    Search by phone before capture. The source determines the first activity card,
+    and the system assigns the correct sales consultant automatically.
+  </div>
+  <form method="POST">
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Full Name *</label>
+        <input type="text" name="full_name" class="form-control" required value="{{ request.form.get('full_name', '') }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Phone</label>
+        <input type="tel" name="phone" class="form-control" value="{{ request.form.get('phone', '') }}" placeholder="082 123 4567">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" name="email" class="form-control" value="{{ request.form.get('email', '') }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Original Lead Source *</label>
+        <select name="source" id="sourceSelect" class="form-control" required onchange="onSourceChange()">
+          {% for src in sources %}<option value="{{ src }}" {% if request.form.get('source', sources[0]) == src %}selected{% endif %}>{{ src }}</option>{% endfor %}
+        </select>
+        <small style="color:#6b7280;">Locked after capture for accurate attribution.</small>
+      </div>
+      <div class="form-group" id="referrerGroup">
+        <label class="form-label">Referrer</label>
+        <input type="text" name="referrer" class="form-control" value="{{ request.form.get('referrer', '') }}" placeholder="Member/person who referred them">
+      </div>
+      <div class="form-group" id="campaignGroup">
+        <label class="form-label">Campaign</label>
+        <select name="campaign" class="form-control">
+          {% for campaign in campaigns %}<option value="{{ campaign }}" {% if request.form.get('campaign', '') == campaign %}selected{% endif %}>{{ campaign or 'No campaign' }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="alert alert-info" id="walkInNote" style="margin-top:10px;display:none;">
+      Reception walk-in: arrival is recorded immediately and the Walk-In Details card will open.
+    </div>
+
+    <div class="alert alert-info" style="margin-top:10px;">
+      {% if capture_mode == 'sales' %}
+      Referral, outreach and social-media leads captured by you stay assigned to you.
+      {% else %}
+      Assignment rotates automatically across sales consultants marked Available.
+      {% endif %}
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Consent Preferences</label>
+      <label style="display:block;margin:5px 0;"><input type="checkbox" name="marketing_consent" value="1" {% if request.method != 'POST' or request.form.get('marketing_consent') == '1' %}checked{% endif %}> May receive sales and marketing follow-ups</label>
+      <label style="display:block;color:#991b1b;"><input type="checkbox" name="do_not_contact" value="1"> Do not contact</label>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Profile Notes</label>
+      <textarea name="notes" class="form-control" rows="3">{{ request.form.get('notes', '') }}</textarea>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px;">
+      <button type="submit" class="btn btn-primary">Create Prospect</button>
+      <a href="{{ url_for('leads.leads_index') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+<script>
+function onSourceChange() {
+  const source = document.getElementById('sourceSelect').value;
+  document.getElementById('walkInNote').style.display = (source === 'Walk-In / Enquiry') ? 'block' : 'none';
+  document.getElementById('referrerGroup').style.display = (source === 'Referral') ? 'block' : 'none';
+  document.getElementById('campaignGroup').style.display = (source === 'Outreach' || source === 'Social Media') ? 'block' : 'none';
+}
+onSourceChange();
+</script>
+{% endblock %}

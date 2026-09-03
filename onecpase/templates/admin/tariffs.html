@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Membership Plans | 1Cpase{% endblock %}
+{% block page_title %}Membership Plans{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+  <p style="font-size:0.85rem;color:#6b7280;">Create and edit membership plans. Active plans appear in the Add Member form and automatically fill the duration and monthly amount.</p>
+  <a href="{{ url_for('admin.tariff_add') }}" class="btn btn-primary">+ Create Membership Plan</a>
+</div>
+
+<div class="table-card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Order</th>
+        <th>Membership Plan</th>
+        <th>Duration</th>
+        <th>Monthly (R)</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tariffs %}
+      <tr>
+        <td style="color:#9ca3af;font-size:0.78rem;">{{ t.sort_order }}</td>
+        <td style="font-weight:600;color:#1F2933;">{{ t.name }}</td>
+        <td>{{ t.duration_months }} months</td>
+        <td style="font-weight:700;color:#185FA5;">R {{ "%.2f"|format(t.monthly_amount) }}</td>
+        <td>
+          <span style="font-size:0.75rem;font-weight:600;padding:3px 10px;border-radius:10px;
+                       background:{% if t.active %}#d1fae5{% else %}#fee2e2{% endif %};
+                       color:{% if t.active %}#065f46{% else %}#991b1b{% endif %};">
+            {{ 'Active' if t.active else 'Inactive' }}
+          </span>
+        </td>
+        <td style="display:flex;gap:8px;align-items:center;">
+          <a href="{{ url_for('admin.tariff_edit', tid=t.id) }}" class="btn btn-ghost btn-sm">Edit</a>
+          <form method="POST" action="{{ url_for('admin.tariff_toggle', tid=t.id) }}" style="margin:0;">
+            <button class="btn btn-sm" style="background:{% if t.active %}#fee2e2;color:#991b1b{% else %}#d1fae5;color:#065f46{% endif %};">
+              {{ 'Deactivate' if t.active else 'Activate' }}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:32px;">No membership plans yet. <a href="{{ url_for('admin.tariff_add') }}">Create one</a>.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

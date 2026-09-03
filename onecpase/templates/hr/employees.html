@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Employee Register | 1Cpase{% endblock %}
+{% block page_title %}Employee Register{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+  <form method="get" style="display:flex; gap:8px;">
+    <input name="q" value="{{ search }}" placeholder="Search name or role…"
+           style="padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:0.875rem; width:240px;">
+    <button type="submit" class="btn btn-ghost btn-sm">Search</button>
+    {% if search %}<a href="{{ url_for('hr.employee_index') }}" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
+  </form>
+  <a href="{{ url_for('hr.employee_add') }}" class="btn btn-primary">+ Add Employee</a>
+</div>
+
+{% if employees %}
+<div class="card">
+  <div class="card-body">
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Role</th><th>Department</th><th>Contact</th><th>Start Date</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for e in employees %}
+        <tr>
+          <td style="font-weight:600;">{{ e.first_name }} {{ e.last_name }}</td>
+          <td>{{ e.role or '—' }}</td>
+          <td>{{ e.department or 'General' }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ e.contact or '—' }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ e.start_date or '—' }}</td>
+          <td>
+            {% if e.status == 'active' %}<span class="badge badge-success">Active</span>
+            {% else %}<span class="badge badge-gray">{{ e.status|capitalize }}</span>{% endif %}
+          </td>
+          <td style="white-space:nowrap;">
+            <a href="{{ url_for('hr.employee_detail', sid=e.id) }}" class="btn btn-ghost btn-sm">View</a>
+            <a href="{{ url_for('hr.employee_edit', sid=e.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">🧑‍💼</div>
+  <p>No employees found{% if search %} matching "{{ search }}"{% endif %}.</p>
+  <a href="{{ url_for('hr.employee_add') }}" class="btn btn-primary">Add First Employee</a>
+</div>
+{% endif %}
+{% endblock %}

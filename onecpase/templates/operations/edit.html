@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Edit Equipment | 1Cpase{% endblock %}
+{% block page_title %}Edit: {{ item.name }}{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <form method="post">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Name *</label>
+        <input name="name" required value="{{ item.name }}">
+      </div>
+      <div class="form-group">
+        <label>Type</label>
+        <select name="equipment_type">
+          {% for t in types %}
+          <option value="{{ t }}" {% if item.equipment_type == t %}selected{% endif %}>{{ t | capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Condition</label>
+        <select name="condition">
+          {% for c in conditions %}
+          <option value="{{ c }}" {% if item.condition == c %}selected{% endif %}>{{ c | capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Location</label>
+        <input name="location" value="{{ item.location or '' }}">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Serial Number</label>
+        <input name="serial_number" value="{{ item.serial_number or '' }}">
+      </div>
+      <div class="form-group">
+        <label>Purchase Date</label>
+        <input type="date" name="purchase_date" value="{{ item.purchase_date or '' }}">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea name="notes" rows="3">{{ item.notes or '' }}</textarea>
+    </div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:500;">
+        <input type="checkbox" name="active" {% if item.active %}checked{% endif %}>
+        Active (visible in equipment list)
+      </label>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+      <a href="{{ url_for('operations.maintenance_log', eid=item.id) }}" class="btn btn-ghost">Maintenance Log</a>
+      <a href="{{ url_for('operations.equipment_index') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

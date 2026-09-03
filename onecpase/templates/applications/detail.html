@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block title %}Application #{{ app.id }} | 1Cpase{% endblock %}
+{% block page_title %}Application #{{ app.id }}{% endblock %}
+
+{% block content %}
+{% set color = status_colors.get(app.application_status, '#6b7280') %}
+
+<!-- Header banner -->
+<div style="background:{{ color }}18; border:1px solid {{ color }}44; border-radius:10px;
+            padding:16px 22px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+  <div>
+    <div style="font-weight:700; font-size:1rem; color:#1a1a2e;">
+      {% if app.first_name %}{{ app.first_name }} {{ app.last_name }}
+      {% elif app.lead_name %}{{ app.lead_name }}
+      {% else %}Unknown Applicant{% endif %}
+    </div>
+    <div style="font-size:0.8rem; color:#6b7280; margin-top:2px;">
+      {{ app.lead_phone or app.contact or app.email or '—' }} · {{ app.package or '—' }}
+    </div>
+  </div>
+  <div style="text-align:right;">
+    <span style="background:{{ color }}; color:#fff; padding:6px 16px; border-radius:20px;
+                 font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.6px;">
+      {{ app.application_status | replace('_', ' ') }}
+    </span>
+    {% if app.push_status == 'pushing' %}
+    <span style="background:#f59e0b22; color:#b45309; border:1px solid #f59e0b55; padding:6px 16px;
+                 border-radius:20px; font-size:0.78rem; font-weight:700; margin-left:10px;">
+      ⏳ Itensity push in progress — refresh to check
+    </span>
+    {% elif ready_to_push %}
+    <form method="POST" action="{{ url_for('applications.push_application', aid=app.id) }}"
+          style="display:inline; margin-left:10px;">
+      <button type="submit" class="btn btn-primary"
+              style="background:#059669; border-color:#059669; font-size:0.8rem;">
+        ✓ Push Application
+      </button>
+    </form>
+    {% elif is_manager and checklist and app.push_status not in ('pushed', 'pushing') %}
+    <form method="POST" action="{{ url_for('applications.push_application', aid=app.id) }}"
+          id="overridePushForm" style="display:inline; margin-left:10px;">
+      <input type="hidden" name="override" value="1">
+      <button type="button" onclick="confirmOverridePush()" class="btn btn-primary"
+              style="background:#dc2626; border-color:#dc2626; font-size:0.8rem;">
+        ⚠ Override &amp; Push (Manager)
+      </button>
+    </form>
+    <script>
+    function confirmOverridePush() {
+      const missing = {{ missing_items | tojson }};
+      const msg = 'This application is NOT fully verified. Missing:\n\n- '
+                  + missing.join('\n- ')
+                  + '\n\nPush to Itensity anyway? This will be logged as a manager override.';
+      if (confirm(msg)) {
+        document.getElementById('overridePushForm').submit();
+      }
+    }
+    </script>
+    {% endif %}
+  </div>
+</div>
+
+<div style="display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start;">
+
+  <!-- LEFT: Compliance checklist -->
+  <div style="flex:1.2; min-width:300px;">
+    <div class="form-card" style="margin-bottom:16px;">
+      <h3 style="font-size:0.85rem; font-weight:700; color:#e94560; text-transform:uppercase;
+                 letter-spacing:0.5px; margin-bottom:16px;">Compliance Checklist</h3>
+      {% if checklist %}
+      <form method="POST" action="{{ url_for('applications.update_checklist', aid=app.id) }}">
+
+        {% macro check_row(label, field_name, options, current) %}
+        <div style="display:flex; justify-content:space-between; align-items:center;
+                    padding:8px 0; border-bottom:1px solid #f3f4f6;">
+          <label style="font-size:0.82rem; color:#4b5563; font-weight:500;">{{ label }}</label>
+          <select name="{{ field_name }}" class="form-control"
+                  style="width:160px; font-size:0.78rem; padding:4px 8px;">
+            {% for opt in options %}
+            <option value="{{ opt }}" {% if current == opt %}selected{% endif %}>
+              {{ opt | replace('_', ' ') | title }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endmacro %}
+
+        {{ check_row("Contract", "contract_status", contract_statuses, checklist.contract_status) }}
+        {{ check_row("DebiCheck", "debit_check_status", debit_statuses, checklist.debit_check_status) }}
+        {{ check_row("Bank Statement", "bank_statement_status", bank_statuses, checklist.bank_statement_status) }}
+        {{ check_row("ID Copy", "id_copy_status", id_statuses, checklist.id_copy_status) }}
+        {{ check_row("POS Payment", "pos_status", pos_statuses, checklist.pos_status) }}
+
+        {% if checklist.guardian_required == 'required' %}
+        {{ check_row("Guardian Consent", "guardian_status", guardian_statuses, checklist.guardian_status) }}
+        {% endif %}
+
+        {{ check_row("Manager Approval", "manager_approval_status", manager_statuses, checklist.manager_approval_status) }}
+
+        <div style="margin-top:6px; padding-top:6px;">
+          <div style="font-size:0.74rem; color:#9ca3af; margin-bottom:6px;">
+            Age category: <strong>{{ checklist.age_category | replace('_', ' ') | title }}</strong>
+            {% if checklist.guardian_required == 'required' %}
+            · Guardian required
+            {% endif %}
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="margin-top:10px; font-size:0.82rem;">
+          Save Checklist
+        </button>
+      </form>
+
+      <!-- Push readiness -->
+      <div style="margin-top:14px; padding-top:14px; border-top:1px solid #f3f4f6;">
+        {% set items = [
+          ('Contract signed', checklist.contract_status == 'signed'),
+          ('DebiCheck approved', checklist.debit_check_status == 'approved'),
+          ('Bank statement analyzed and qualified', checklist.bank_statement_status == 'analysed' and analysis and analysis.verification_qualified),
+          ('ID copy uploaded', checklist.id_copy_status in ('uploaded', 'verified')),
+          ('POS payment completed', checklist.pos_status == 'paid'),
+          ('Manager approval resolved', checklist.manager_approval_status in ('not_required', 'approved')),
+        ] %}
+        <div style="font-size:0.75rem; font-weight:700; color:#6b7280; text-transform:uppercase;
+                    letter-spacing:0.5px; margin-bottom:8px;">Push Readiness</div>
+        {% for label, done in items %}
+        <div style="font-size:0.8rem; margin-bottom:4px;
+                    color:{% if done %}#059669{% else %}#ef4444{% endif %};">
+          {{ '✓' if done else '✗' }} {{ label }}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p style="font-size:0.83rem; color:#9ca3af;">No checklist created yet.</p>
+      {% endif %}
+    </div>
+
+    <!-- Bank Statement Analysis -->
+    <div class="form-card">
+      <h3 style="font-size:0.85rem; font-weight:700; color:#e94560; text-transform:uppercase;
+                 letter-spacing:0.5px; margin-bottom:14px;">Bank Statement Analysis</h3>
+
+      {% if analysis %}
+      <div style="background:#f8fafc; border-radius:6px; padding:12px; margin-bottom:16px;
+                  font-size:0.8rem;">
+        <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:8px;">
+          <div><span style="color:#9ca3af;">Income</span>
+               <div style="font-weight:700; font-size:0.9rem;">
+                 {{ analysis.income_detected | title }}
+               </div></div>
+          <div><span style="color:#9ca3af;">Est. Income</span>
+               <div style="font-weight:700; font-size:0.9rem;">
+                 R{{ "%.0f" | format(analysis.estimated_monthly_income) }}
+               </div></div>
+          <div><span style="color:#9ca3af;">Returned Debits</span>
+               <div style="font-weight:700; font-size:0.9rem;
+                           color:{% if analysis.returned_debits_count > 0 %}#ef4444{% else %}#10b981{% endif %};">
+                 {{ analysis.returned_debits_count }}
+               </div></div>
+          <div><span style="color:#9ca3af;">Neg. Balance Days</span>
+               <div style="font-weight:700; font-size:0.9rem;
+                           color:{% if analysis.negative_balance_days > 5 %}#ef4444{% elif analysis.negative_balance_days > 0 %}#f59e0b{% else %}#10b981{% endif %};">
+                 {{ analysis.negative_balance_days }}
+               </div></div>
+          <div><span style="color:#9ca3af;">Risk</span>
+               <div style="font-weight:700; font-size:0.9rem;
+                           color:{% if analysis.risk_rating == 'high' %}#ef4444{% elif analysis.risk_rating == 'medium' %}#f59e0b{% else %}#10b981{% endif %};">
+                 {{ analysis.risk_rating | title }}
+               </div></div>
+        </div>
+        {% if analysis.analysis_summary %}
+        <div style="color:#4b5563; font-size:0.79rem; border-top:1px solid #e5e7eb; padding-top:8px;">
+          {{ analysis.analysis_summary }}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if has_perm('add_member') %}
+      <form method="POST" action="{{ url_for('applications.submit_analysis', aid=app.id) }}">
+        <div style="font-size:0.78rem; font-weight:700; color:#6b7280; text-transform:uppercase;
+                    letter-spacing:0.4px; margin-bottom:10px;">Submit New Analysis</div>
+        <div class="form-grid-2" style="gap:8px;">
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">Income Detected</label>
+            <select name="income_detected" class="form-control" style="font-size:0.8rem; padding:5px 8px;">
+              {% for opt in income_options %}
+              <option value="{{ opt }}">{{ opt | title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">Est. Monthly Income (R)</label>
+            <input type="number" name="estimated_monthly_income" class="form-control"
+                   style="font-size:0.8rem; padding:5px 8px;" min="0" step="100">
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">Max Balance M1 (R)</label>
+            <input type="number" name="max_balance_m1" class="form-control"
+                   style="font-size:0.8rem; padding:5px 8px;" step="100">
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">Max Balance M2 (R)</label>
+            <input type="number" name="max_balance_m2" class="form-control"
+                   style="font-size:0.8rem; padding:5px 8px;" step="100">
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">Max Balance M3 (R)</label>
+            <input type="number" name="max_balance_m3" class="form-control"
+                   style="font-size:0.8rem; padding:5px 8px;" step="100">
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">Average Balance (R)</label>
+            <input type="number" name="average_balance" class="form-control"
+                   style="font-size:0.8rem; padding:5px 8px;" step="100">
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">Returned Debits Count</label>
+            <input type="number" name="returned_debits_count" class="form-control"
+                   style="font-size:0.8rem; padding:5px 8px;" min="0" value="0">
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">Neg. Balance Days</label>
+            <input type="number" name="negative_balance_days" class="form-control"
+                   style="font-size:0.8rem; padding:5px 8px;" min="0" value="0">
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">Income Frequency</label>
+            <select name="income_frequency" class="form-control" style="font-size:0.8rem; padding:5px 8px;">
+              {% for opt in income_frequencies %}
+              <option value="{{ opt }}">{{ opt | title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label" style="font-size:0.75rem;">Override Risk Rating</label>
+            <select name="risk_rating" class="form-control" style="font-size:0.8rem; padding:5px 8px;">
+              <option value="">— Auto —</option>
+              {% for opt in risk_ratings %}
+              <option value="{{ opt }}">{{ opt | title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label" style="font-size:0.75rem;">Analysis Summary</label>
+          <textarea name="analysis_summary" class="form-control" rows="2"
+                    style="font-size:0.8rem;"></textarea>
+        </div>
+        <div style="background:#fef3c7; border-radius:6px; padding:8px 12px; font-size:0.75rem;
+                    color:#78350f; margin-bottom:10px;">
+          🔒 POPIA: Bank statements are treated as sensitive personal data. Handle with appropriate access controls and do not store unnecessarily.
+        </div>
+        <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">
+          Submit Analysis
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- RIGHT: Pending approval + audit trail -->
+  <div style="flex:0.8; min-width:240px;">
+
+    {% if pending_approval %}
+    <div class="form-card" style="margin-bottom:16px; border-left:4px solid #f97316;">
+      <h3 style="font-size:0.85rem; font-weight:700; color:#f97316; margin-bottom:10px;">
+        Pending Manager Approval
+      </h3>
+      <p style="font-size:0.8rem; color:#4b5563; margin-bottom:8px;">
+        Requested by: <strong>{{ pending_approval.requested_by_name or 'System' }}</strong><br>
+        Reason: {{ pending_approval.reason or '—' }}
+      </p>
+      {% if has_perm('hr_module') %}
+      <form method="POST" action="{{ url_for('applications.approve_application', aid=app.id) }}"
+            style="margin-bottom:8px;">
+        <input type="text" name="comment" class="form-control"
+               style="font-size:0.8rem; margin-bottom:6px;" placeholder="Comment (optional)">
+        <button type="submit" class="btn btn-primary"
+                style="font-size:0.78rem; background:#059669; border-color:#059669; width:100%;">
+          Approve
+        </button>
+      </form>
+      <form method="POST" action="{{ url_for('applications.decline_application', aid=app.id) }}">
+        <input type="text" name="comment" class="form-control"
+               style="font-size:0.8rem; margin-bottom:6px;" placeholder="Reason for decline">
+        <button type="submit" class="btn btn-secondary"
+                style="font-size:0.78rem; border-color:#ef4444; color:#ef4444; width:100%;">
+          Decline
+        </button>
+      </form>
+      {% else %}
+      <p style="font-size:0.78rem; color:#9ca3af;">Awaiting manager decision.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Audit trail -->
+    <div class="form-card">
+      <h3 style="font-size:0.85rem; font-weight:700; color:#e94560; text-transform:uppercase;
+                 letter-spacing:0.5px; margin-bottom:14px;">Audit Trail</h3>
+      {% if trail %}
+      <div style="max-height:420px; overflow-y:auto;">
+        {% for entry in trail %}
+        <div style="display:flex; gap:10px; margin-bottom:12px; font-size:0.78rem;">
+          <div style="width:7px; height:7px; background:#e94560; border-radius:50%;
+                      margin-top:4px; flex-shrink:0;"></div>
+          <div>
+            <div style="font-weight:600; color:#1a1a2e;">{{ entry.action | replace('_', ' ') | title }}</div>
+            {% if entry.new_value %}
+            <div style="color:#6b7280; font-size:0.74rem;">→ {{ entry.new_value }}</div>
+            {% endif %}
+            <div style="color:#9ca3af; font-size:0.72rem; margin-top:1px;">
+              {{ entry.user_name or 'System' }} · {{ entry.timestamp[:16] if entry.timestamp else '' }}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p style="font-size:0.82rem; color:#9ca3af;">No activity yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

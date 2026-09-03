@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}{{ s.first_name }} {{ s.last_name }} | 1Cpase{% endblock %}
+{% block page_title %}{{ s.first_name }} {{ s.last_name }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+  <div style="display:flex; gap:8px; align-items:center;">
+    <span class="badge badge-gray">{{ s.role or 'Staff' }}</span>
+    <span style="color:#6b7280; font-size:0.85rem;">{{ s.department or 'General' }}</span>
+    {% if s.status == 'active' %}<span class="badge badge-success">Active</span>
+    {% else %}<span class="badge badge-gray">{{ s.status|capitalize }}</span>{% endif %}
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a href="{{ url_for('hr.employee_edit', sid=s.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+    <a href="{{ url_for('hr.employee_index') }}" class="btn btn-ghost btn-sm">All Employees</a>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 320px; gap:20px;">
+  <div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header"><h2>Recent Attendance</h2></div>
+      <div class="card-body">
+        {% if attendance %}
+        <table>
+          <thead><tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for a in attendance %}
+            <tr>
+              <td style="color:#6b7280; font-size:0.82rem;">{{ a.date }}</td>
+              <td>{{ a.clock_in or '—' }}</td>
+              <td>{{ a.clock_out or '—' }}</td>
+              <td><span class="badge badge-gray">{{ a.status|capitalize }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state" style="padding:24px;"><p>No attendance logged yet.</p></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header">
+        <h2>Leave</h2>
+        <a href="{{ url_for('hr.staff_leave_add', sid=s.id) }}" class="btn btn-primary btn-sm">+ Log Leave</a>
+      </div>
+      <div class="card-body">
+        {% if leave %}
+        <table>
+          <thead><tr><th>Type</th><th>From</th><th>To</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for l in leave %}
+            <tr>
+              <td><span class="badge badge-gray">{{ l.leave_type }}</span></td>
+              <td style="color:#6b7280; font-size:0.82rem;">{{ l.start_date }}</td>
+              <td style="color:#6b7280; font-size:0.82rem;">{{ l.end_date }}</td>
+              <td>
+                {% if l.status == 'approved' %}<span class="badge badge-success">Approved</span>
+                {% elif l.status == 'rejected' %}<span class="badge badge-danger">Rejected</span>
+                {% else %}<span class="badge badge-warning">Pending</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state" style="padding:24px;"><p>No leave history yet.</p></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>Payroll</h2>
+        <a href="{{ url_for('hr.payroll_index') }}" class="btn btn-ghost btn-sm">All Payroll</a>
+      </div>
+      <div class="card-body">
+        {% if payroll %}
+        <table>
+          <thead><tr><th>Month</th><th>Basic</th><th>Bonus</th><th>Deductions</th><th>Net</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for p in payroll %}
+            <tr>
+              <td>{{ p.month }}</td>
+              <td>R{{ '%.2f'|format(p.basic or 0) }}</td>
+              <td>R{{ '%.2f'|format(p.bonus or 0) }}</td>
+              <td>R{{ '%.2f'|format(p.deductions or 0) }}</td>
+              <td style="font-weight:600;">R{{ '%.2f'|format(p.net or 0) }}</td>
+              <td>
+                {% if p.status == 'paid' %}<span class="badge badge-success">Paid</span>
+                {% else %}<span class="badge badge-warning">Pending</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state" style="padding:24px;"><p>No payroll history yet.</p></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="align-self:start;">
+    <div class="card-header"><h2>Log Today's Attendance</h2></div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('hr.attendance_log') }}">
+        <input type="hidden" name="staff_id" value="{{ s.id }}">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Clock In</label>
+            <input type="time" name="clock_in">
+          </div>
+          <div class="form-group">
+            <label>Clock Out</label>
+            <input type="time" name="clock_out">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            <option value="present">Present</option>
+            <option value="late">Late</option>
+            <option value="absent">Absent</option>
+            <option value="leave">On Leave</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Save</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

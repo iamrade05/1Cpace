@@ -1,0 +1,34 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python cache and virtual environments
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Local databases (contain real member PII — never commit)
+*.db
+*.sqlite3
+tenants/
+
+# Local logs
+*.log
+*.log.*
+logs/
+**/logs/
+
+# Uploaded member documents / statements
+uploads/
+
+# Editor and OS files
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

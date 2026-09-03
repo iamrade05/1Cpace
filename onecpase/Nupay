@@ -1,0 +1,1197 @@
+{
+    "title": "Nupay",
+    "steps": [
+        {
+            "type": "setViewport",
+            "width": 1536,
+            "height": 729,
+            "deviceScaleFactor": 1,
+            "isMobile": false,
+            "hasTouch": false,
+            "isLandscape": false
+        },
+        {
+            "type": "navigate",
+            "url": "https://www.nupayments.co.za/welcome-login",
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://www.nupayments.co.za/welcome-login",
+                    "title": "Welcome"
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Get started"
+                ],
+                [
+                    "div.left-panel > a"
+                ],
+                [
+                    "xpath//html/body/div[1]/div/div[1]/a"
+                ],
+                [
+                    "pierce/div.left-panel > a"
+                ],
+                [
+                    "text/Get started"
+                ]
+            ],
+            "offsetY": 35.11248779296875,
+            "offsetX": 160.5999984741211,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/LOGIN"
+                ],
+                [
+                    "header a"
+                ],
+                [
+                    "xpath//html/body/div[1]/div/header/nav/a"
+                ],
+                [
+                    "pierce/header a"
+                ],
+                [
+                    "text/Login"
+                ]
+            ],
+            "offsetY": 8.472221374511719,
+            "offsetX": 50.5416259765625,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/login",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "keyUp",
+            "key": "6",
+            "target": "main"
+        },
+        {
+            "type": "change",
+            "value": "iamraderadebe@gmail.com",
+            "selectors": [
+                [
+                    "aria/Email"
+                ],
+                [
+                    "#email"
+                ],
+                [
+                    "xpath///*[@id=\"email\"]"
+                ],
+                [
+                    "pierce/#email"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "change",
+            "value": "REDACTED_PASSWORD",
+            "selectors": [
+                [
+                    "aria/Password"
+                ],
+                [
+                    "#password"
+                ],
+                [
+                    "xpath///*[@id=\"password\"]"
+                ],
+                [
+                    "pierce/#password"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Accept Terms and Conditions, and the Disclaimer of Liability and has read and understood the Altron Privacy Policy.[role=\"checkbox\"]"
+                ],
+                [
+                    "#terms"
+                ],
+                [
+                    "xpath///*[@id=\"terms\"]"
+                ],
+                [
+                    "pierce/#terms"
+                ]
+            ],
+            "offsetY": 21.138885498046875,
+            "offsetX": 3.66668701171875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/LOG IN"
+                ],
+                [
+                    "div.w-full button"
+                ],
+                [
+                    "xpath//html/body/div[1]/div[2]/form/div[4]/button"
+                ],
+                [
+                    "pierce/div.w-full button"
+                ],
+                [
+                    "text/Log in"
+                ]
+            ],
+            "offsetY": 12.916656494140625,
+            "offsetX": 30.59722900390625,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/2fa/verify-code?email=iamraderadebe%40gmail.com",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "change",
+            "value": "000000",
+            "selectors": [
+                [
+                    "aria/Two Factor Authentication Code"
+                ],
+                [
+                    "#\\32 fa"
+                ],
+                [
+                    "xpath///*[@id=\"2fa\"]"
+                ],
+                [
+                    "pierce/#\\32 fa"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/VERIFY"
+                ],
+                [
+                    "div.w-full button"
+                ],
+                [
+                    "xpath//html/body/div[1]/div[2]/div/div/form/div[3]/button"
+                ],
+                [
+                    "pierce/div.w-full button"
+                ],
+                [
+                    "text/Verify"
+                ]
+            ],
+            "offsetY": 15.138885498046875,
+            "offsetX": 41.486083984375,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/dashboard",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/DebiCheck"
+                ],
+                [
+                    "div.px-4 div:nth-of-type(2) > a"
+                ],
+                [
+                    "xpath//html/body/div[2]/div[2]/nav/div[1]/div/div[1]/div/div[2]/a"
+                ],
+                [
+                    "pierce/div.px-4 div:nth-of-type(2) > a"
+                ],
+                [
+                    "text/DebiCheck"
+                ]
+            ],
+            "offsetY": 19,
+            "offsetX": 35.02777099609375,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Please Select",
+                    "aria/[role=\"generic\"]"
+                ],
+                [
+                    "div.relative > nav button > span.text-xs"
+                ],
+                [
+                    "xpath///*[@id=\"merchantSelect\"]/div/button/span[2]"
+                ],
+                [
+                    "pierce/div.relative > nav button > span.text-xs"
+                ]
+            ],
+            "offsetY": 28.27777862548828,
+            "offsetX": 53.11111068725586
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Mandate Reports",
+                    "aria/[role=\"generic\"]"
+                ],
+                [
+                    "a:nth-of-type(2) > span"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/div[1]/div/div/div/div/a[2]/span"
+                ],
+                [
+                    "pierce/a:nth-of-type(2) > span"
+                ],
+                [
+                    "text/Mandate Reports"
+                ]
+            ],
+            "offsetY": 7.2222137451171875,
+            "offsetX": 56.52777099609375,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck/000025500014054/mandate-search",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Date Updated",
+                    "aria/[role=\"image\"]"
+                ],
+                [
+                    "div:nth-of-type(5) button > svg"
+                ],
+                [
+                    "xpath///*[@id=\"mandate_search_form\"]/div[5]/div/div/button/svg"
+                ],
+                [
+                    "pierce/div:nth-of-type(5) button > svg"
+                ]
+            ],
+            "offsetY": 17.6944580078125,
+            "offsetX": 9
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Date Created"
+                ],
+                [
+                    "div:nth-of-type(5) li:nth-of-type(2)"
+                ],
+                [
+                    "xpath///*[@id=\"option-1\"]"
+                ],
+                [
+                    "pierce/div:nth-of-type(5) li:nth-of-type(2)"
+                ]
+            ],
+            "offsetY": 19.6944580078125,
+            "offsetX": 146.22222900390625
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/From Date"
+                ],
+                [
+                    "#from_date"
+                ],
+                [
+                    "xpath///*[@id=\"from_date\"]"
+                ],
+                [
+                    "pierce/#from_date"
+                ]
+            ],
+            "offsetY": 26.13885498046875,
+            "offsetX": 186.11111450195312
+        },
+        {
+            "type": "doubleClick",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 11.138885498046875,
+            "offsetX": 4.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/October 1, 2024"
+                ],
+                [
+                    "div.open div.flatpickr-days span:nth-of-type(3)"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[2]/div/div[2]/div/span[3]"
+                ],
+                [
+                    "pierce/div.open div.flatpickr-days span:nth-of-type(3)"
+                ]
+            ],
+            "offsetY": 21.138885498046875,
+            "offsetX": 24.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Employer Code"
+                ],
+                [
+                    "#employer_code"
+                ],
+                [
+                    "xpath///*[@id=\"employer_code\"]"
+                ],
+                [
+                    "pierce/#employer_code"
+                ]
+            ],
+            "offsetY": 25.361114501953125,
+            "offsetX": 136.11111450195312
+        },
+        {
+            "type": "change",
+            "value": "0000000000000",
+            "selectors": [
+                [
+                    "aria/Employer Code"
+                ],
+                [
+                    "#employer_code"
+                ],
+                [
+                    "xpath///*[@id=\"employer_code\"]"
+                ],
+                [
+                    "pierce/#employer_code"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "body > div.relative"
+                ],
+                [
+                    "xpath//html/body/div[2]"
+                ],
+                [
+                    "pierce/body > div.relative"
+                ]
+            ],
+            "offsetY": 497,
+            "offsetX": 240,
+            "duration": 567.7999999821186
+        },
+        {
+            "type": "change",
+            "value": "",
+            "selectors": [
+                [
+                    "aria/Employer Code"
+                ],
+                [
+                    "#employer_code"
+                ],
+                [
+                    "xpath///*[@id=\"employer_code\"]"
+                ],
+                [
+                    "pierce/#employer_code"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/CONTINUE"
+                ],
+                [
+                    "#btnContinue"
+                ],
+                [
+                    "xpath///*[@id=\"btnContinue\"]"
+                ],
+                [
+                    "pierce/#btnContinue"
+                ],
+                [
+                    "text/Continue"
+                ]
+            ],
+            "offsetY": 13.6944580078125,
+            "offsetX": 68.11111450195312,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck/000025500014054/mandate-results",
+                    "title": "NuPayments"
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(4) > div.mt-2 > button:nth-of-type(1)"
+                ],
+                [
+                    "xpath///*[@id=\"exportButton\"]"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) > div.mt-2 > button:nth-of-type(1)"
+                ]
+            ],
+            "offsetY": 18.6805419921875,
+            "offsetX": 99
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(8) > div.mt-2 > button:nth-of-type(1)"
+                ],
+                [
+                    "xpath///*[@id=\"exportButton\"]"
+                ],
+                [
+                    "pierce/div:nth-of-type(8) > div.mt-2 > button:nth-of-type(1)"
+                ]
+            ],
+            "offsetY": 21.15277099609375,
+            "offsetX": 120
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(10) > div.mt-2 > button:nth-of-type(1)"
+                ],
+                [
+                    "xpath///*[@id=\"exportButton\"]"
+                ],
+                [
+                    "pierce/div:nth-of-type(10) > div.mt-2 > button:nth-of-type(1)"
+                ]
+            ],
+            "offsetY": 21.0555419921875,
+            "offsetX": 87
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(12) > div.mt-2 > button:nth-of-type(1)"
+                ],
+                [
+                    "xpath///*[@id=\"exportButton\"]"
+                ],
+                [
+                    "pierce/div:nth-of-type(12) > div.mt-2 > button:nth-of-type(1)"
+                ]
+            ],
+            "offsetY": 26.736083984375,
+            "offsetX": 67
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/BACK[role=\"button\"]"
+                ],
+                [
+                    "a > button"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/a/button"
+                ],
+                [
+                    "pierce/a > button"
+                ],
+                [
+                    "text/Back"
+                ]
+            ],
+            "offsetY": 18.3055419921875,
+            "offsetX": 49.54168701171875,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck/000025500014054/mandate-search",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(3) select"
+                ],
+                [
+                    "xpath///*[@id=\"mandate_search_form\"]/div[3]/div/select"
+                ],
+                [
+                    "pierce/div:nth-of-type(3) select"
+                ],
+                [
+                    "text/screenEnquiry"
+                ]
+            ],
+            "offsetY": 18.361114501953125,
+            "offsetX": 580.1111145019531
+        },
+        {
+            "type": "change",
+            "value": "csvDownload",
+            "selectors": [
+                [
+                    "div:nth-of-type(3) select"
+                ],
+                [
+                    "xpath///*[@id=\"mandate_search_form\"]/div[3]/div/select"
+                ],
+                [
+                    "pierce/div:nth-of-type(3) select"
+                ],
+                [
+                    "text/screenEnquiry"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/From Date"
+                ],
+                [
+                    "#from_date"
+                ],
+                [
+                    "xpath///*[@id=\"from_date\"]"
+                ],
+                [
+                    "pierce/#from_date"
+                ]
+            ],
+            "offsetY": 28.25,
+            "offsetX": 164.11111450195312
+        },
+        {
+            "type": "doubleClick",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 20.25,
+            "offsetX": 10.5555419921875
+        },
+        {
+            "type": "doubleClick",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 20.25,
+            "offsetX": 10.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 20.25,
+            "offsetX": 10.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 20.25,
+            "offsetX": 10.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 20.25,
+            "offsetX": 10.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 20.25,
+            "offsetX": 10.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 20.25,
+            "offsetX": 10.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 20.25,
+            "offsetX": 10.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 20.25,
+            "offsetX": 10.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 20.25,
+            "offsetX": 10.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.open span.flatpickr-prev-month"
+                ],
+                [
+                    "xpath//html/body/div[6]/div[1]/span[1]"
+                ],
+                [
+                    "pierce/div.open span.flatpickr-prev-month"
+                ]
+            ],
+            "offsetY": 20.25,
+            "offsetX": 10.5555419921875
+        }
+    ]
+}

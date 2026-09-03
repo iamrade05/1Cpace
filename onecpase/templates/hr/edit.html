@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Edit Staff | 1Cpase{% endblock %}
+{% block page_title %}Edit: {{ user.full_name }}{% endblock %}
+
+{% block content %}
+<form method="post">
+
+  <!-- ── Basic Details ── -->
+  <div class="form-card" style="max-width:100%; margin-bottom:24px;">
+    <h3 style="font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:1px;
+               color:#6b7280; margin-bottom:20px; padding-bottom:10px; border-bottom:1px solid #f3f4f6;">
+      Staff Details
+    </h3>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Full Name *</label>
+        <input name="full_name" required value="{{ user.full_name }}">
+      </div>
+      <div class="form-group">
+        <label>Username</label>
+        <input value="{{ user.username }}" disabled style="background:#f3f4f6; color:#6b7280;">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Role</label>
+        <select name="role">
+          {% for r in roles %}
+          <option value="{{ r }}" {% if user.role == r %}selected{% endif %}>{{ r | capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Department</label>
+        <select name="department">
+          {% for d in departments %}
+          <option value="{{ d }}" {% if user.department == d %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Contact</label>
+        <input name="contact" value="{{ user.contact or '' }}">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" name="email" value="{{ user.email or '' }}">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>New Password <span style="color:#9ca3af; font-weight:400;">(leave blank to keep current)</span></label>
+      <input type="password" name="password" autocomplete="new-password">
+    </div>
+
+    <div style="display:flex; gap:28px; margin-top:8px; padding-top:12px; border-top:1px solid #f3f4f6;">
+      <label style="display:flex; align-items:center; gap:8px; font-size:0.875rem; cursor:pointer;">
+        <input type="checkbox" name="active" {% if user.active %}checked{% endif %}
+               style="accent-color:#e94560; width:16px; height:16px;">
+        Active login
+      </label>
+      <label style="display:flex; align-items:center; gap:8px; font-size:0.875rem; cursor:pointer;">
+        <input type="checkbox" name="must_change_password"
+               {% if user.must_change_password %}checked{% endif %}
+               style="accent-color:#e94560; width:16px; height:16px;">
+        Must change password
+      </label>
+    </div>
+  </div>
+
+  <!-- ── Module Access ── -->
+  <div style="background:#0f1a2e; border-radius:12px; padding:28px; margin-bottom:24px;">
+    <h3 style="font-size:0.8rem; font-weight:800; text-transform:uppercase; letter-spacing:2px;
+               color:#fff; margin-bottom:24px; padding-bottom:12px;
+               border-bottom:1px solid rgba(233,69,96,0.3);">
+      Module Access
+    </h3>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px;">
+      {% for module_name, perms in module_permissions.items() %}
+      <div style="background:#0a1628; border:1px solid rgba(233,69,96,0.2); border-radius:8px; padding:14px 16px;">
+        <div style="font-size:0.68rem; font-weight:800; text-transform:uppercase; letter-spacing:1.5px;
+                    color:#e94560; margin-bottom:10px;">
+          {{ module_name }}
+        </div>
+        {% for perm_key, perm_label in perms %}
+        {% set is_dashboard = (perm_key == 'dashboard') %}
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:7px;
+                      font-size:0.78rem; color:#c9d1d9;
+                      cursor:{% if is_dashboard %}default{% else %}pointer{% endif %};">
+          <input type="checkbox"
+                 name="perm_{{ perm_key }}"
+                 {% if perm_key in user_perms or is_dashboard %}checked{% endif %}
+                 {% if is_dashboard %}disabled{% endif %}
+                 style="accent-color:#e94560; width:14px; height:14px; flex-shrink:0;">
+          {{ perm_label }}
+        </label>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <p style="margin-top:14px; font-size:0.72rem; color:rgba(255,255,255,0.3); font-style:italic;">
+      Dashboard access is always included so users have a landing page after login.
+    </p>
+  </div>
+
+  <!-- ── Actions ── -->
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+    <a href="{{ url_for('hr.staff_index') }}" class="btn btn-ghost">Cancel</a>
+  </div>
+
+</form>
+{% endblock %}

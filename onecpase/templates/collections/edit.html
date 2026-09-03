@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Payment | 1Cpase{% endblock %}
+{% block page_title %}Edit Payment{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <p style="margin-bottom: 20px; color: #6b7280; font-size: 0.875rem;">
+    Editing payment for <strong>{{ col.first_name }} {{ col.last_name }}</strong>
+  </p>
+  <form method="post">
+    <div class="form-row">
+      <div class="form-group">
+        <label for="amount_paid">Amount Paid (R)</label>
+        <input type="number" step="0.01" min="0" id="amount_paid" name="amount_paid"
+               value="{{ request.form.get('amount_paid', col.amount_paid) }}" required>
+      </div>
+      <div class="form-group">
+        <label for="collection_date">Date</label>
+        <input type="date" id="collection_date" name="collection_date"
+               value="{{ request.form.get('collection_date', col.collection_date) }}">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="method">Payment Method</label>
+        <select id="method" name="method">
+          {% for m in methods %}
+          <option value="{{ m }}" {% if (request.form.get('method') or col.method) == m %}selected{% endif %}>
+            {{ m|capitalize }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="status">Status</label>
+        <select id="status" name="status">
+          {% for s in statuses %}
+          <option value="{{ s }}" {% if (request.form.get('status') or col.status) == s %}selected{% endif %}>
+            {{ s|capitalize }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="notes">Notes</label>
+      <textarea id="notes" name="notes" rows="3">{{ request.form.get('notes', col.notes or '') }}</textarea>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Update</button>
+      <a href="{{ url_for('collections.collections_index') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

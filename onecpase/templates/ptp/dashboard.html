@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+{% block title %}PTP / Collection | 1Cpase{% endblock %}
+{% block page_title %}PTP / Collection{% endblock %}
+
+{% block content %}
+<style>
+.ptp-kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:22px; }
+.ptp-kpi-card {
+  background:#fff; border:1px solid #e4e8f0; border-radius:8px;
+  padding:16px 18px; position:relative; overflow:hidden;
+  box-shadow:0 4px 14px rgba(16,24,40,.05);
+}
+.ptp-kpi-card::before {
+  content:""; position:absolute; left:0; top:0; bottom:0;
+  width:4px; background:var(--fp-primary);
+}
+.ptp-kpi-card.red::before    { background:#e11d48; }
+.ptp-kpi-card.amber::before  { background:#d97706; }
+.ptp-kpi-card.green::before  { background:#059669; }
+.ptp-kpi-card.purple::before { background:#7c3aed; }
+.ptp-kpi-card.blue::before   { background:#1769aa; }
+.ptp-kpi-label { font-size:0.65rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#9ca3af; margin-bottom:4px; }
+.ptp-kpi-value { font-size:1.5rem; font-weight:800; color:#172033; line-height:1.1; }
+.ptp-kpi-sub { font-size:0.72rem; color:#9ca3af; margin-top:4px; }
+
+.ptp-cat-badge {
+  display:inline-block; padding:2px 10px; border-radius:20px;
+  font-size:0.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em;
+}
+.cat-a { background:#fef3c7; color:#92400e; }
+.cat-b { background:#fee2e2; color:#991b1b; }
+.cat-c { background:#fdf2f8; color:#701a75; }
+
+.ptp-status-pending   { background:#fef3c7; color:#92400e; }
+.ptp-status-paid      { background:#dcfce7; color:#166534; }
+.ptp-status-broken    { background:#fee2e2; color:#991b1b; }
+.ptp-status-escalated { background:#f3e8ff; color:#6b21a8; }
+.ptp-status-none      { background:#f3f4f6; color:#6b7280; }
+
+.access-blocked      { background:#fee2e2; color:#991b1b; }
+.access-allowed      { background:#dcfce7; color:#166534; }
+.access-temp         { background:#fef3c7; color:#92400e; }
+
+.filter-chip {
+  display:inline-flex; align-items:center; gap:5px; padding:5px 12px;
+  border:1px solid #e4e8f0; border-radius:20px; background:#fff;
+  font-size:0.78rem; font-weight:600; cursor:pointer; color:#374151;
+  text-decoration:none; transition:all .12s;
+}
+.filter-chip:hover, .filter-chip.active { background:#1769aa; color:#fff; border-color:#1769aa; }
+.filter-chip.red.active { background:#e11d48; border-color:#e11d48; }
+.filter-chip.amber.active { background:#d97706; border-color:#d97706; }
+.filter-chip.purple.active { background:#7c3aed; border-color:#7c3aed; }
+
+@media (max-width:900px) { .ptp-kpi { grid-template-columns:repeat(2,1fr); } }
+@media (max-width:520px) { .ptp-kpi { grid-template-columns:1fr; } }
+</style>
+
+<!-- Tab Navigation (mirrors Collections page) -->
+<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #e4e8f0;">
+  <a href="{{ url_for('collections.collections_index') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid transparent;color:#6b7280;">
+    💳 Payment Records
+  </a>
+  <a href="{{ url_for('collections.call_queue') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid transparent;color:#6b7280;">
+    ☎ Collections Call Queue
+  </a>
+  <a href="{{ url_for('ptp.ptp_dashboard') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid #e11d48;margin-bottom:-2px;color:#e11d48;">
+    🔴 PTP / Collection
+  </a>
+  <a href="{{ url_for('ptp.legal_referrals') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid transparent;color:#6b7280;">
+    ⚖ Legal Referrals
+  </a>
+  <a href="{{ url_for('access_report.index') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid transparent;color:#6b7280;">
+    📋 Access Report
+  </a>
+</div>
+
+<!-- ── Top Action Bar ── -->
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+  <div>
+    <h2 style="font-size:1.1rem;font-weight:800;color:#172033;margin:0;">Collection Workspace</h2>
+    <div style="font-size:0.78rem;color:#667085;margin-top:2px;">{{ today }} &bull; {{ total_clients }} member{{ 's' if total_clients != 1 }} in arrears</div>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <form id="automations-form" method="POST" action="{{ url_for('ptp.run_automations') }}" style="margin:0;">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="confirmAutomations(this)">
+        ⚙ Run Automations
+      </button>
+    </form>
+    <a href="{{ url_for('collections.collections_index') }}" class="btn btn-ghost btn-sm">← Collections</a>
+    <a href="{{ url_for('ptp.legal_referrals') }}" class="btn btn-ghost btn-sm">Legal referrals</a>
+  </div>
+</div>
+
+<!-- ── KPI Row 1 ── -->
+<div class="ptp-kpi">
+  <div class="ptp-kpi-card red">
+    <div class="ptp-kpi-label">Total Arrears</div>
+    <div class="ptp-kpi-value">R{{ "%.2f"|format(total_arrears) }}</div>
+    <div class="ptp-kpi-sub">{{ total_clients }} accounts</div>
+  </div>
+  <div class="ptp-kpi-card amber">
+    <div class="ptp-kpi-label">PTPs Pending</div>
+    <div class="ptp-kpi-value">{{ ptps_pending }}</div>
+    <div class="ptp-kpi-sub">{{ ptps_due_today }} due today</div>
+  </div>
+  <div class="ptp-kpi-card red">
+    <div class="ptp-kpi-label">Broken PTPs</div>
+    <div class="ptp-kpi-value">{{ ptps_broken }}</div>
+    <div class="ptp-kpi-sub">Needs follow-up</div>
+  </div>
+  <div class="ptp-kpi-card blue">
+    <div class="ptp-kpi-label">Blocked Access</div>
+    <div class="ptp-kpi-value">{{ blocked }}</div>
+    <div class="ptp-kpi-sub">Members locked out</div>
+  </div>
+  <div class="ptp-kpi-card purple">
+    <div class="ptp-kpi-label">Access Restricted</div>
+    <div class="ptp-kpi-value">{{ restricted_count }}</div>
+    <div class="ptp-kpi-sub">2+ months, no arrangement</div>
+  </div>
+  <div class="ptp-kpi-card">
+    <div class="ptp-kpi-label">Flagged Inactive</div>
+    <div class="ptp-kpi-value">{{ inactive_count }}</div>
+    <div class="ptp-kpi-sub">6+ months unpaid</div>
+  </div>
+  <div class="ptp-kpi-card blue">
+    <div class="ptp-kpi-label">Legal Referrals</div>
+    <div class="ptp-kpi-value">{{ legal_referral_count }}</div>
+    <div class="ptp-kpi-sub">{{ legal_candidate_count }} clients ready for review</div>
+  </div>
+</div>
+
+<!-- ── KPI Row 2: Categories ── -->
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px;">
+  <div class="ptp-kpi-card amber" style="padding:14px 18px;">
+    <div class="ptp-kpi-label">Category A</div>
+    <div class="ptp-kpi-value" style="font-size:1.8rem;">{{ cat_a }}</div>
+    <div class="ptp-kpi-sub">1 month in arrears — call &amp; collect</div>
+  </div>
+  <div class="ptp-kpi-card red" style="padding:14px 18px;">
+    <div class="ptp-kpi-label">Category B</div>
+    <div class="ptp-kpi-value" style="font-size:1.8rem;">{{ cat_b }}</div>
+    <div class="ptp-kpi-sub">2–3 months — block &amp; arrange PTP</div>
+  </div>
+  <div class="ptp-kpi-card purple" style="padding:14px 18px;">
+    <div class="ptp-kpi-label">Category C</div>
+    <div class="ptp-kpi-value" style="font-size:1.8rem;">{{ cat_c }}</div>
+    <div class="ptp-kpi-sub">4+ months — escalate or legal review</div>
+  </div>
+</div>
+
+<!-- ── Filters ── -->
+<div class="card" style="margin-bottom:0;">
+  <div class="card-header" style="flex-wrap:wrap;gap:10px;">
+    <h2>Members in Arrears</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <!-- Search -->
+      <form method="get" style="display:flex;gap:6px;align-items:center;">
+        <input type="text" name="q" value="{{ search }}" placeholder="Search name / contact…"
+               style="padding:6px 11px;border:1px solid #d1d5db;border-radius:6px;font-size:0.82rem;min-width:200px;">
+        <input type="hidden" name="cat" value="{{ cat_filter }}">
+        <input type="hidden" name="status" value="{{ status_filter }}">
+        <button type="submit" class="btn btn-ghost btn-sm">Search</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Quick filter chips -->
+  <div style="padding:10px 20px;background:#f9fafb;border-bottom:1px solid #e5e7eb;display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="{{ url_for('ptp.ptp_dashboard', q=search) }}"
+       class="filter-chip {% if not cat_filter and not status_filter %}active{% endif %}">All ({{ total_clients }})</a>
+    <a href="{{ url_for('ptp.ptp_dashboard', cat='A', q=search) }}"
+       class="filter-chip amber {% if cat_filter == 'A' %}active{% endif %}">Cat A ({{ cat_a }})</a>
+    <a href="{{ url_for('ptp.ptp_dashboard', cat='B', q=search) }}"
+       class="filter-chip red {% if cat_filter == 'B' %}active{% endif %}">Cat B ({{ cat_b }})</a>
+    <a href="{{ url_for('ptp.ptp_dashboard', cat='C', q=search) }}"
+       class="filter-chip purple {% if cat_filter == 'C' %}active{% endif %}">Cat C ({{ cat_c }})</a>
+    <span style="width:1px;background:#e5e7eb;margin:0 4px;"></span>
+    <a href="{{ url_for('ptp.ptp_dashboard', status='blocked', q=search) }}"
+       class="filter-chip red {% if status_filter == 'blocked' %}active{% endif %}">Blocked ({{ blocked }})</a>
+    <a href="{{ url_for('ptp.ptp_dashboard', status='ptp_pending', q=search) }}"
+       class="filter-chip amber {% if status_filter == 'ptp_pending' %}active{% endif %}">PTP Pending ({{ ptps_pending }})</a>
+    <a href="{{ url_for('ptp.ptp_dashboard', status='ptp_due', q=search) }}"
+       class="filter-chip {% if status_filter == 'ptp_due' %}active{% endif %}">Due Today ({{ ptps_due_today }})</a>
+    <a href="{{ url_for('ptp.ptp_dashboard', status='ptp_broken', q=search) }}"
+       class="filter-chip red {% if status_filter == 'ptp_broken' %}active{% endif %}">Broken PTPs ({{ ptps_broken }})</a>
+    <a href="{{ url_for('ptp.ptp_dashboard', status='legal', q=search) }}"
+       class="filter-chip purple {% if status_filter == 'legal' %}active{% endif %}">Legal Review ({{ legal_candidate_count }})</a>
+  </div>
+
+  <!-- Members table -->
+  <div class="card-body">
+    {% if members %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Member</th>
+            <th>Contact</th>
+            <th>Arrears</th>
+            <th>Monthly</th>
+            <th>Cat</th>
+            <th>Access</th>
+            <th>PTP Status</th>
+            <th>PTP Due</th>
+            <th>Last Contact</th>
+            <th>Consultant</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in members %}
+          <tr>
+            <td>
+              <a href="{{ url_for('members.member_detail', mid=m.id) }}#ptp"
+                 style="color:#1769aa;text-decoration:none;font-weight:700;">
+                {{ m.name }}
+              </a>
+              <div style="font-size:0.72rem;color:#9ca3af;">{{ m.member_status }}</div>
+            </td>
+            <td style="font-size:0.82rem;color:#374151;white-space:nowrap;">{{ m.contact or '—' }}</td>
+            <td style="font-weight:800;color:#e11d48;white-space:nowrap;">R{{ "%.2f"|format(m.total_arrears) }}</td>
+            <td style="color:#6b7280;white-space:nowrap;">R{{ "%.2f"|format(m.monthly_installment) }}</td>
+            <td>
+              {% if m.category %}
+              <span class="ptp-cat-badge cat-{{ m.category|lower }}">{{ m.category }}</span>
+              {% else %}<span style="color:#9ca3af;">—</span>{% endif %}
+            </td>
+            <td>
+              <span class="badge
+                {% if m.access_status == 'blocked' %}access-blocked
+                {% elif m.access_status == 'temp_unblocked' %}access-temp
+                {% else %}access-allowed{% endif %}"
+                style="font-size:0.68rem;">
+                {{ (m.access_status or 'allowed')|title|replace('_',' ') }}
+              </span>
+            </td>
+            <td>
+              {% if m.ptp_status %}
+              <span class="badge ptp-status-{{ m.ptp_status if m.ptp_status in ('pending','paid','broken','escalated') else 'none' }}"
+                    style="font-size:0.68rem;">{{ m.ptp_status|replace('_',' ')|title }}</span>
+              {% else %}<span style="color:#9ca3af;font-size:0.78rem;">No PTP</span>{% endif %}
+            </td>
+            <td style="font-size:0.78rem;
+              {% if m.ptp_promise_date and m.ptp_promise_date <= today %}color:#e11d48;font-weight:700;{% else %}color:#6b7280;{% endif %}
+              white-space:nowrap;">
+              {{ m.ptp_promise_date or '—' }}
+            </td>
+            <td style="font-size:0.78rem;color:#9ca3af;white-space:nowrap;">
+              {% if m.last_contact_at %}
+                {{ m.last_contact_at[:10] }}
+                {% if m.last_contact_code %}
+                  <div style="font-size:0.68rem;color:#9ca3af;">
+                    Code {{ m.last_contact_code }}
+                    {% if m.last_contact_consultant %}&bull; {{ m.last_contact_consultant.split()[0] }}{% endif %}
+                  </div>
+                {% endif %}
+              {% else %}—{% endif %}
+            </td>
+            <td style="font-size:0.78rem;color:#6b7280;white-space:nowrap;">{{ m.consultant or '—' }}</td>
+            <td>
+              <a href="{{ url_for('members.member_detail', mid=m.id) }}#ptp"
+                 class="btn btn-ghost btn-sm" style="font-size:0.72rem;white-space:nowrap;">Open PTP →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:48px 24px;">
+      <div class="empty-icon">🎉</div>
+      <p>
+        {% if search or cat_filter or status_filter %}
+          No members match your filters.
+        {% else %}
+          No members currently in arrears.
+        {% endif %}
+      </p>
+      {% if search or cat_filter or status_filter %}
+      <a href="{{ url_for('ptp.ptp_dashboard') }}" class="btn btn-ghost btn-sm">Clear filters</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function confirmAutomations(btn) {
+  btn.disabled = true;
+  fetch("{{ url_for('ptp.preview_automations') }}")
+    .then(r => r.json())
+    .then(counts => {
+      btn.disabled = false;
+      const msg = "Run automations now?\n\n"
+        + counts.broken_count + " PTP(s) will be marked broken\n"
+        + counts.expired_count + " temporary unblock(s) will expire\n"
+        + counts.restricted_count + " member(s) will be ACCESS RESTRICTED (2+ months, no arrangement)\n"
+        + counts.inactive_count + " member(s) will be flagged INACTIVE (6+ months unpaid)";
+      if (confirm(msg)) {
+        document.getElementById("automations-form").submit();
+      }
+    })
+    .catch(() => {
+      btn.disabled = false;
+      if (confirm("Could not preview the impact. Run automations anyway?")) {
+        document.getElementById("automations-form").submit();
+      }
+    });
+}
+</script>
+
+{% endblock %}

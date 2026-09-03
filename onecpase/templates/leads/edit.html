@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Edit Prospect | 1Cpase{% endblock %}
+{% block page_title %}Edit Prospect{% endblock %}
+
+{% block content %}
+<div class="form-card" style="max-width:760px;">
+  <form method="POST">
+    <div class="form-grid-2">
+      <div class="form-group"><label class="form-label">Full Name *</label><input type="text" name="full_name" class="form-control" value="{{ lead.full_name }}" required></div>
+      <div class="form-group"><label class="form-label">Phone</label><input type="tel" name="phone" class="form-control" value="{{ lead.phone or '' }}"></div>
+      <div class="form-group"><label class="form-label">Email</label><input type="email" name="email" class="form-control" value="{{ lead.email or '' }}"></div>
+      <div class="form-group">
+        <label class="form-label">Original Lead Source</label>
+        <input class="form-control" value="{{ lead.original_source or lead.source }}" disabled>
+        <small style="color:#6b7280;">Preserved for attribution and cannot be edited.</small>
+      </div>
+      <div class="form-group"><label class="form-label">Referrer</label><input type="text" name="referrer" class="form-control" value="{{ lead.referrer or '' }}"></div>
+      <div class="form-group"><label class="form-label">Campaign</label><select name="campaign" class="form-control">{% if lead.campaign and lead.campaign not in campaigns %}<option value="{{ lead.campaign }}" selected>{{ lead.campaign }}</option>{% endif %}{% for campaign in campaigns %}<option value="{{ campaign }}" {% if (lead.campaign or '') == campaign %}selected{% endif %}>{{ campaign or 'No campaign' }}</option>{% endfor %}</select></div>
+      <div class="form-group">
+        <label class="form-label">Assigned Consultant</label>
+        <input class="form-control" value="{{ lead.salesperson_name or 'Unassigned' }}" disabled>
+        <small style="color:var(--t2);">Controlled automatically by sales rotation.</small>
+      </div>
+    </div>
+    <div class="alert alert-info">Next actions and follow-up timing are managed automatically from the activity timeline.</div>
+    <div class="form-group">
+      <label class="form-label">Consent Preferences</label>
+      <label style="display:block;margin:5px 0;"><input type="checkbox" name="marketing_consent" value="1" {% if lead.marketing_consent %}checked{% endif %}> May receive sales and marketing follow-ups</label>
+      <label style="display:block;color:#991b1b;"><input type="checkbox" name="do_not_contact" value="1" {% if lead.do_not_contact %}checked{% endif %}> Do not contact</label>
+    </div>
+    <div class="form-group"><label class="form-label">Profile Notes</label><textarea name="notes" class="form-control" rows="3">{{ lead.notes or '' }}</textarea></div>
+    <div style="display:flex;gap:10px;margin-top:20px;"><button type="submit" class="btn btn-primary">Save Profile</button><a href="{{ url_for('leads.lead_detail', lid=lead.id) }}" class="btn btn-secondary">Cancel</a></div>
+  </form>
+</div>
+{% endblock %}

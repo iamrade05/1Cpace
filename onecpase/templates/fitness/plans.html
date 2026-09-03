@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Workout Plans | 1Cpase{% endblock %}
+{% block page_title %}Workout Plans{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+  <p style="color:#6b7280; font-size:0.875rem; margin:0;">Most recent 50 plans.</p>
+  <a href="{{ url_for('fitness.workout_plan_add') }}" class="btn btn-primary">+ New Plan</a>
+</div>
+
+{% if plans %}
+<div class="card">
+  <div class="card-body">
+    <table>
+      <thead>
+        <tr>
+          <th>Member</th>
+          <th>Title</th>
+          <th>Trainer</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in plans %}
+        <tr>
+          <td style="font-weight:600;">{{ p.member_name }}</td>
+          <td>{{ p.title }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ p.trainer_name or '—' }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ p.start_date or '—' }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ p.end_date or '—' }}</td>
+          <td>
+            {% if p.active %}<span class="badge badge-success">Active</span>
+            {% else %}<span class="badge badge-gray">Inactive</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">📋</div>
+  <p>No workout plans yet.</p>
+  <a href="{{ url_for('fitness.workout_plan_add') }}" class="btn btn-primary">Create First Plan</a>
+</div>
+{% endif %}
+{% endblock %}

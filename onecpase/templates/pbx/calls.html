@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <h1>PBX Call Log</h1>
+  <p>Calls are automatically linked to leads or members by phone number. Record the outcome to complete the CRM timeline.</p>
+  <table>
+    <thead><tr><th>Time</th><th>Direction</th><th>Contact</th><th>Status</th><th>Talk</th><th>Outcome / Next action</th></tr></thead>
+    <tbody>
+    {% for c in calls %}
+      <tr>
+        <td>{{ c.start_time or c.created_at }}</td>
+        <td>{{ c.direction }}</td>
+        <td>
+          {% if c.lead_id %}<a href="{{ url_for('leads.lead_detail', lid=c.lead_id) }}">Lead #{{ c.lead_id }}</a>
+          {% elif c.member_id %}<a href="{{ url_for('members.member_detail', mid=c.member_id) }}">Member #{{ c.member_id }}</a>
+          {% else %}{{ c.caller }} → {{ c.callee }}{% endif %}
+        </td>
+        <td>{{ c.status }}<br><small>{{ c.talk_duration or 0 }}s talk</small></td>
+        <td>{{ c.talk_duration or 0 }}s</td>
+        <td>
+          {% if c.outcome %}
+            <strong>{{ c.outcome.replace('_',' ').title() }}</strong>
+            {% if c.next_action %}<br><small>Next: {{ c.next_action }}</small>{% endif %}
+          {% else %}
+          <form method="post" action="{{ url_for('pbx.call_outcome', call_id=c.id) }}" style="min-width:320px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select name="outcome" required>
+              <option value="">Select outcome…</option>
+              {% for key,label in call_outcomes.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+            </select>
+            <input name="notes" placeholder="Notes / objection / result">
+            <input name="next_action" placeholder="Next action">
+            <input type="datetime-local" name="follow_up_at">
+            <button type="submit">Save outcome</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6">No PBX calls recorded.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

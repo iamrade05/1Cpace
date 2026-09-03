@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}WhatsApp {{ number|title }} | 1Cpase{% endblock %}
+{% block page_title %}WhatsApp — {{ number|title }}{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+  <div>
+    <h2 style="font-size:1.1rem;font-weight:800;color:#172033;margin:0;">WhatsApp — {{ number|title }}</h2>
+    {% if wa_phone %}<div style="font-size:.78rem;color:#667085;margin-top:2px;">{{ wa_phone }}</div>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding:0;">
+    {% if conversations %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Contact</th>
+            <th>Last message</th>
+            <th>When</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in conversations %}
+          <tr>
+            <td>
+              <div style="font-weight:700;color:#172033;">{{ c.contact_name or c.contact_phone }}</div>
+              <div style="font-size:.72rem;color:#9ca3af;">{{ c.contact_phone }}</div>
+            </td>
+            <td style="max-width:360px;color:#374151;font-size:.85rem;">
+              {{ (c.last_content or '')[:120] }}
+            </td>
+            <td style="font-size:.75rem;color:#9ca3af;white-space:nowrap;">
+              {{ (c.last_message_at or '')[:16] }}
+            </td>
+            <td style="white-space:nowrap;">
+              {% if c.unread_count %}
+              <span class="pbadge" style="background:#fee2e2;color:#991b1b;">{{ c.unread_count }} new</span>
+              {% endif %}
+              <a href="{{ url_for('comms.whatsapp_conversation', number=number, conv_id=c.id) }}"
+                 class="btn btn-ghost btn-sm">Open →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:48px 24px;">
+      <div class="empty-icon">💬</div>
+      <p>No WhatsApp conversations yet.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

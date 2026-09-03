@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Instructor Dailies | 1Cpase{% endblock %}
+{% block page_title %}Instructor Dailies{% endblock %}
+
+{% block content %}
+<form method="get" style="display:flex; align-items:center; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
+  <input type="date" name="date" value="{{ day }}" onchange="this.form.submit()">
+  <select name="view" onchange="this.form.submit()">
+    <option value="day" {% if view == 'day' %}selected{% endif %}>Day</option>
+    <option value="week" {% if view == 'week' %}selected{% endif %}>Week</option>
+  </select>
+  <select name="staff_id" onchange="this.form.submit()">
+    <option value="all" {% if staff_id == 'all' %}selected{% endif %}>All Instructors</option>
+    {% for i in instructors %}
+    <option value="{{ i.id }}" {% if staff_id == i.id|string %}selected{% endif %}>{{ i.full_name }}</option>
+    {% endfor %}
+  </select>
+</form>
+
+<div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:12px; margin-bottom:20px;">
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.6rem; font-weight:700;">{{ total }}</div>
+    <div style="font-size:0.75rem; color:#6b7280;">Total Sessions</div>
+  </div></div>
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.6rem; font-weight:700;">{{ pt_count }}</div>
+    <div style="font-size:0.75rem; color:#6b7280;">Personal Training</div>
+  </div></div>
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.6rem; font-weight:700;">{{ ob_count }}</div>
+    <div style="font-size:0.75rem; color:#6b7280;">Onboarding</div>
+  </div></div>
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.6rem; font-weight:700;">{{ ea_count }}</div>
+    <div style="font-size:0.75rem; color:#6b7280;">Exercise Assistance</div>
+  </div></div>
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.6rem; font-weight:700;">{{ new_count }}</div>
+    <div style="font-size:0.75rem; color:#6b7280;">New Clients</div>
+  </div></div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 340px; gap:20px;">
+  <div class="card">
+    <div class="card-header"><h2>Sessions</h2></div>
+    <div class="card-body">
+      {% if entries %}
+      <table>
+        <thead>
+          <tr><th>Client</th><th>Instructor</th><th>Service</th><th>Session</th><th>Date</th><th>Time</th></tr>
+        </thead>
+        <tbody>
+          {% for e in entries %}
+          <tr>
+            <td style="font-weight:500;">
+              {{ e.member_name or e.walk_in_name or '—' }}
+              {% if e.client_type == 'new' %}<span class="badge badge-warning">New</span>{% endif %}
+            </td>
+            <td style="color:#6b7280; font-size:0.82rem;">{{ e.instructor_name or '—' }}</td>
+            <td style="font-size:0.82rem;">{{ e.service_type | replace('_',' ') | capitalize }}</td>
+            <td style="font-size:0.82rem;">{{ e.session_type | capitalize }}</td>
+            <td style="color:#6b7280; font-size:0.82rem;">{{ e.date }}</td>
+            <td style="color:#6b7280; font-size:0.82rem;">{{ e.time_in or '—' }}{% if e.time_out %} – {{ e.time_out }}{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state" style="padding:32px;">
+        <div class="empty-icon">🗓️</div>
+        <p>No sessions logged for this period.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card" style="align-self:start;">
+    <div class="card-header"><h2>Log a Session</h2></div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('fitness.daily_add') }}">
+        <input type="hidden" name="date" value="{{ day }}">
+        <div class="form-group">
+          <label>Instructor</label>
+          <select name="instructor_id">
+            <option value="">— None —</option>
+            {% for i in instructors %}
+            <option value="{{ i.id }}">{{ i.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Client Type</label>
+          <select name="client_type" onchange="document.getElementById('existingWrap').style.display=(this.value=='existing')?'block':'none'; document.getElementById('newWrap').style.display=(this.value=='new')?'block':'none';">
+            <option value="existing">Existing Member</option>
+            <option value="new">New / Walk-in</option>
+          </select>
+        </div>
+        <div class="form-group" id="existingWrap">
+          <label>Member</label>
+          <select name="member_id" class="member-picker">
+            <option value="">— Choose member —</option>
+            {% for m in members %}
+            <option value="{{ m.id }}">{{ m.first_name }} {{ m.last_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group" id="newWrap" style="display:none;">
+          <label>Walk-in Name</label>
+          <input name="walk_in_name">
+        </div>
+        <div class="form-group">
+          <label>Service Type</label>
+          <select name="service_type">
+            <option value="exercise_assistance">Exercise Assistance</option>
+            <option value="personal_training">Personal Training</option>
+            <option value="onboarding">Onboarding</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Session Type</label>
+          <select name="session_type">
+            <option value="full">Full Session</option>
+            <option value="partial">Partial / Quick Assist</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Time In</label>
+            <input type="time" name="time_in">
+          </div>
+          <div class="form-group">
+            <label>Time Out</label>
+            <input type="time" name="time_out">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes" rows="2"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Log Session</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

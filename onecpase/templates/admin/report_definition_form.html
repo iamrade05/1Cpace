@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if report else 'Create' }} Report | 1Cpase{% endblock %}
+{% block page_title %}{{ 'Edit' if report else 'Create' }} Saved Report{% endblock %}
+
+{% block content %}
+<style>
+  .report-admin-section{border:1px solid var(--b1);border-radius:10px;padding:18px;margin-top:18px;background:var(--s2)}
+  .report-admin-section h3{font-size:.86rem;margin-bottom:14px;color:var(--txt)}
+  .report-column-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+  .report-filter-row{display:grid;grid-template-columns:1.2fr .8fr 1.2fr;gap:10px;margin-bottom:10px}
+  @media(max-width:700px){.report-filter-row{grid-template-columns:1fr}.report-options{grid-template-columns:1fr!important}}
+</style>
+<form method="post" class="form-card" style="max-width:1050px;">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+    <div class="form-group"><label class="form-label">Report Name *</label><input class="form-control" name="name" required value="{{ report.name if report else '' }}" placeholder="e.g. Active Members by Package"></div>
+    <div class="form-group"><label class="form-label">Data Source *</label><select class="form-control" name="table" id="report-table" onchange="refreshReportFields()">{% for key, definition in report_tables.items() %}<option value="{{ key }}" {% if config.get('table', report.table_name if report else 'members') == key %}selected{% endif %}>{{ definition.label }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="form-group" style="margin-top:18px;"><label class="form-label">Description</label><textarea class="form-control" name="description" rows="3" placeholder="Explain when staff should use this report">{{ report.description if report and report.description else '' }}</textarea></div>
+
+  <section class="report-admin-section"><h3>Columns</h3>
+    {% for table_key, definition in report_tables.items() %}<div class="report-column-grid report-cols" data-table="{{ table_key }}">{% for key, label in definition.cols %}<label style="display:flex;align-items:center;gap:8px;font-size:.82rem;"><input type="checkbox" name="cols" value="{{ key }}" {% if key in config.get('cols', []) or (not report and table_key == 'members' and loop.index <= 6) %}checked{% endif %}> {{ label }}</label>{% endfor %}</div>{% endfor %}
+    <label style="display:flex;align-items:center;gap:8px;margin-top:15px;font-size:.82rem;"><input type="checkbox" name="join_members" value="1" {% if config.get('join_members') == '1' %}checked{% endif %}> Include member name and contact when supported</label>
+  </section>
+
+  <section class="report-admin-section"><h3>Filters</h3>{% for index in range(1,5) %}<div class="report-filter-row"><select class="form-control column-select" name="f{{ index }}_field" data-selected="{{ config.get('f%d_field'|format(index), '') }}"><option value="">— Field —</option></select><select class="form-control" name="f{{ index }}_op"><option value="">— Operator —</option>{% for key,label in filter_ops.items() %}<option value="{{ key }}" {% if config.get('f%d_op'|format(index)) == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><input class="form-control" name="f{{ index }}_val" value="{{ config.get('f%d_val'|format(index), '') }}" placeholder="Filter value"></div>{% endfor %}</section>
+
+  <section class="report-admin-section"><h3>Group, Sort and Limit</h3><div class="report-options" style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;">
+    <div class="form-group"><label class="form-label">Group By</label><select class="form-control column-select" name="group_by" data-selected="{{ config.get('group_by','') }}"><option value="">None</option></select></div>
+    <div class="form-group"><label class="form-label">Aggregate</label><select class="form-control" name="agg_func">{% for function in agg_funcs %}<option value="{{ function }}" {% if config.get('agg_func','COUNT') == function %}selected{% endif %}>{{ function }}</option>{% endfor %}</select></div>
+    <div class="form-group"><label class="form-label">Aggregate Column</label><select class="form-control column-select" name="agg_col" data-selected="{{ config.get('agg_col','*') }}" data-allow-star="1"><option value="*">All rows</option></select></div>
+    <div class="form-group"><label class="form-label">Sort By</label><select class="form-control column-select" name="sort_by" data-selected="{{ config.get('sort_by','') }}"><option value="">None</option></select></div>
+    <div class="form-group"><label class="form-label">Direction / Limit</label><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;"><select class="form-control" name="sort_dir"><option value="asc" {% if config.get('sort_dir','asc') == 'asc' %}selected{% endif %}>Asc</option><option value="desc" {% if config.get('sort_dir') == 'desc' %}selected{% endif %}>Desc</option></select><input class="form-control" type="number" name="limit" min="1" max="1000" value="{{ config.get('limit','200') }}"></div></div>
+  </div></section>
+  <label style="display:flex;align-items:center;gap:8px;margin-top:20px;"><input type="checkbox" name="active" value="1" {% if not report or report.active %}checked{% endif %}> Active and available in Reports</label>
+  <div style="display:flex;gap:10px;margin-top:26px;"><button class="btn btn-primary" type="submit">{{ 'Save Report' if report else 'Create Report' }}</button><a href="{{ url_for('admin.report_definitions_index') }}" class="btn btn-ghost">Cancel</a></div>
+</form>
+<script>
+const reportTables={{ report_tables_json | tojson }};
+function refreshReportFields(){
+  const table=document.getElementById('report-table').value;
+  document.querySelectorAll('.report-cols').forEach(group=>{
+    const active=group.dataset.table===table;
+    group.style.display=active?'grid':'none';
+    group.querySelectorAll('input').forEach(input=>input.disabled=!active);
+  });
+  const columns=(reportTables[table]||{}).cols||[];
+  document.querySelectorAll('.column-select').forEach(select=>{
+    const selected=select.dataset.selected || select.value;
+    const allowStar=select.dataset.allowStar==='1';
+    select.innerHTML=allowStar?'<option value="*">All rows</option>':'<option value="">None</option>';
+    columns.forEach(([key,label])=>{const option=document.createElement('option');option.value=key;option.textContent=label;select.appendChild(option);});
+    select.value=selected;
+  });
+}
+refreshReportFields();
+</script>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}New Workout Plan | 1Cpase{% endblock %}
+{% block page_title %}New Workout Plan{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <form method="post">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Member *</label>
+        <select name="member_id" class="member-picker" required>
+          <option value="">— Choose member —</option>
+          {% for m in members %}
+          <option value="{{ m.id }}">{{ m.first_name }} {{ m.last_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Trainer</label>
+        <select name="trainer_id">
+          <option value="">— None —</option>
+          {% for t in trainers %}
+          <option value="{{ t.id }}">{{ t.full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Plan Title *</label>
+      <input name="title" required placeholder="e.g. 8-Week Strength Foundation">
+    </div>
+
+    <div class="form-group">
+      <label>Description</label>
+      <textarea name="description" rows="4"></textarea>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Start Date</label>
+        <input type="date" name="start_date">
+      </div>
+      <div class="form-group">
+        <label>End Date</label>
+        <input type="date" name="end_date">
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Create Plan</button>
+      <a href="{{ url_for('fitness.workout_plans_index') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

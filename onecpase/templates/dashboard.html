@@ -1,0 +1,665 @@
+{% extends "base.html" %}
+
+{% block title %}Command Center | 1Cpase{% endblock %}
+{% block page_title %}Command Center{% endblock %}
+
+{% block content %}
+{% set active_pct = ((active_members / total_members * 100)|round(1)) if total_members else 0 %}
+{% set total_status = payment_status_values | sum %}
+{% set cleared_pct = ((payment_status_values[0] / total_status * 100)|round(1)) if total_status else 0 %}
+{% set selected = trend_ranges[selected_range] %}
+
+<style>
+  .future-dashboard {
+    --fd-bg: #06131d;
+    --fd-panel: rgba(13, 33, 46, 0.82);
+    --fd-panel-strong: #0d2230;
+    --fd-line: rgba(126, 231, 255, 0.12);
+    --fd-text: #f4f9fb;
+    --fd-muted: #7f9aaa;
+    --fd-cyan: #55dcff;
+    --fd-cyan-soft: rgba(85, 220, 255, 0.12);
+    --fd-green: #55e6ad;
+    --fd-gold: #d7ad53;
+    --fd-orange: #ffad66;
+    --fd-red: #ff718a;
+    --fd-purple: #aa8cff;
+    min-height: calc(100vh - 58px);
+    margin: -28px;
+    padding: clamp(22px, 3vw, 42px);
+    overflow: hidden;
+    position: relative;
+    color: var(--fd-text);
+    background:
+      radial-gradient(circle at 78% -12%, rgba(35, 183, 219, 0.18), transparent 30%),
+      radial-gradient(circle at 8% 28%, rgba(176, 132, 45, 0.10), transparent 28%),
+      linear-gradient(145deg, #071722 0%, #041019 55%, #07131d 100%);
+    isolation: isolate;
+  }
+  .future-dashboard::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    opacity: .28;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(85, 220, 255, .035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(85, 220, 255, .035) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: linear-gradient(to bottom, #000, transparent 70%);
+  }
+  .future-dashboard button { font: inherit; }
+  .fd-topline {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    margin-bottom: 28px;
+  }
+  .fd-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--fd-cyan);
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    margin-bottom: 9px;
+  }
+  .fd-live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--fd-green);
+    box-shadow: 0 0 0 5px rgba(85, 230, 173, .10), 0 0 18px var(--fd-green);
+    animation: fd-pulse 2.2s ease-in-out infinite;
+  }
+  .fd-title {
+    font-size: clamp(1.65rem, 3vw, 2.65rem);
+    line-height: 1.05;
+    letter-spacing: -.045em;
+    font-weight: 760;
+    margin: 0;
+    color: #fff;
+  }
+  .fd-title span {
+    color: transparent;
+    background: linear-gradient(90deg, var(--fd-cyan), #a8ecff);
+    background-clip: text;
+  }
+  .fd-description {
+    color: var(--fd-muted);
+    font-size: .82rem;
+    margin-top: 10px;
+  }
+  .fd-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+  .fd-refresh {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #8ba4b1;
+    font-size: .69rem;
+    letter-spacing: .025em;
+  }
+  .fd-refresh svg { width: 13px; height: 13px; color: var(--fd-green); }
+  .fd-range-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px;
+    border: 1px solid var(--fd-line);
+    border-radius: 12px;
+    background: rgba(3, 15, 23, .72);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, .18), inset 0 1px rgba(255,255,255,.025);
+  }
+  .fd-range-btn {
+    min-width: 46px;
+    height: 34px;
+    border: 0;
+    border-radius: 8px;
+    color: #7793a2;
+    background: transparent;
+    cursor: pointer;
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    transition: color .18s, background .18s, box-shadow .18s, transform .18s;
+  }
+  .fd-range-btn:hover { color: #dff8ff; background: rgba(85, 220, 255, .07); }
+  .fd-range-btn:focus-visible { outline: 2px solid var(--fd-cyan); outline-offset: 2px; }
+  .fd-range-btn.is-active {
+    color: #03131c;
+    background: linear-gradient(135deg, #82eaff, #41c8ec);
+    box-shadow: 0 5px 20px rgba(85, 220, 255, .22);
+    transform: translateY(-1px);
+  }
+
+  .fd-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .fd-kpi, .fd-panel {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--fd-line);
+    background: linear-gradient(155deg, rgba(16, 42, 57, .90), rgba(8, 26, 38, .78));
+    box-shadow: 0 18px 45px rgba(0, 0, 0, .17), inset 0 1px rgba(255,255,255,.025);
+    backdrop-filter: blur(14px);
+  }
+  .fd-kpi {
+    min-height: 156px;
+    border-radius: 16px;
+    padding: 18px;
+    transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  .fd-kpi:hover {
+    transform: translateY(-3px);
+    border-color: rgba(85, 220, 255, .27);
+    box-shadow: 0 24px 54px rgba(0,0,0,.24), 0 0 30px rgba(85,220,255,.035);
+  }
+  .fd-kpi::after {
+    content: "";
+    position: absolute;
+    width: 90px;
+    height: 90px;
+    right: -34px;
+    top: -38px;
+    border-radius: 50%;
+    background: var(--card-glow, rgba(85, 220, 255, .14));
+    filter: blur(4px);
+  }
+  .fd-kpi-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .fd-kpi-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    color: var(--card-color, var(--fd-cyan));
+    background: color-mix(in srgb, var(--card-color, var(--fd-cyan)) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--card-color, var(--fd-cyan)) 20%, transparent);
+  }
+  .fd-kpi-icon svg { width: 17px; height: 17px; }
+  .fd-kpi-label {
+    margin-top: 15px;
+    color: #88a0ad;
+    font-size: .66rem;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    font-weight: 750;
+  }
+  .fd-kpi-value {
+    margin-top: 5px;
+    color: #f7fcff;
+    font-size: clamp(1.35rem, 2vw, 1.85rem);
+    line-height: 1.05;
+    letter-spacing: -.035em;
+    font-weight: 780;
+    white-space: nowrap;
+  }
+  .fd-kpi-foot {
+    margin-top: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: .67rem;
+    color: #6f8b99;
+  }
+  .fd-delta { color: var(--fd-muted); font-weight: 700; white-space: nowrap; }
+  .fd-delta.is-up { color: var(--fd-green); }
+  .fd-delta.is-down { color: var(--fd-red); }
+  .fd-delta.is-flat { color: #90a5af; }
+  .fd-kpi-meter { height: 3px; border-radius: 20px; background: rgba(255,255,255,.06); overflow: hidden; }
+  .fd-kpi-meter span { display: block; height: 100%; border-radius: inherit; background: var(--card-color, var(--fd-cyan)); box-shadow: 0 0 12px var(--card-color, var(--fd-cyan)); }
+
+  .fd-grid-primary, .fd-grid-secondary, .fd-grid-tertiary {
+    display: grid;
+    gap: 18px;
+    margin-bottom: 18px;
+  }
+  .fd-grid-primary { grid-template-columns: minmax(0, 1.75fr) minmax(280px, .75fr); }
+  .fd-grid-secondary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fd-grid-tertiary { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); margin-bottom: 0; }
+  .fd-panel { border-radius: 18px; padding: 20px; min-width: 0; }
+  .fd-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(85,220,255,.28), transparent);
+  }
+  .fd-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .fd-panel-title { color: #edf9fc; font-size: .88rem; font-weight: 750; letter-spacing: -.01em; }
+  .fd-panel-sub { color: #6f8c9b; font-size: .68rem; margin-top: 4px; }
+  .fd-panel-tag {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    border-radius: 7px;
+    border: 1px solid rgba(85, 220, 255, .12);
+    color: #78cde0;
+    background: rgba(85, 220, 255, .055);
+    font-size: .59rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .fd-chart-lg { height: 292px; position: relative; }
+  .fd-chart-md { height: 240px; position: relative; }
+  .fd-chart-ring { width: 184px; height: 184px; position: relative; margin: 4px auto 18px; }
+  .fd-donut-center {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    pointer-events: none;
+  }
+  .fd-donut-center strong { font-size: 1.35rem; line-height: 1; color: #f5fcff; }
+  .fd-donut-center span { margin-top: 5px; color: #65818f; font-size: .56rem; text-transform: uppercase; letter-spacing: .1em; }
+  .fd-legend { display: grid; gap: 9px; }
+  .fd-legend-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #8da4b0; font-size: .7rem; }
+  .fd-legend-label { display: flex; align-items: center; gap: 8px; }
+  .fd-legend-dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 10px currentColor; }
+  .fd-legend-row strong { color: #e7f2f5; font-size: .72rem; }
+
+  .fd-performance { display: grid; grid-template-columns: 180px minmax(0, 1fr); align-items: center; gap: 28px; min-height: 240px; }
+  .fd-orbit {
+    --score: {{ [collection_rate, 100] | min }};
+    width: 152px;
+    height: 152px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    position: relative;
+    margin: auto;
+    background: conic-gradient(var(--fd-cyan) calc(var(--score) * 1%), rgba(85,220,255,.07) 0);
+    box-shadow: 0 0 45px rgba(85,220,255,.09);
+  }
+  .fd-orbit::before { content: ""; position: absolute; inset: 9px; border-radius: 50%; background: #0a1b27; border: 1px solid rgba(85,220,255,.1); }
+  .fd-orbit-core { position: relative; text-align: center; }
+  .fd-orbit-core strong { display: block; color: #fff; font-size: 1.85rem; letter-spacing: -.05em; }
+  .fd-orbit-core span { display: block; color: #6f8b98; margin-top: 4px; font-size: .57rem; text-transform: uppercase; letter-spacing: .12em; }
+  .fd-signal-list { display: grid; gap: 15px; }
+  .fd-signal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #91a8b3; font-size: .7rem; margin-bottom: 7px; }
+  .fd-signal-head strong { color: #e7f4f8; }
+  .fd-signal-track { height: 5px; border-radius: 99px; background: rgba(255,255,255,.06); overflow: hidden; }
+  .fd-signal-fill { height: 100%; border-radius: inherit; background: var(--signal-color); box-shadow: 0 0 12px var(--signal-color); transition: width .8s ease; }
+  .fd-alert-strip {
+    margin-top: 17px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 12px 14px;
+    border-radius: 11px;
+    background: rgba(255, 113, 138, .07);
+    border: 1px solid rgba(255, 113, 138, .12);
+  }
+  .fd-alert-strip span { color: #ad8390; font-size: .66rem; text-transform: uppercase; letter-spacing: .08em; }
+  .fd-alert-strip strong { color: #ff8da0; font-size: 1.02rem; }
+  .fd-screenreader { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+
+  @keyframes fd-pulse { 50% { opacity: .55; transform: scale(.82); } }
+  @media (prefers-reduced-motion: reduce) {
+    .fd-live-dot { animation: none; }
+    .fd-kpi, .fd-range-btn, .fd-signal-fill { transition: none; }
+  }
+  @media (max-width: 1240px) {
+    .fd-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @media (max-width: 900px) {
+    .fd-grid-primary, .fd-grid-secondary, .fd-grid-tertiary { grid-template-columns: 1fr; }
+    .fd-topline { align-items: flex-start; flex-direction: column; }
+    .fd-controls { align-items: flex-start; width: 100%; }
+  }
+  @media (max-width: 680px) {
+    .future-dashboard { margin: -18px; padding: 20px 14px 86px; }
+    .fd-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .fd-kpi { min-height: 145px; padding: 15px; }
+    .fd-range-control { width: 100%; }
+    .fd-range-btn { min-width: 0; flex: 1; }
+    .fd-panel { padding: 16px; }
+    .fd-chart-lg { height: 250px; }
+    .fd-performance { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 390px) {
+    .fd-kpi-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="future-dashboard">
+  <header class="fd-topline">
+    <div>
+      <div class="fd-eyebrow"><span class="fd-live-dot" aria-hidden="true"></span> 1Cpase intelligence layer</div>
+      <h1 class="fd-title">Performance <span>command center</span></h1>
+      <p class="fd-description">Live membership, collection and portfolio signals in one operational view.</p>
+    </div>
+    <div class="fd-controls">
+      <div class="fd-refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg>
+        Synced {{ dashboard_updated_at }}
+      </div>
+      <div class="fd-range-control" role="group" aria-label="Dashboard time range">
+        {% for key in ['24h', '7d', '30d', '6m', '1y'] %}
+        <button type="button" class="fd-range-btn {% if key == selected_range %}is-active{% endif %}"
+                data-range="{{ key }}" aria-pressed="{{ 'true' if key == selected_range else 'false' }}">
+          {{ trend_ranges[key].label }}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+  </header>
+
+  <section class="fd-kpi-grid" aria-label="Key performance indicators">
+    <article class="fd-kpi" style="--card-color:var(--fd-green);--card-glow:rgba(85,230,173,.13);">
+      <div class="fd-kpi-head">
+        <div class="fd-kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+      </div>
+      <div class="fd-kpi-label">Active members</div>
+      <div class="fd-kpi-value">{{ "{:,}".format(active_members) }}</div>
+      <div class="fd-kpi-foot"><span>{{ "{:,}".format(total_members) }} total</span><span class="fd-delta is-up">{{ active_pct }}% active</span></div>
+      <div class="fd-kpi-meter"><span style="width:{{ active_pct }}%"></span></div>
+    </article>
+
+    <article class="fd-kpi" style="--card-color:var(--fd-cyan);--card-glow:rgba(85,220,255,.14);">
+      <div class="fd-kpi-head">
+        <div class="fd-kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3v18h18M7 16l4-5 4 3 5-7"/></svg></div>
+      </div>
+      <div class="fd-kpi-label">Revenue · <span data-range-title>{{ selected.title }}</span></div>
+      <div class="fd-kpi-value" id="range-revenue">R{{ "{:,.0f}".format(selected.revenue.total) }}</div>
+      <div class="fd-kpi-foot"><span>Paid + partial</span><span class="fd-delta" id="revenue-delta">vs prior period</span></div>
+    </article>
+
+    <article class="fd-kpi" style="--card-color:var(--fd-purple);--card-glow:rgba(170,140,255,.13);">
+      <div class="fd-kpi-head">
+        <div class="fd-kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/><circle cx="12" cy="12" r="9"/></svg></div>
+      </div>
+      <div class="fd-kpi-label">New members · <span data-range-title>{{ selected.title }}</span></div>
+      <div class="fd-kpi-value" id="range-members">{{ selected.members.total | int }}</div>
+      <div class="fd-kpi-foot"><span>Acquisition</span><span class="fd-delta" id="members-delta">vs prior period</span></div>
+    </article>
+
+    <article class="fd-kpi" style="--card-color:var(--fd-orange);--card-glow:rgba(255,173,102,.12);">
+      <div class="fd-kpi-head">
+        <div class="fd-kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.7 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/></svg></div>
+      </div>
+      <div class="fd-kpi-label">Outstanding</div>
+      <div class="fd-kpi-value">R{{ "{:,.0f}".format(outstanding_total) }}</div>
+      <div class="fd-kpi-foot"><span>Arrears exposure</span><span class="fd-delta {% if pending_collections %}is-down{% endif %}">{{ pending_collections }} pending</span></div>
+    </article>
+
+    <article class="fd-kpi" style="--card-color:var(--fd-gold);--card-glow:rgba(215,173,83,.13);">
+      <div class="fd-kpi-head">
+        <div class="fd-kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg></div>
+      </div>
+      <div class="fd-kpi-label">Collection rate</div>
+      <div class="fd-kpi-value">{{ collection_rate }}%</div>
+      <div class="fd-kpi-foot"><span>Portfolio efficiency</span><span class="fd-delta {% if collection_rate >= 80 %}is-up{% elif collection_rate < 50 %}is-down{% endif %}">{% if collection_rate >= 80 %}Healthy{% elif collection_rate >= 50 %}Moderate{% else %}Needs focus{% endif %}</span></div>
+      <div class="fd-kpi-meter"><span style="width:{{ [collection_rate, 100] | min }}%"></span></div>
+    </article>
+  </section>
+
+  {% if itensity_snapshot %}
+  <section class="fd-panel" style="margin-top:18px;">
+    <div class="fd-panel-head">
+      <div><h2 class="fd-panel-title">Live Itensity figures</h2><p class="fd-panel-sub">Read from the Itensity dashboard</p></div>
+      <span class="fd-panel-tag">Synced {{ itensity_snapshot.fetched_at }}</span>
+    </div>
+    <div class="fd-legend" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;">
+      {% for label, value, color in [('Active', itensity_snapshot.active_count, '#55e6ad'), ('Blocked', itensity_snapshot.blocked_count, '#ff718a'), ('Unverified', itensity_snapshot.unverified_count, '#ffad66'), ('Inactive', itensity_snapshot.inactive_count, '#9aa8bd'), ('Total', itensity_snapshot.total_count, '#55dcff')] %}
+      <div class="fd-legend-row"><span class="fd-legend-label"><i class="fd-legend-dot" style="color:{{ color }};background:{{ color }}"></i>{{ label }}</span><strong>{{ "{:,}".format(value) }}</strong></div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="fd-grid-primary">
+    <article class="fd-panel">
+      <div class="fd-panel-head">
+        <div><h2 class="fd-panel-title">Revenue velocity</h2><p class="fd-panel-sub"><span data-range-title>{{ selected.title }}</span> · <span data-range-grain>{{ selected.grain }}</span> collection signal</p></div>
+        <span class="fd-panel-tag">Live trend</span>
+      </div>
+      <div class="fd-chart-lg"><canvas id="revenueChart" aria-label="Revenue over the selected period"></canvas></div>
+    </article>
+
+    <article class="fd-panel">
+      <div class="fd-panel-head">
+        <div><h2 class="fd-panel-title">Payment state</h2><p class="fd-panel-sub">All collection records</p></div>
+        <span class="fd-panel-tag">Portfolio</span>
+      </div>
+      <div class="fd-chart-ring">
+        <canvas id="statusChart" aria-label="Payment status distribution"></canvas>
+        <div class="fd-donut-center"><strong>{{ "{:,}".format(total_status) }}</strong><span>records</span></div>
+      </div>
+      <div class="fd-legend">
+        {% for label, val, color in [('Paid', payment_status_values[0], '#55e6ad'), ('Partial', payment_status_values[1], '#ffad66'), ('Pending', payment_status_values[2], '#ff718a')] %}
+        <div class="fd-legend-row"><span class="fd-legend-label"><i class="fd-legend-dot" style="color:{{ color }};background:{{ color }}"></i>{{ label }}</span><strong>{{ "{:,}".format(val) }} · {{ ((val / total_status * 100)|round(0)|int) if total_status else 0 }}%</strong></div>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+
+  <section class="fd-grid-secondary">
+    <article class="fd-panel">
+      <div class="fd-panel-head">
+        <div><h2 class="fd-panel-title">Member acquisition</h2><p class="fd-panel-sub"><span data-range-title>{{ selected.title }}</span> · New joins by <span data-range-grain>{{ selected.grain | lower }}</span></p></div>
+        <span class="fd-panel-tag">Growth</span>
+      </div>
+      <div class="fd-chart-md"><canvas id="membersChart" aria-label="New members over the selected period"></canvas></div>
+    </article>
+
+    <article class="fd-panel">
+      <div class="fd-panel-head">
+        <div><h2 class="fd-panel-title">Membership architecture</h2><p class="fd-panel-sub">Top packages by member volume</p></div>
+        <span class="fd-panel-tag">Mix</span>
+      </div>
+      <div class="fd-chart-md"><canvas id="packageChart" aria-label="Members by package"></canvas></div>
+    </article>
+  </section>
+
+  <section class="fd-grid-tertiary">
+    <article class="fd-panel">
+      <div class="fd-panel-head">
+        <div><h2 class="fd-panel-title">Payment rails</h2><p class="fd-panel-sub">Collection method distribution</p></div>
+        <span class="fd-panel-tag">Channels</span>
+      </div>
+      <div class="fd-chart-md"><canvas id="methodChart" aria-label="Collection methods"></canvas></div>
+    </article>
+
+    <article class="fd-panel">
+      <div class="fd-panel-head">
+        <div><h2 class="fd-panel-title">Operational health</h2><p class="fd-panel-sub">Live performance signals and attention markers</p></div>
+        <span class="fd-panel-tag">System pulse</span>
+      </div>
+      <div class="fd-performance">
+        <div class="fd-orbit"><div class="fd-orbit-core"><strong>{{ collection_rate }}%</strong><span>collection rate</span></div></div>
+        <div>
+          <div class="fd-signal-list">
+            <div><div class="fd-signal-head"><span>Member activity</span><strong>{{ active_pct }}%</strong></div><div class="fd-signal-track"><div class="fd-signal-fill" style="--signal-color:var(--fd-green);width:{{ active_pct }}%"></div></div></div>
+            <div><div class="fd-signal-head"><span>Payments cleared</span><strong>{{ cleared_pct }}%</strong></div><div class="fd-signal-track"><div class="fd-signal-fill" style="--signal-color:var(--fd-cyan);width:{{ cleared_pct }}%"></div></div></div>
+            <div><div class="fd-signal-head"><span>Collection efficiency</span><strong>{{ collection_rate }}%</strong></div><div class="fd-signal-track"><div class="fd-signal-fill" style="--signal-color:var(--fd-gold);width:{{ [collection_rate, 100] | min }}%"></div></div></div>
+          </div>
+          <div class="fd-alert-strip"><span>Outstanding exposure</span><strong>R{{ "{:,.0f}".format(outstanding_total) }}</strong></div>
+          {% if pending_leave > 0 %}<div class="fd-alert-strip"><span>Leave approvals waiting</span><strong>{{ pending_leave }}</strong></div>{% endif %}
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <p class="fd-screenreader" aria-live="polite" id="range-announcement"></p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(() => {
+  const rangeData = {{ trend_ranges | tojson }};
+  const initialRange = {{ selected_range | tojson }};
+  const colors = {
+    cyan: '#55dcff', green: '#55e6ad', gold: '#d7ad53',
+    orange: '#ffad66', red: '#ff718a', purple: '#aa8cff',
+    grid: 'rgba(126, 231, 255, 0.075)', ticks: '#6f8c9b', panel: '#0d2230'
+  };
+  const money = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 });
+  const integer = new Intl.NumberFormat('en-ZA', { maximumFractionDigits: 0 });
+
+  Chart.defaults.font.family = "'Segoe UI', Arial, sans-serif";
+  Chart.defaults.color = colors.ticks;
+  Chart.defaults.animation.duration = 520;
+
+  const axisBase = {
+    border: { display: false },
+    grid: { color: colors.grid, drawTicks: false },
+    ticks: { color: colors.ticks, font: { size: 10 }, padding: 9, maxRotation: 0, autoSkip: true }
+  };
+  const tooltipBase = {
+    backgroundColor: '#102a39',
+    titleColor: '#effbff',
+    bodyColor: '#a9c3cf',
+    borderColor: 'rgba(85,220,255,.18)',
+    borderWidth: 1,
+    padding: 11,
+    cornerRadius: 9,
+    displayColors: false
+  };
+
+  const revenueChart = new Chart(document.getElementById('revenueChart'), {
+    type: 'line',
+    data: { labels: rangeData[initialRange].labels, datasets: [{
+      data: rangeData[initialRange].revenue.values,
+      borderColor: colors.cyan,
+      backgroundColor: 'rgba(85,220,255,.10)',
+      borderWidth: 2.3,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      pointHoverBackgroundColor: '#dffaff',
+      pointHoverBorderColor: colors.cyan,
+      pointHoverBorderWidth: 3,
+      tension: .38,
+      fill: true
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false, interaction: { intersect: false, mode: 'index' },
+      plugins: { legend: { display: false }, tooltip: { ...tooltipBase, callbacks: { label: ctx => money.format(ctx.parsed.y || 0) } } },
+      scales: {
+        x: { ...axisBase, grid: { display: false }, ticks: { ...axisBase.ticks, maxTicksLimit: 10 } },
+        y: { ...axisBase, beginAtZero: true, ticks: { ...axisBase.ticks, callback: value => value >= 1000 ? `R${Math.round(value / 1000)}k` : `R${value}` } }
+      }
+    }
+  });
+
+  const membersChart = new Chart(document.getElementById('membersChart'), {
+    type: 'bar',
+    data: { labels: rangeData[initialRange].labels, datasets: [{
+      data: rangeData[initialRange].members.values,
+      backgroundColor: 'rgba(85,230,173,.18)',
+      borderColor: colors.green,
+      borderWidth: 1.4,
+      borderRadius: 5,
+      borderSkipped: false,
+      maxBarThickness: 24
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { ...tooltipBase, callbacks: { label: ctx => `${integer.format(ctx.parsed.y || 0)} new members` } } },
+      scales: {
+        x: { ...axisBase, grid: { display: false }, ticks: { ...axisBase.ticks, maxTicksLimit: 10 } },
+        y: { ...axisBase, beginAtZero: true, ticks: { ...axisBase.ticks, precision: 0 } }
+      }
+    }
+  });
+
+  new Chart(document.getElementById('statusChart'), {
+    type: 'doughnut',
+    data: { labels: {{ payment_status_labels | tojson }}, datasets: [{
+      data: {{ payment_status_values | tojson }},
+      backgroundColor: [colors.green, colors.orange, colors.red],
+      borderColor: colors.panel, borderWidth: 5, hoverOffset: 3
+    }]},
+    options: { responsive: true, maintainAspectRatio: false, cutout: '76%', plugins: { legend: { display: false }, tooltip: { ...tooltipBase, displayColors: true } } }
+  });
+
+  new Chart(document.getElementById('packageChart'), {
+    type: 'bar',
+    data: { labels: {{ package_labels | tojson }}, datasets: [{
+      data: {{ package_values | tojson }},
+      backgroundColor: ['rgba(85,220,255,.72)','rgba(85,230,173,.68)','rgba(215,173,83,.68)','rgba(170,140,255,.68)','rgba(255,173,102,.68)','rgba(106,143,158,.68)'],
+      borderRadius: 6, borderSkipped: false, maxBarThickness: 18
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+      plugins: { legend: { display: false }, tooltip: { ...tooltipBase, callbacks: { label: ctx => `${integer.format(ctx.parsed.x || 0)} members` } } },
+      scales: { x: { ...axisBase, beginAtZero: true, ticks: { ...axisBase.ticks, precision: 0 } }, y: { ...axisBase, grid: { display: false }, ticks: { ...axisBase.ticks, color: '#94aab5' } } }
+    }
+  });
+
+  new Chart(document.getElementById('methodChart'), {
+    type: 'doughnut',
+    data: { labels: {{ method_labels | tojson }}, datasets: [{
+      data: {{ method_values | tojson }},
+      backgroundColor: [colors.cyan, colors.green, colors.gold, colors.purple, colors.orange, '#63899b', colors.red],
+      borderColor: colors.panel, borderWidth: 4, hoverOffset: 4
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '64%',
+      plugins: { legend: { position: 'bottom', labels: { color: '#8ca5b1', boxWidth: 8, boxHeight: 8, padding: 13, usePointStyle: true, pointStyle: 'circle', font: { size: 10 } } }, tooltip: tooltipBase }
+    }
+  });
+
+  function renderDelta(element, delta, current, previous) {
+    element.classList.remove('is-up', 'is-down', 'is-flat');
+    if (delta === null) {
+      element.textContent = current > 0 ? 'New activity' : 'No prior activity';
+      element.classList.add(current > 0 ? 'is-up' : 'is-flat');
+      return;
+    }
+    const direction = delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : 'is-flat';
+    const arrow = delta > 0 ? '↗' : delta < 0 ? '↘' : '→';
+    element.textContent = `${arrow} ${Math.abs(delta).toFixed(1)}% vs prior`;
+    element.classList.add(direction);
+  }
+
+  function selectRange(key, announce = true) {
+    const range = rangeData[key];
+    if (!range) return;
+    document.querySelectorAll('.fd-range-btn').forEach(button => {
+      const active = button.dataset.range === key;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    document.querySelectorAll('[data-range-title]').forEach(node => { node.textContent = range.title; });
+    document.querySelectorAll('[data-range-grain]').forEach(node => { node.textContent = range.grain; });
+    document.getElementById('range-revenue').textContent = money.format(range.revenue.total);
+    document.getElementById('range-members').textContent = integer.format(range.members.total);
+    renderDelta(document.getElementById('revenue-delta'), range.revenue.delta, range.revenue.total, range.revenue.previous_total);
+    renderDelta(document.getElementById('members-delta'), range.members.delta, range.members.total, range.members.previous_total);
+
+    revenueChart.data.labels = range.labels;
+    revenueChart.data.datasets[0].data = range.revenue.values;
+    revenueChart.update();
+    membersChart.data.labels = range.labels;
+    membersChart.data.datasets[0].data = range.members.values;
+    membersChart.update();
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('range', key);
+    window.history.replaceState({}, '', url);
+    if (announce) document.getElementById('range-announcement').textContent = `Dashboard updated to ${range.title}`;
+  }
+
+  document.querySelectorAll('.fd-range-btn').forEach(button => button.addEventListener('click', () => selectRange(button.dataset.range)));
+  selectRange(initialRange, false);
+})();
+</script>
+{% endblock %}

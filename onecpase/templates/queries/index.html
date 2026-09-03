@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %}Queries & Tickets | 1Cpase{% endblock %}
+{% block page_title %}Queries & Tickets{% endblock %}
+
+{% block content %}
+<style>
+.q-kpi { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:22px; }
+.q-kpi-card {
+  background:#fff; border:1px solid #e4e8f0; border-radius:8px;
+  padding:14px 18px; position:relative; overflow:hidden;
+  box-shadow:0 4px 14px rgba(16,24,40,.05);
+}
+.q-kpi-card::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--fp-primary); }
+.q-kpi-card.red::before    { background:#e11d48; }
+.q-kpi-card.amber::before  { background:#d97706; }
+.q-kpi-card.green::before  { background:#059669; }
+.q-kpi-card.purple::before { background:#7c3aed; }
+.q-kpi-card.blue::before   { background:#1769aa; }
+.q-kpi-label { font-size:.65rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#9ca3af; margin-bottom:4px; }
+.q-kpi-value { font-size:1.5rem; font-weight:800; color:#172033; line-height:1.1; }
+
+.q-chip { display:inline-flex; align-items:center; gap:4px; padding:4px 11px; border-radius:20px;
+  border:1px solid #e4e8f0; font-size:.77rem; font-weight:700; color:#374151;
+  text-decoration:none; transition:all .12s; background:#fff; white-space:nowrap; }
+.q-chip:hover { border-color:#1769aa; color:#1769aa; }
+.q-chip.active { background:#1769aa; color:#fff; border-color:#1769aa; }
+.q-chip.red.active   { background:#e11d48; border-color:#e11d48; }
+.q-chip.amber.active { background:#d97706; border-color:#d97706; }
+.q-chip.green.active { background:#059669; border-color:#059669; }
+.q-chip.purple.active{ background:#7c3aed; border-color:#7c3aed; }
+
+.pbadge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+
+.acct-flags { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+.aflag { display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:20px;
+  font-size:.68rem; font-weight:800; white-space:nowrap; line-height:1.4; }
+.aflag.owe   { background:#fee2e2; color:#991b1b; }
+.aflag.ok    { background:#dcfce7; color:#166534; }
+.aflag.do    { background:#e0f2fe; color:#075985; }
+.aflag.block { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
+.aflag.disp  { background:#fef3c7; color:#92400e; }
+.aflag.muted { background:#f1f5f9; color:#94a3b8; }
+
+@media(max-width:900px){ .q-kpi { grid-template-columns:repeat(2,1fr); } }
+@media(max-width:520px){ .q-kpi { grid-template-columns:1fr; } }
+</style>
+
+<!-- Header -->
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+  <div>
+    <h2 style="font-size:1.1rem;font-weight:800;color:#172033;margin:0;">Queries & Tickets</h2>
+    <div style="font-size:.78rem;color:#667085;margin-top:2px;">{{ today }} &bull; {{ rows|length }} result{{ 's' if rows|length != 1 }}</div>
+  </div>
+  <a href="{{ url_for('queries.add') }}" class="btn btn-primary btn-sm">+ New Query</a>
+</div>
+
+<!-- KPI Cards -->
+<div class="q-kpi">
+  <div class="q-kpi-card blue">
+    <div class="q-kpi-label">Open</div>
+    <div class="q-kpi-value">{{ kpi_open }}</div>
+  </div>
+  <div class="q-kpi-card red">
+    <div class="q-kpi-label">Overdue</div>
+    <div class="q-kpi-value">{{ kpi_overdue }}</div>
+  </div>
+  <div class="q-kpi-card purple">
+    <div class="q-kpi-label">Escalated</div>
+    <div class="q-kpi-value">{{ kpi_escalated }}</div>
+  </div>
+  <div class="q-kpi-card amber">
+    <div class="q-kpi-label">Urgent</div>
+    <div class="q-kpi-value">{{ kpi_urgent }}</div>
+  </div>
+  <div class="q-kpi-card green">
+    <div class="q-kpi-label">Resolved Today</div>
+    <div class="q-kpi-value">{{ kpi_resolved_today }}</div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card" style="margin-bottom:0;">
+  <div class="card-header" style="flex-wrap:wrap;gap:10px;">
+    <h2>All Queries</h2>
+    <form method="get" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <div style="position:relative;">
+        <svg style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none;"
+             width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2.5">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input type="text" name="q" value="{{ q }}" placeholder="Ref, name, contact…"
+               style="padding:6px 10px 6px 30px;border:1px solid #d1d5db;border-radius:6px;font-size:.82rem;min-width:200px;">
+      </div>
+      <select name="cat" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.82rem;">
+        <option value="">All Categories</option>
+        {% for k,v in categories %}<option value="{{ k }}" {% if cat==k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+      <select name="status" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.82rem;">
+        <option value="">All Statuses</option>
+        {% for k,v in statuses %}<option value="{{ k }}" {% if status_f==k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+      <select name="priority" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:.82rem;">
+        <option value="">All Priorities</option>
+        {% for k,v in priorities %}<option value="{{ k }}" {% if priority_f==k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn btn-ghost btn-sm">Filter</button>
+      {% if q or cat or status_f or priority_f or assigned_f %}
+      <a href="{{ url_for('queries.index') }}" class="btn btn-ghost btn-sm">✕ Clear</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <!-- Quick chips -->
+  <div style="padding:8px 20px;background:#f9fafb;border-bottom:1px solid #e5e7eb;display:flex;gap:6px;flex-wrap:wrap;">
+    <a href="{{ url_for('queries.index') }}" class="q-chip {% if not status_f and not priority_f and not assigned_f %}active{% endif %}">
+      All ({{ kpi_open + kpi_resolved_today }})
+    </a>
+    <a href="{{ url_for('queries.index', status='open') }}" class="q-chip {% if status_f=='open' %}active{% endif %}">
+      Open ({{ kpi_open }})
+    </a>
+    <a href="{{ url_for('queries.index', status='escalated') }}" class="q-chip purple {% if status_f=='escalated' %}active{% endif %}">
+      Escalated ({{ kpi_escalated }})
+    </a>
+    <a href="{{ url_for('queries.index', priority='urgent') }}" class="q-chip red {% if priority_f=='urgent' %}active{% endif %}">
+      Urgent ({{ kpi_urgent }})
+    </a>
+    <a href="{{ url_for('queries.index', status='in_progress') }}" class="q-chip amber {% if status_f=='in_progress' %}active{% endif %}">
+      In Progress
+    </a>
+    <a href="{{ url_for('queries.index', assigned='me') }}" class="q-chip {% if assigned_f=='me' %}active{% endif %}">
+      Assigned to Me
+    </a>
+    <a href="{{ url_for('queries.index', assigned='unassigned') }}" class="q-chip {% if assigned_f=='unassigned' %}active{% endif %}">
+      Unassigned
+    </a>
+    <a href="{{ url_for('queries.index', status='resolved') }}" class="q-chip green {% if status_f=='resolved' %}active{% endif %}">
+      Resolved Today ({{ kpi_resolved_today }})
+    </a>
+  </div>
+
+  <!-- Table -->
+  <div class="card-body">
+    {% if rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Ref</th>
+            <th>Member / Contact</th>
+            <th>Account</th>
+            <th>Category</th>
+            <th>Type</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Assigned To</th>
+            <th>Follow-up</th>
+            <th>Created</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          {% set pc = priority_colours.get(r.priority, '#9ca3af') %}
+          {% set sc = status_colours.get(r.status, '#9ca3af') %}
+          <tr>
+            <td>
+              <a href="{{ url_for('queries.detail', qid=r.id) }}"
+                 style="font-weight:800;color:#1769aa;text-decoration:none;font-size:.82rem;">
+                {{ r.reference }}
+              </a>
+            </td>
+            <td>
+              {% if r.member_id %}
+                <a href="{{ url_for('members.member_detail', mid=r.member_id) }}"
+                   style="font-weight:600;color:#172033;text-decoration:none;font-size:.85rem;">
+                  {{ r.member_full_name }}
+                </a>
+              {% elif r.member_name %}
+                <span style="font-weight:600;color:#374151;font-size:.85rem;">{{ r.member_name }}</span>
+              {% else %}
+                <span style="color:#9ca3af;">—</span>
+              {% endif %}
+              {% if r.contact %}<div style="font-size:.7rem;color:#9ca3af;">{{ r.contact }}</div>{% endif %}
+            </td>
+            <td>
+              {% set s = member_summaries.get(r.member_id) if r.member_id else none %}
+              {% if s %}
+              <div class="acct-flags">
+                {% if s.is_owing %}
+                  <span class="aflag owe" title="Outstanding balance">R{{ '%.0f'|format(s.total_outstanding) }}</span>
+                {% else %}
+                  <span class="aflag ok" title="Zero balance">R0</span>
+                {% endif %}
+                {% if s.has_debit_order %}
+                  <span class="aflag do" title="Debit order on file">🏦</span>
+                {% endif %}
+                {% if s.is_blocked %}
+                  <span class="aflag block" title="Gym access blocked">🚫</span>
+                {% endif %}
+                {% if s.dispute_count %}
+                  <span class="aflag disp" title="{{ s.dispute_count }} dispute(s) on record">⚠ {{ s.dispute_count }}</span>
+                {% endif %}
+              </div>
+              {% if s.is_owing %}
+              <div style="font-size:.66rem;color:#94a3b8;margin-top:3px;white-space:nowrap;"
+                   title="Months in arrears · settlement discount · amount member can settle with">
+                {{ s.arrears_months }}mo
+                {% if s.discount_percent %} · {{ s.discount_percent }}% off · pay R{{ '%.0f'|format(s.settlement_amount) }}{% endif %}
+              </div>
+              {% endif %}
+              {% else %}
+                <span style="color:#cbd5e1;">—</span>
+              {% endif %}
+            </td>
+            <td style="font-size:.78rem;white-space:nowrap;">
+              {% for k,v in categories %}{% if k==r.category %}{{ v }}{% endif %}{% endfor %}
+            </td>
+            <td style="font-size:.75rem;color:#6b7280;max-width:140px;">{{ r.query_type or '—' }}</td>
+            <td>
+              <span class="pbadge" style="background:{{ pc }}22;color:{{ pc }};">
+                {{ r.priority|title }}
+              </span>
+            </td>
+            <td>
+              <span class="pbadge" style="background:{{ sc }}22;color:{{ sc }};">
+                {{ r.status|replace('_',' ')|title }}
+              </span>
+            </td>
+            <td style="font-size:.78rem;color:#6b7280;white-space:nowrap;">
+              {{ r.assigned_to_name or '—' }}
+            </td>
+            <td style="font-size:.78rem;white-space:nowrap;
+              {% if r.follow_up_date and r.follow_up_date <= today %}color:#e11d48;font-weight:700;
+              {% else %}color:#6b7280;{% endif %}">
+              {{ r.follow_up_date or '—' }}
+            </td>
+            <td style="font-size:.72rem;color:#9ca3af;white-space:nowrap;">
+              {{ r.created_at[:16] }}
+              {% if r.logged_by_name %}
+              <div style="font-size:.68rem;">{{ r.logged_by_name.split()[0] }}</div>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('queries.detail', qid=r.id) }}" class="btn btn-ghost btn-sm"
+                 style="font-size:.72rem;white-space:nowrap;">Open →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding:8px 0;font-size:.75rem;color:#9ca3af;">{{ rows|length }} record{{ 's' if rows|length != 1 }}</div>
+    {% else %}
+    <div class="empty-state" style="padding:48px 24px;">
+      <div class="empty-icon">🎫</div>
+      <p>{% if q or cat or status_f %}No queries match your filters.
+         {% else %}No queries yet.{% endif %}</p>
+      {% if q or cat or status_f %}
+      <a href="{{ url_for('queries.index') }}" class="btn btn-ghost btn-sm">Clear filters</a>
+      {% else %}
+      <a href="{{ url_for('queries.add') }}" class="btn btn-primary">Log First Query</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

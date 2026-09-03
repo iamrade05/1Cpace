@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Contract Templates | 1Cpase{% endblock %}
+{% block page_title %}Contract Templates{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
+  <div>
+    <h1 style="font-size:1.25rem;margin-bottom:5px;">Contract templates</h1>
+    <p style="color:var(--t2);font-size:.84rem;">Create and edit the legal wording used when member contracts are generated.</p>
+  </div>
+  <a href="{{ url_for('admin.contract_template_add') }}" class="btn btn-primary">+ Create Contract Template</a>
+</div>
+
+<div class="table-card">
+  <table class="data-table">
+    <thead><tr><th>Template</th><th>Agreement</th><th>Terms</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for template in templates %}
+      <tr>
+        <td><strong>{{ template.name }}</strong>{% if template.is_default %}<div><span class="badge badge-info" style="margin-top:5px;">Default</span></div>{% endif %}</td>
+        <td>{{ template.gym_name }}<br><small style="color:var(--t2);">{{ template.agreement_title }}</small></td>
+        <td>{{ template.terms_text.split('\n')|length }} terms</td>
+        <td><span class="badge {{ 'badge-success' if template.active else 'badge-gray' }}">{{ 'Active' if template.active else 'Inactive' }}</span></td>
+        <td style="color:var(--t2);">{{ (template.updated_at or template.created_at)|string|truncate(19, True, '') }}</td>
+        <td><div style="display:flex;gap:7px;flex-wrap:wrap;">
+          <a href="{{ url_for('admin.contract_template_edit', template_id=template.id) }}" class="btn btn-ghost btn-sm">Edit</a>
+          {% if not template.is_default %}
+          <form method="post" action="{{ url_for('admin.contract_template_default', template_id=template.id) }}"><button class="btn btn-outline btn-sm">Make Default</button></form>
+          {% endif %}
+          <form method="post" action="{{ url_for('admin.contract_template_toggle', template_id=template.id) }}"><button class="btn btn-sm {{ 'btn-danger' if template.active else 'btn-success' }}">{{ 'Deactivate' if template.active else 'Activate' }}</button></form>
+        </div></td>
+      </tr>
+      {% else %}<tr><td colspan="6" class="empty-state">No contract templates have been created.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

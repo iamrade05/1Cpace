@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}New Class | 1Cpase{% endblock %}
+{% block page_title %}New Fitness Class{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <form method="post">
+    <div class="form-group">
+      <label>Class Name *</label>
+      <input name="name" required placeholder="e.g. Morning Spin, Yoga Flow…">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Instructor</label>
+        <select name="instructor_id">
+          <option value="">— None —</option>
+          {% for i in instructors %}
+          <option value="{{ i.id }}">{{ i.full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Capacity</label>
+        <input type="number" name="capacity" value="20" min="1" max="200">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Day</label>
+        <select name="schedule_day">
+          <option value="">— Any —</option>
+          {% for d in days %}
+          <option value="{{ d }}">{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Time</label>
+        <input type="time" name="schedule_time">
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Create Class</button>
+      <a href="{{ url_for('fitness.fitness_index') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

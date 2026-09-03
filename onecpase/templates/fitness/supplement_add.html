@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Add Supplement | 1Cpase{% endblock %}
+{% block page_title %}Add Supplement{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <form method="post">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Name *</label>
+        <input name="name" required>
+      </div>
+      <div class="form-group">
+        <label>Brand</label>
+        <input name="brand">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Type *</label>
+        <select name="supp_type" required>
+          <option value="herbal">Herbal</option>
+          <option value="mainstream">Mainstream</option>
+          <option value="steroid">Steroid</option>
+          <option value="peptide">Peptide</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Goal *</label>
+        <select name="goal" required>
+          <option value="weight_loss">Weight Loss</option>
+          <option value="muscle_gain">Muscle Gain</option>
+          <option value="cutting">Cutting</option>
+          <option value="conditioning">Conditioning</option>
+          <option value="maintaining">Maintaining</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Risk Level</label>
+      <select name="risk_level">
+        {% for lvl, label in risk_labels.items() %}
+        <option value="{{ lvl }}" {% if lvl == 1 %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Dosage</label>
+      <input name="dosage" placeholder="e.g. 1 scoop post-workout">
+    </div>
+
+    <div class="form-group">
+      <label>Description</label>
+      <textarea name="description" rows="3"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea name="notes" rows="2"></textarea>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Add Supplement</button>
+      <a href="{{ url_for('fitness.supplements_index') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

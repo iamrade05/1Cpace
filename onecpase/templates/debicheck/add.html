@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}New DebiCheck | 1Cpase{% endblock %}
+{% block page_title %}New DebiCheck{% endblock %}
+{% block content %}
+<form method="post" id="debicheckForm">
+  <div class="form-card" style="max-width:1000px;margin:auto;">
+    <h2 class="section-heading">Member &amp; Payer</h2>
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Member</label>
+        <select name="member_id" id="memberSelect" class="form-control member-picker" required>
+          <option value="">— Select member —</option>
+          {% for m in members %}<option value="{{ m.id }}" {% if selected_member_id==m.id|string %}selected{% endif %}
+            data-name="{{ m.first_name }} {{ m.last_name }}" data-id="{{ m.id_number or '' }}"
+            data-amount="{{ m.monthly_installment or 0 }}" data-account-name="{{ m.account_name or '' }}"
+            data-bank="{{ m.bank or '' }}" data-account-type="{{ m.account_type or '' }}"
+            data-account-number="{{ m.account_number or '' }}" data-branch="{{ m.branch_code or '' }}"
+            data-client-ref="{{ m.client_ref_suggestion or '' }}">
+            {{ m.first_name }} {{ m.last_name }} — {{ m.id_number }}
+          </option>{% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Who Owns the Bank Account?</label>
+        <select name="payer_type" id="payerTypeStandalone" class="form-control">
+          <option value="self" {% if form.get('payer_type','self')=='self' %}selected{% endif %}>Member</option>
+          <option value="third_party" {% if form.get('payer_type')=='third_party' %}selected{% endif %}>Somebody Else</option>
+        </select>
+      </div>
+    </div>
+    <div id="thirdPartyStandalone" class="light-panel" style="display:none;background:#fef9f0;border:1px solid #fde68a;border-radius:8px;padding:14px;margin-top:16px;">
+      <div class="form-grid-2">
+        <div class="form-group"><label class="form-label">Payer Full Name</label><input name="payer_name" class="form-control" value="{{ form.get('payer_name','') }}"></div>
+        <div class="form-group"><label class="form-label">Payer SA ID Number</label><input name="payer_id_number" class="form-control" maxlength="13" inputmode="numeric" pattern="[0-9]{13}" value="{{ form.get('payer_id_number','') }}"></div>
+      </div>
+    </div>
+
+    <h2 class="section-heading" style="margin-top:24px;">Banking &amp; Mandate</h2>
+    <div class="form-grid-2">
+      <div class="form-group"><label class="form-label">Account Holder Name</label><input name="account_name" id="dcAccountName" class="form-control" maxlength="30" required value="{{ form.get('account_name','') }}"></div>
+      <div class="form-group"><label class="form-label">Bank</label><select name="bank" id="dcBank" class="form-control" required><option value="">— Select bank —</option>{% for name,code in banks %}<option value="{{ name }}" data-branch="{{ code }}" {% if form.get('bank')==name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label class="form-label">Account Type</label><select name="account_type" id="dcAccountType" class="form-control" required>{% for value in ['Cheque/Current','Savings','Transmission'] %}<option value="{{ value }}" {% if form.get('account_type')==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label class="form-label">Account Number</label><input name="account_number" id="dcAccountNumber" class="form-control" maxlength="11" inputmode="numeric" required value="{{ form.get('account_number','') }}"></div>
+      <div class="form-group"><label class="form-label">Branch Code</label><input name="branch_code" id="dcBranch" class="form-control" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" required value="{{ form.get('branch_code','') }}"></div>
+      <div class="form-group"><label class="form-label">Instalment Amount</label><input type="number" name="instalment_amount" id="dcAmount" class="form-control" min="0.01" step="0.01" required value="{{ form.get('instalment_amount','') }}"></div>
+      <div class="form-group"><label class="form-label">Client Reference 1</label><input name="client_ref1" id="dcClientRef1" class="form-control" maxlength="25" required value="{{ form.get('client_ref1','') }}"></div>
+      <div class="form-group"><label class="form-label">Client Reference 2 — Staff Number</label><input name="client_ref2" class="form-control" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" placeholder="4 digits (optional for now)" value="{{ form.get('client_ref2','') }}"></div>
+      <div class="form-group"><label class="form-label">Authentication Type</label><select name="auth_type" class="form-control"><option value="cell">Electronic Banking (TT1 Delayed)</option><option value="rm_realtime">RM Realtime</option><option value="rm_batch">RM Batch</option></select></div>
+      <div class="form-group"><label class="form-label">Submit Date</label><input type="date" name="submit_date" class="form-control" min="{{ today }}" required value="{{ form.get('submit_date',today) }}"></div>
+      <div class="form-group"><label class="form-label">Frequency</label><select name="frequency" class="form-control"><option value="3">Monthly</option><option value="1">Weekly</option><option value="2">Bi-weekly</option><option value="5">End of Month</option></select></div>
+      <div class="form-group"><label class="form-label">Number of Instalments</label><input type="number" name="no_installments" class="form-control" min="1" value="{{ form.get('no_installments','99') }}"></div>
+      <div class="form-group"><label class="form-label">Tracking</label><select name="tracking" class="form-control"><option value="14">3 Days</option><option value="12">No Tracking</option><option value="13">1 Day</option><option value="01">2 Days</option><option value="02">4 Days</option><option value="03">5 Days</option></select></div>
+      <div class="form-group"><label class="form-label">Identity Type</label><select name="id_type" class="form-control"><option value="0">RSA ID Number</option><option value="1">Passport</option><option value="4">Juristic Account</option></select></div>
+      <div class="form-group" id="standalonePassport" style="display:none;"><label class="form-label">Passport Number</label><input name="passport" class="form-control" value="{{ form.get('passport','') }}"></div>
+      <div class="form-group" id="standaloneJuristic" style="display:none;"><label class="form-label">Juristic Account</label><input name="juristic_account" class="form-control" maxlength="15" value="{{ form.get('juristic_account','') }}"></div>
+    </div>
+    <div class="form-actions" style="justify-content:flex-end;">
+      <a href="{{ url_for('debicheck.index') }}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" name="submit_action" value="save" class="btn btn-secondary">Save Mandate</button>
+      <button type="submit" name="submit_action" value="push_nupay" class="btn btn-primary">Save &amp; Push to NuPay</button>
+    </div>
+  </div>
+</form>
+<script>
+const memberSelect=document.getElementById('memberSelect'), payerSelect=document.getElementById('payerTypeStandalone'), idType=document.querySelector('[name="id_type"]');
+function toggleStandalonePayer(){document.getElementById('thirdPartyStandalone').style.display=payerSelect.value==='third_party'?'block':'none';}
+function toggleStandaloneIdentity(){document.getElementById('standalonePassport').style.display=idType.value==='1'?'flex':'none';document.getElementById('standaloneJuristic').style.display=idType.value==='4'?'flex':'none';}
+function prefillStandalone(){const o=memberSelect.options[memberSelect.selectedIndex];if(!o?.value)return;const set=(id,v)=>{const e=document.getElementById(id);if(e&&!e.value)e.value=v||''};set('dcAccountName',o.dataset.accountName||o.dataset.name);set('dcAmount',o.dataset.amount);set('dcAccountNumber',o.dataset.accountNumber);set('dcBranch',o.dataset.branch);set('dcClientRef1',o.dataset.clientRef);const bank=document.getElementById('dcBank');if(!bank.value)bank.value=o.dataset.bank||'';const type=document.getElementById('dcAccountType');if(o.dataset.accountType)type.value=o.dataset.accountType;}
+memberSelect.addEventListener('change',prefillStandalone);payerSelect.addEventListener('change',toggleStandalonePayer);idType.addEventListener('change',toggleStandaloneIdentity);document.getElementById('dcBank').addEventListener('change',e=>{const code=e.target.options[e.target.selectedIndex]?.dataset.branch;if(code)document.getElementById('dcBranch').value=code});toggleStandalonePayer();toggleStandaloneIdentity();prefillStandalone();
+</script>
+{% endblock %}

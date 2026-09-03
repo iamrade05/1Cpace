@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>1Cpase — Verify Code</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: radial-gradient(circle at top left, rgba(176,132,45,0.24), transparent 24rem),
+                  linear-gradient(135deg, #002e45 0%, #001f30 100%);
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .card {
+      background: #fff; border-radius: 16px;
+      padding: 44px 40px; width: 100%; max-width: 420px;
+      box-shadow: 0 24px 64px rgba(0,46,69,0.34);
+      border: 1px solid rgba(193,194,197,0.75);
+    }
+    .brand { text-align: center; margin-bottom: 28px; }
+    .brand h1 {
+      font-size: 2rem; font-weight: 800; color: #002e45; letter-spacing: 1px;
+    }
+    .brand p { font-size: 0.78rem; color: #9ca3af; margin-top: 4px;
+               text-transform: uppercase; letter-spacing: 1.5px; }
+    .step-title {
+      font-size: 1.1rem; font-weight: 700; color: #002e45;
+      text-align: center; margin-bottom: 6px;
+    }
+    .step-sub {
+      font-size: 0.82rem; color: #6b7280; text-align: center; margin-bottom: 28px;
+      line-height: 1.5;
+    }
+    .step-sub strong { color: #b0842d; }
+
+    /* ── OTP input boxes ── */
+    .otp-row {
+      display: flex; gap: 10px; justify-content: center; margin-bottom: 24px;
+    }
+    .otp-row input {
+      width: 52px; height: 60px; text-align: center;
+      font-size: 1.6rem; font-weight: 700; color: #002e45;
+      border: 2px solid #c1c2c5; border-radius: 10px;
+      outline: none; transition: border-color .15s, box-shadow .15s;
+    }
+    .otp-row input:focus {
+      border-color: #b0842d;
+      box-shadow: 0 0 0 3px rgba(176,132,45,0.16);
+    }
+    /* hidden real input */
+    #otpHidden { display: none; }
+
+    .btn-verify {
+      width: 100%; padding: 13px;
+      background: #002e45; color: #fff; border: none;
+      border-radius: 9px; font-size: 0.95rem; font-weight: 700;
+      cursor: pointer; letter-spacing: 0.3px; transition: background .15s;
+    }
+    .btn-verify:hover { background: #001f30; }
+
+    .timer-row {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 18px;
+    }
+    .timer-txt { font-size: 0.8rem; color: #9ca3af; }
+    .timer-count { font-weight: 700; color: #b0842d; }
+    .resend-form button {
+      background: none; border: none; font-size: 0.8rem;
+      color: #b0842d; cursor: pointer; font-weight: 600;
+      text-decoration: underline; padding: 0;
+    }
+    .resend-form button:disabled { color: #9ca3af; text-decoration: none; cursor: default; }
+
+    .back-link {
+      display: block; text-align: center; margin-top: 20px;
+      font-size: 0.8rem; color: #9ca3af; text-decoration: none;
+    }
+    .back-link:hover { color: #b0842d; }
+
+    .alert-error {
+      background: #fee2e2; color: #991b1b;
+      border-left: 4px solid #ef4444;
+      padding: 10px 14px; border-radius: 6px;
+      font-size: 0.85rem; margin-bottom: 18px;
+    }
+    .alert-info {
+      background: #f5f0e6; color: #002e45;
+      border-left: 4px solid #b0842d;
+      padding: 10px 14px; border-radius: 6px;
+      font-size: 0.85rem; margin-bottom: 18px;
+    }
+    .alert-success {
+      background: #d1fae5; color: #065f46;
+      border-left: 4px solid #10b981;
+      padding: 10px 14px; border-radius: 6px;
+      font-size: 0.85rem; margin-bottom: 18px;
+    }
+  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+</head>
+<body>
+<div class="card">
+  <div class="brand">
+    <h1>1Cpase</h1>
+    <p>Gym Management System</p>
+  </div>
+
+  {% for category, msg in get_flashed_messages(with_categories=true) %}
+  <div class="alert-{{ category }}">{{ msg }}</div>
+  {% endfor %}
+
+  <div class="step-title">Check your email</div>
+  <div class="step-sub">
+    We sent a 6-digit code to <strong>{{ masked_email }}</strong>.<br>
+    Enter it below to sign in.
+  </div>
+
+  <form method="POST" id="otpForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="otp-row" id="otpBoxes">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-box" tabindex="1" autocomplete="off">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-box" tabindex="2" autocomplete="off">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-box" tabindex="3" autocomplete="off">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-box" tabindex="4" autocomplete="off">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-box" tabindex="5" autocomplete="off">
+      <input type="text" inputmode="numeric" maxlength="1" class="otp-box" tabindex="6" autocomplete="off">
+    </div>
+    <input type="hidden" name="otp" id="otpHidden">
+    <button type="submit" class="btn-verify" id="verifyBtn" disabled>Verify Code</button>
+  </form>
+
+  <div class="timer-row">
+    <span class="timer-txt">Code expires in <span class="timer-count" id="timer">{{ remaining }}s</span></span>
+    <form method="POST" action="{{ url_for('auth.resend_otp') }}" class="resend-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" id="resendBtn" disabled>Resend code</button>
+    </form>
+  </div>
+
+  <a href="{{ url_for('auth.login') }}" class="back-link">← Back to sign in</a>
+</div>
+
+<script>
+const boxes     = [...document.querySelectorAll('.otp-box')];
+const hidden    = document.getElementById('otpHidden');
+const verifyBtn = document.getElementById('verifyBtn');
+const resendBtn = document.getElementById('resendBtn');
+
+function updateHidden() {
+  const val = boxes.map(b => b.value).join('');
+  hidden.value = val;
+  verifyBtn.disabled = val.length < 6;
+}
+
+boxes.forEach((box, i) => {
+  box.addEventListener('input', () => {
+    box.value = box.value.replace(/\D/g, '').slice(-1);
+    updateHidden();
+    if (box.value && i < 5) boxes[i + 1].focus();
+  });
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Backspace' && !box.value && i > 0) boxes[i - 1].focus();
+  });
+  box.addEventListener('paste', e => {
+    e.preventDefault();
+    const pasted = (e.clipboardData.getData('text') || '').replace(/\D/g, '').slice(0, 6);
+    pasted.split('').forEach((ch, j) => { if (boxes[j]) boxes[j].value = ch; });
+    updateHidden();
+    const next = Math.min(pasted.length, 5);
+    boxes[next].focus();
+  });
+});
+
+boxes[0].focus();
+
+/* ── Countdown timer ── */
+let secs = {{ remaining }};
+const timerEl = document.getElementById('timer');
+const tick = setInterval(() => {
+  secs--;
+  timerEl.textContent = secs > 0 ? secs + 's' : 'Expired';
+  if (secs <= 30) timerEl.style.color = '#ef4444';
+  if (secs <= 0) {
+    clearInterval(tick);
+    resendBtn.disabled = false;
+    verifyBtn.disabled = true;
+  }
+}, 1000);
+
+/* Enable resend after 30 seconds */
+setTimeout(() => { resendBtn.disabled = false; }, 30000);
+
+/* Auto-submit when all 6 digits entered */
+document.getElementById('otpForm').addEventListener('input', () => {
+  if (hidden.value.length === 6) {
+    setTimeout(() => document.getElementById('otpForm').submit(), 250);
+  }
+});
+</script>
+</body>
+</html>

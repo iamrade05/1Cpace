@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}{{ lead.full_name }} | Sales CRM{% endblock %}
+{% block page_title %}Prospect: {{ lead.full_name }}{% endblock %}
+
+{% block content %}
+{% set color = status_colors.get(lead.lead_status, '#6b7280') %}
+<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">
+  <section style="flex:0 1 370px;min-width:290px;">
+    <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <span style="background:{{ color }};color:#fff;padding:6px 14px;border-radius:20px;font-size:.78rem;font-weight:800;text-transform:uppercase;">{{ status_labels.get(lead.lead_status, lead.lead_status)|replace('_',' ') }}</span>
+      {% if lead.do_not_contact %}<span class="badge badge-danger">Marketing blocked</span>{% endif %}
+      {% if lead.converted_member_id %}<a href="{{ url_for('members.member_detail', mid=lead.converted_member_id) }}" class="btn btn-ghost btn-sm">Member #{{ lead.converted_member_id }}</a>{% endif %}
+    </div>
+
+    <div class="form-card" style="margin-bottom:16px;">
+      <h3 style="font-size:.82rem;color:#e94560;text-transform:uppercase;margin-bottom:12px;">Permanent Prospect Profile</h3>
+      <table style="width:100%;font-size:.83rem;">
+        <tr><td style="color:#6b7280;width:130px;padding:4px;">Phone</td><td><strong>{{ lead.phone or '—' }} {% if lead.phone %}<button type="button" onclick="startPbxCall('{{ lead.phone|e }}')">Call</button>{% endif %}</strong></td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Email</td><td>{{ lead.email or '—' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Original source</td><td><strong>{{ lead.original_source or lead.source or '—' }}</strong></td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Channel</td><td>{{ 'Outreach' if lead.lead_channel == 'outreach' else 'In-Reach' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Referrer</td><td>{{ lead.referrer or '—' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Campaign</td><td>{{ lead.campaign or '—' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Consultant</td><td>{{ lead.salesperson_name or 'Unassigned' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Package</td><td>{{ lead.interested_package or '—' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Consent</td><td>{{ 'Marketing permitted' if lead.marketing_consent and not lead.do_not_contact else 'No marketing' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Captured</td><td>{{ lead.created_at|string|truncate(16, true, '') }}</td></tr>
+      </table>
+      {% if lead.notes %}<div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px;font-size:.82rem;color:#4b5563;">{{ lead.notes }}</div>{% endif %}
+      {% if lead.closure_reason %}<div class="alert alert-warning" style="margin-top:12px;"><strong>Closure:</strong> {{ lead.closure_reason }}{% if lead.objection_reason %}<br><strong>Objection:</strong> {{ lead.objection_reason }}{% endif %}{% if lead.recycle_reason %}<br><strong>Recycle Reason:</strong> {{ recycle_reason_labels.get(lead.recycle_reason, lead.recycle_reason) }}{% endif %}{% if lead.recycle_due_at %}<br><strong>Automatic Recall:</strong> {{ lead.recycle_due_at }}{% endif %}</div>{% endif %}
+      {% if lead.duplicate_of_lead_id %}<div class="alert alert-info" style="margin-top:12px;">Duplicate of <a href="{{ url_for('leads.lead_detail', lid=lead.duplicate_of_lead_id) }}">{{ lead.duplicate_name or ('prospect #' ~ lead.duplicate_of_lead_id) }}</a></div>{% endif %}
+    </div>
+
+    <div class="form-card" style="margin-bottom:16px;border-left:4px solid #43d3e5;">
+      <h3 style="font-size:.82rem;color:#087f99;text-transform:uppercase;margin-bottom:8px;">Controlled Sales Stage</h3>
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px;"><strong>{{ sales_pipeline.stage_label }}</strong><span style="font-size:.72rem;color:#6b7280;">{{ sales_pipeline.stage }}</span></div>
+      {% if sales_pipeline.next_stages and has_perm('capture_leads') %}
+      <form method="POST" action="{{ url_for('sales_pipeline.transition_stage', lead_id=lead.id) }}">
+        <div class="form-group"><label class="form-label">Move to next controlled stage</label><select name="new_stage" class="form-control">{% for stage in sales_pipeline.next_stages %}<option value="{{ stage }}">{{ stage|replace('_',' ')|title }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label class="form-label">Reason / notes</label><textarea name="notes" class="form-control" rows="2" placeholder="Why is this stage changing?"></textarea></div>
+        <button class="btn btn-secondary btn-sm" type="submit">Record controlled transition</button>
+      </form>
+      {% elif not sales_pipeline.next_stages %}<div style="font-size:.78rem;color:#6b7280;">This is a terminal stage.</div>{% endif %}
+      {% if sales_pipeline.history %}<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:.78rem;font-weight:700;">Stage audit history</summary><div style="margin-top:9px;max-height:190px;overflow:auto;">{% for event in sales_pipeline.history %}<div style="padding:7px 0;border-bottom:1px solid #edf2f7;font-size:.75rem;"><strong>{{ event.from_stage or 'Start' }}</strong> → <strong>{{ event.to_stage }}</strong><br><span style="color:#6b7280;">{{ event.changed_at }}{% if event.reason %} · {{ event.reason }}{% endif %}</span></div>{% endfor %}</div></details>{% endif %}
+    </div>
+
+    {% if lead.lead_status in active_statuses and lead.lead_status != 'show' %}
+    <div class="form-card" style="margin-bottom:16px;border-left:4px solid #f59e0b;">
+      <h3 style="font-size:.82rem;margin-bottom:8px;">Required Next Action</h3>
+      <strong>{{ lead.next_action or 'Not set' }}</strong>
+      <div style="font-size:.8rem;color:#6b7280;margin-top:3px;">{{ lead.next_action_at or 'Follow-up date required' }}</div>
+    </div>
+    {% endif %}
+
+    {% if lead.lead_status == 'hot_prospect_7day' %}
+    <div class="form-card" style="margin-bottom:16px;border-left:4px solid #10b981;">
+      <h3 style="font-size:.82rem;color:#047857;">Decision Follow-Up – 5 Working Days</h3>
+      <div style="font-size:.83rem;">{{ lead.decision_start_date }} → <strong>{{ lead.decision_date }}</strong></div>
+      <div style="font-size:.78rem;margin-top:4px;color:{% if decision_days_remaining is not none and decision_days_remaining <= 1 %}#dc2626{% else %}#047857{% endif %};">{% if decision_days_remaining is not none %}{{ decision_days_remaining }} day{{ 's' if decision_days_remaining != 1 }} remaining{% endif %}</div>
+    </div>
+    {% endif %}
+
+    {% if has_perm('capture_leads') %}
+    <div class="form-card" style="margin-bottom:16px;">
+      <h3 style="font-size:.82rem;color:#e94560;text-transform:uppercase;margin-bottom:12px;">Profile Actions</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+        <a href="{{ url_for('leads.lead_edit', lid=lead.id) }}" class="btn btn-secondary btn-sm">Edit Profile</a>
+        {% if application %}<a href="{{ url_for('applications.application_detail', aid=application.id) }}" class="btn btn-primary btn-sm">Application #{{ application.id }}</a>{% endif %}
+      </div>
+      <details>
+        <summary style="cursor:pointer;font-weight:700;font-size:.82rem;">Change lifecycle / close record</summary>
+        <form method="POST" action="{{ url_for('leads.update_status', lid=lead.id) }}" style="margin-top:12px;">
+          <div class="form-group"><label class="form-label">Lifecycle Stage</label><select name="status" id="lifecycleStatus" class="form-control" onchange="onLifecycleChange()">{% for key,label in statuses %}{% if key != 'joined' %}<option value="{{ key }}" {% if lead.lead_status == key %}selected{% endif %}>{{ label }}</option>{% endif %}{% endfor %}</select></div>
+          <div class="form-group" id="recycleReasonGroup"><label class="form-label">Recycle Reason *</label><select name="recycle_reason" class="form-control">{% for key,label in recycle_reasons %}<option value="{{ key }}" {% if lead.recycle_reason == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+          <div class="form-group"><label class="form-label">Closure Note (optional)</label><input name="closure_reason" class="form-control" placeholder="Extra detail — required for Do Not Contact / Duplicate / Existing Member"></div>
+          <div class="form-group"><label class="form-label">Objection Detail (optional)</label><input name="objection_reason" class="form-control" placeholder="Price, timing, location, facilities…"></div>
+          <div class="form-group"><label class="form-label">Original Prospect ID (Duplicate)</label><input type="number" min="1" name="duplicate_of_lead_id" class="form-control"></div>
+          <div class="alert alert-info">The next action and follow-up time will be selected automatically for the new lifecycle stage.</div>
+          <button class="btn btn-secondary btn-sm" type="submit">Update Lifecycle</button>
+        </form>
+      </details>
+    </div>
+    {% endif %}
+  </section>
+
+  <section style="flex:1;min-width:330px;">
+    {% if has_perm('capture_leads') %}
+    <div class="form-card" style="margin-bottom:16px;border-left:4px solid var(--info);">
+      {% if journey_step == 'contact' %}
+      <h3 style="font-size:.9rem;color:var(--info);text-transform:uppercase;margin-bottom:6px;">Contact Activity</h3>
+      <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">Original source: <strong>{{ lead.original_source or lead.source }}</strong>. Contacted at <strong>{{ contact_now }}</strong>; the saved time is automatic.</p>
+      {% if contact_methods %}
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" id="contactActivityForm">
+        <div class="form-grid-2">
+          <div class="form-group"><label class="form-label">Contact method *</label><select name="activity_type" id="contactMethod" class="form-control" required>{% for key,label in contact_methods %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+          <div class="form-group"><label class="form-label">Contact outcome *</label><select name="outcome" id="contactOutcome" class="form-control" required onchange="updateContactFields()"><option value="appointment_booked">Client made an appointment</option><option value="follow_up_required">Schedule a follow-up</option><option value="not_interested">Client is not interested</option><option value="no_response">No response</option></select></div>
+        </div>
+        <div class="form-group" id="scheduleGroup"><label class="form-label" id="scheduleLabel">Appointment date and time *</label><input type="datetime-local" name="scheduled_for" id="scheduledFor" class="form-control"></div>
+        <div class="form-group" id="reasonGroup" style="display:none;"><label class="form-label" id="reasonLabel">Reason *</label><select name="reason" id="contactReason" class="form-control"><option value="Client is busy">Client is busy</option><option value="Client could not speak">Client could not speak</option><option value="Client needs to speak to spouse / partner">Client needs to speak to spouse / partner</option><option value="Client requested a specific callback time">Client requested a specific callback time</option><option value="Other">Other</option></select></div>
+        <div class="form-group"><label class="form-label">Notes / objection</label><textarea name="notes" class="form-control" rows="3" placeholder="Record what was discussed, the client's request, or the objection."></textarea></div>
+        <button type="submit" class="btn btn-primary">Save Contact Result</button>
+      </form>
+      <script>
+      function updateContactFields() {
+        const outcome = document.getElementById('contactOutcome').value;
+        const needsSchedule = outcome === 'appointment_booked' || outcome === 'follow_up_required';
+        const needsReason = outcome === 'follow_up_required' || outcome === 'not_interested';
+        document.getElementById('scheduleGroup').style.display = needsSchedule ? 'block' : 'none';
+        document.getElementById('scheduledFor').required = needsSchedule;
+        document.getElementById('scheduleLabel').textContent = outcome === 'appointment_booked' ? 'Appointment date and time *' : 'Follow-up date and time *';
+        document.getElementById('reasonGroup').style.display = needsReason ? 'block' : 'none';
+        document.getElementById('contactReason').required = needsReason;
+        document.getElementById('reasonLabel').textContent = outcome === 'not_interested' ? 'Reason / objection *' : 'Why is a follow-up needed? *';
+      }
+      updateContactFields();
+      </script>
+      {% else %}<p class="alert alert-warning">This source has no remote contact activity. Record the walk-in result instead.</p>{% endif %}
+
+      {% elif journey_step in ('appointment_result', 'appointment_follow_up') %}
+      <h3 style="font-size:.9rem;color:var(--warn);text-transform:uppercase;margin-bottom:6px;">{{ 'Missed Appointment Follow-up' if journey_step == 'appointment_follow_up' else 'Appointment Result' }}</h3>
+      <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">Choose the client's actual appointment result.</p>
+      {% if journey_step == 'appointment_result' %}
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="joined"><button type="submit" class="btn btn-primary" style="background:var(--ok)!important;width:100%;">Client Joined → Membership</button></form>
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="no_show"><div class="form-group"><label class="form-label">No-show note *</label><input name="reason" class="form-control" required placeholder="Why did the client not attend?"></div><button type="submit" class="btn btn-secondary">Client Didn't Show</button></form>
+      {% endif %}
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="rescheduled"><div class="form-group"><label class="form-label">New appointment date and time *</label><input type="datetime-local" name="scheduled_for" class="form-control" required></div><button type="submit" class="btn btn-secondary">Reschedule Appointment</button></form>
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="not_interested"><div class="form-group"><label class="form-label">Why is the client not interested? *</label><input name="reason" class="form-control" required></div><button type="submit" class="btn btn-ghost" style="color:var(--err)!important;">Not Interested</button></form>
+
+      {% elif journey_step in ('walk_in', 'membership_decision') %}
+      <h3 style="font-size:.9rem;color:var(--ok);text-transform:uppercase;margin-bottom:6px;">{{ 'Walk-In Details' if journey_step == 'walk_in' else 'Client Attendance Result' }}</h3>
+      <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">Attendance is confirmed. Record whether the client joined or was not interested.</p>
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="visit"><input type="hidden" name="outcome" value="joined"><button type="submit" class="btn btn-primary" style="background:var(--ok)!important;width:100%;">Client Joined → Membership</button></form>
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}"><input type="hidden" name="activity_type" value="visit"><input type="hidden" name="outcome" value="not_interested"><div class="form-group"><label class="form-label">Why is the client not interested? *</label><input name="reason" class="form-control" required></div><button type="submit" class="btn btn-ghost" style="color:var(--err)!important;">Not Interested</button></form>
+
+      {% elif journey_step == 'membership' %}
+      <h3 style="font-size:.9rem;color:var(--ok);text-transform:uppercase;margin-bottom:8px;">Membership Started</h3>
+      <a href="{{ url_for('applications.application_detail', aid=application.id) }}" class="btn btn-primary">Open Membership Application #{{ application.id }}</a>
+      {% else %}
+      <h3 style="font-size:.9rem;color:var(--t2);text-transform:uppercase;margin-bottom:8px;">Sales Journey Complete</h3>
+      <p style="color:var(--t2);font-size:.8rem;">No further sales activity is required on this prospect.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="form-card">
+      <h3 style="font-size:.85rem;color:#e94560;text-transform:uppercase;margin-bottom:14px;">Chronological Sales Timeline</h3>
+      {% for activity in activities %}
+      <article style="border-left:3px solid {% if activity.status == 'scheduled' %}#f59e0b{% elif activity.outcome in ('declined','not_interested','no_show') %}#ef4444{% else %}#3b82f6{% endif %};padding:2px 0 12px 12px;margin-bottom:12px;border-bottom:1px solid #f1f5f9;">
+        <div style="display:flex;justify-content:space-between;gap:10px;"><strong style="font-size:.83rem;">{{ activity.activity_type|replace('_',' ')|title }}{% if activity.outcome %} · {{ activity.outcome|replace('_',' ')|title }}{% endif %}</strong><span class="badge {% if activity.status == 'scheduled' %}badge-warning{% else %}badge-gray{% endif %}">{{ activity.status }}</span></div>
+        {% if activity.notes %}<div style="font-size:.8rem;color:#4b5563;margin-top:4px;">{{ activity.notes }}</div>{% endif %}
+        {% if activity.reason %}<div style="font-size:.78rem;color:#7c2d12;margin-top:3px;"><strong>Reason:</strong> {{ activity.reason }}</div>{% endif %}
+        {% if activity.scheduled_for %}<div style="font-size:.76rem;color:#92400e;margin-top:3px;"><strong>Scheduled:</strong> {{ activity.scheduled_for }}</div>{% endif %}
+        {% if activity.next_action %}<div style="font-size:.76rem;color:#1d4ed8;margin-top:3px;"><strong>Next:</strong> {{ activity.next_action }} {{ activity.follow_up_at or '' }}</div>{% endif %}
+        <div style="font-size:.72rem;color:#9ca3af;margin-top:5px;">{{ activity.user_name or 'System' }} · {{ activity.occurred_at }}</div>
+        {% if activity.status == 'scheduled' and has_perm('capture_leads') %}<form method="POST" action="{{ url_for('leads.complete_activity', activity_id=activity.id) }}" style="margin-top:6px;"><button class="btn btn-ghost btn-sm">Mark Complete</button></form>{% endif %}
+      </article>
+      {% else %}<p style="font-size:.82rem;color:#9ca3af;">No sales activity recorded yet.</p>{% endfor %}
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  const type = document.getElementById('activityType');
+  const outcome = document.getElementById('activityOutcome');
+  if (!type || !outcome) return;
+  function filterOutcomes() {
+    let first = null;
+    for (const option of outcome.options) {
+      const visible = option.dataset.kind === type.value;
+      option.hidden = !visible;
+      option.disabled = !visible;
+      if (visible && !first) first = option;
+    }
+    if (first) outcome.value = first.value;
+  }
+  type.addEventListener('change', filterOutcomes);
+  filterOutcomes();
+})();
+
+function onLifecycleChange() {
+  const statusEl = document.getElementById('lifecycleStatus');
+  const groupEl = document.getElementById('recycleReasonGroup');
+  if (!statusEl || !groupEl) return;
+  groupEl.style.display = (statusEl.value === 'recycle') ? 'block' : 'none';
+}
+onLifecycleChange();
+</script>
+{% endblock %}
+
+<script>
+async function startPbxCall(phone) {
+  const token = document.querySelector('input[name="csrf_token"]')?.value || '';
+  try {
+    const r = await fetch('{{ url_for("pbx.dial") }}', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-CSRFToken': token},
+      body: JSON.stringify({phone: phone})
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'PBX call failed');
+    alert('Call started.');
+  } catch (e) { alert(e.message); }
+}
+</script>

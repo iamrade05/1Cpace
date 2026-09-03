@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Timesheets | 1Cpase{% endblock %}
+{% block page_title %}Timesheets{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+  <div style="display:flex; gap:8px;">
+    <a href="{{ url_for('hr.timesheets_index', week=prev_week) }}" class="btn btn-ghost btn-sm">&larr; Prev Week</a>
+    <span style="align-self:center; color:#6b7280; font-size:0.85rem;">{{ week_start }} – {{ week_end }}</span>
+    <a href="{{ url_for('hr.timesheets_index', week=next_week) }}" class="btn btn-ghost btn-sm">Next Week &rarr;</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header"><h2>Weekly Totals</h2></div>
+  <div class="card-body">
+    {% if staff %}
+    <table>
+      <thead><tr><th>Staff</th><th>Total Hours</th><th></th></tr></thead>
+      <tbody>
+        {% for s in staff %}
+        <tr>
+          <td style="font-weight:600;">{{ s.first_name }} {{ s.last_name }}</td>
+          <td>{{ totals.get(s.id, 0) }}h</td>
+          <td><a href="{{ url_for('hr.timesheet_staff_week', sid=s.id, week=week_start) }}" class="btn btn-ghost btn-sm">View Week</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state" style="padding:24px;"><p>No employees in the register yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>Capture Timesheet</h2></div>
+  <div class="card-body">
+    <form method="post" action="{{ url_for('hr.timesheets_save') }}">
+      <input type="hidden" name="week_start" value="{{ week_start }}">
+      <div class="form-group" style="max-width:320px;">
+        <label>Staff Member</label>
+        <select name="staff_id" required>
+          <option value="">— Choose staff —</option>
+          {% for s in staff %}
+          <option value="{{ s.id }}">{{ s.first_name }} {{ s.last_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr><th>Day</th><th>Time In</th><th>Lunch Out</th><th>Lunch In</th><th>Time Out</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            {% for d in week %}
+            {% set ds = d.isoformat() %}
+            <tr>
+              <td style="font-weight:600; white-space:nowrap;">{{ d.strftime('%a %d %b') }}</td>
+              <td><input type="time" name="ti_{{ ds }}"></td>
+              <td><input type="time" name="lo_{{ ds }}"></td>
+              <td><input type="time" name="li_{{ ds }}"></td>
+              <td><input type="time" name="to_{{ ds }}"></td>
+              <td><input type="text" name="note_{{ ds }}" style="width:140px;"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save Timesheet</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

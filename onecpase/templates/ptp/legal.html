@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Legal Referrals | 1Cpase{% endblock %}
+{% block page_title %}Legal Referrals{% endblock %}
+
+{% block content %}
+<style>
+.legal-kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:22px; }
+.legal-card {
+  background:#fff; border:1px solid #e4e8f0; border-radius:8px;
+  padding:16px 18px; box-shadow:0 4px 14px rgba(16,24,40,.05);
+}
+.legal-card .label { font-size:0.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#9ca3af; margin-bottom:4px; }
+.legal-card .value { font-size:1.55rem; font-weight:800; color:#172033; line-height:1.1; }
+.legal-card .sub { font-size:0.74rem; color:#9ca3af; margin-top:4px; }
+.threshold-pill {
+  display:inline-flex; align-items:center; gap:6px; padding:5px 12px;
+  border-radius:999px; background:#f3e8ff; color:#6b21a8; font-size:0.78rem; font-weight:700;
+}
+</style>
+
+<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #e4e8f0;overflow-x:auto;">
+  <a href="{{ url_for('collections.collections_index') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;border-bottom:2px solid transparent;color:#6b7280;white-space:nowrap;">💳 Payment Records</a>
+  <a href="{{ url_for('collections.call_queue') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;border-bottom:2px solid transparent;color:#6b7280;white-space:nowrap;">☎ Collections Call Queue</a>
+  <a href="{{ url_for('ptp.ptp_dashboard') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;border-bottom:2px solid transparent;color:#6b7280;white-space:nowrap;">🔴 PTP / Collection</a>
+  <a href="{{ url_for('ptp.legal_referrals') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;border-bottom:2px solid #7c3aed;margin-bottom:-2px;color:#7c3aed;white-space:nowrap;">⚖ Legal Referrals</a>
+  <a href="{{ url_for('access_report.index') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;border-bottom:2px solid transparent;color:#6b7280;white-space:nowrap;">📋 Access Report</a>
+</div>
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+  <div>
+    <h2 style="font-size:1.1rem;font-weight:800;color:#172033;margin:0;">Legal referral queue</h2>
+    <div style="font-size:0.78rem;color:#667085;margin-top:2px;">Clients owing more than {{ legal_threshold }} months are ready for review.</div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="{{ url_for('ptp.ptp_dashboard') }}" class="btn btn-ghost btn-sm">← Back to PTP</a>
+    <a href="{{ url_for('collections.call_queue') }}" class="btn btn-ghost btn-sm">Call Queue</a>
+  </div>
+</div>
+
+<div class="legal-kpi">
+  <div class="legal-card">
+    <div class="label">Open referrals</div>
+    <div class="value">{{ open_referral_count }}</div>
+    <div class="sub">Active legal cases on file</div>
+  </div>
+  <div class="legal-card">
+    <div class="label">Ready to refer</div>
+    <div class="value">{{ candidate_count }}</div>
+    <div class="sub">Not yet marked as referred</div>
+  </div>
+  <div class="legal-card">
+    <div class="label">Threshold</div>
+    <div class="value">{{ legal_threshold }}+ months</div>
+    <div class="sub">Automatic review trigger</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header" style="flex-wrap:wrap;gap:10px;">
+    <h2>Clients ready for Legal</h2>
+    <span class="threshold-pill">More than {{ legal_threshold }} months in arrears</span>
+  </div>
+  <div class="card-body">
+    {% if candidates %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Member</th>
+            <th>Contact</th>
+            <th>Months</th>
+            <th>Arrears</th>
+            <th>Oldest Month</th>
+            <th>PTP</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for member in candidates %}
+          <tr>
+            <td>
+              <a href="{{ url_for('members.member_detail', mid=member.id) }}#ptp" style="color:#1769aa;text-decoration:none;font-weight:700;">
+                {{ member.name }}
+              </a>
+              <div style="font-size:0.72rem;color:#9ca3af;">{{ member.member_ref or '—' }} • {{ member.member_status }}</div>
+            </td>
+            <td style="font-size:0.82rem;color:#374151;white-space:nowrap;">{{ member.contact or '—' }}</td>
+            <td style="font-weight:800;color:#7c3aed;white-space:nowrap;">{{ member.months_in_arrears }}</td>
+            <td style="font-weight:800;color:#e11d48;white-space:nowrap;">R{{ "%.2f"|format(member.total_arrears or 0) }}</td>
+            <td style="font-size:0.82rem;color:#6b7280;white-space:nowrap;">{{ member.oldest_arrears_month or '—' }}</td>
+            <td style="font-size:0.78rem;color:#6b7280;">
+              {% if member.ptp_status %}{{ member.ptp_status|replace('_',' ')|title }}{% else %}No PTP{% endif %}
+            </td>
+            <td style="white-space:nowrap;">
+              <form method="post" action="{{ url_for('ptp.refer_to_legal', mid=member.id) }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <input type="hidden" name="reason" value="More than 6 months in arrears">
+                <button type="submit" class="btn btn-primary btn-sm">Refer to Legal</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:42px 24px;">
+      <div class="empty-icon">✅</div>
+      <p>No new legal referrals are waiting right now.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Open legal referrals</h2>
+  </div>
+  <div class="card-body">
+    {% if open_referrals %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Member</th>
+            <th>Referred</th>
+            <th>Months</th>
+            <th>Arrears</th>
+            <th>Reason</th>
+            <th>Referred by</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for referral in open_referrals %}
+          <tr>
+            <td>
+              <a href="{{ url_for('members.member_detail', mid=referral.member_id) }}#ptp" style="color:#1769aa;text-decoration:none;font-weight:700;">
+                {{ referral.first_name }} {{ referral.last_name }}
+              </a>
+              <div style="font-size:0.72rem;color:#9ca3af;">{{ referral.member_ref or '—' }} • {{ referral.member_status }}</div>
+            </td>
+            <td style="white-space:nowrap;">{{ referral.referred_at[:10] if referral.referred_at else '—' }}</td>
+            <td style="font-weight:800;color:#7c3aed;white-space:nowrap;">{{ referral.arrears_months }}</td>
+            <td style="font-weight:800;color:#e11d48;white-space:nowrap;">R{{ "%.2f"|format(referral.arrears_amount or 0) }}</td>
+            <td style="font-size:0.82rem;color:#374151;">{{ referral.reason or '—' }}</td>
+            <td style="font-size:0.82rem;color:#6b7280;white-space:nowrap;">{{ referral.referred_by_name or 'System' }}</td>
+            <td style="white-space:nowrap;">
+              <form method="post" action="{{ url_for('ptp.resolve_legal_referral', mid=referral.member_id) }}" style="margin:0;">
+                <button type="submit" class="btn btn-ghost btn-sm">Mark resolved</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:42px 24px;">
+      <div class="empty-icon">📁</div>
+      <p>No open legal referrals yet.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

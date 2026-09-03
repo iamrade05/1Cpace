@@ -1,0 +1,935 @@
+{
+    "title": "nupay",
+    "steps": [
+        {
+            "type": "setViewport",
+            "width": 1706,
+            "height": 810,
+            "deviceScaleFactor": 1,
+            "isMobile": false,
+            "hasTouch": false,
+            "isLandscape": false
+        },
+        {
+            "type": "navigate",
+            "url": "https://merchant.nupay.co.za/debicheck/000025500014054/mandate-search",
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck/000025500014054/mandate-search",
+                    "title": "NuPayments"
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Transaction Upload"
+                ],
+                [
+                    "div.relative > nav div:nth-of-type(1) > div:nth-of-type(3) a"
+                ],
+                [
+                    "xpath//html/body/div[2]/nav/div[3]/div[1]/div[3]/div/div/a"
+                ],
+                [
+                    "pierce/div.relative > nav div:nth-of-type(1) > div:nth-of-type(3) a"
+                ],
+                [
+                    "text/Transaction Upload"
+                ]
+            ],
+            "offsetY": 12.40277099609375,
+            "offsetX": 88
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "#transaction-form > div.mb-6 select"
+                ],
+                [
+                    "xpath///*[@id=\"transaction-form\"]/div[2]/div/div/select"
+                ],
+                [
+                    "pierce/#transaction-form > div.mb-6 select"
+                ]
+            ],
+            "offsetY": 18.125,
+            "offsetX": 556.1111145019531
+        },
+        {
+            "type": "change",
+            "value": "real time",
+            "selectors": [
+                [
+                    "#transaction-form > div.mb-6 select"
+                ],
+                [
+                    "xpath///*[@id=\"transaction-form\"]/div[2]/div/div/select"
+                ],
+                [
+                    "pierce/#transaction-form > div.mb-6 select"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "#transaction-form > div.mb-6 select"
+                ],
+                [
+                    "xpath///*[@id=\"transaction-form\"]/div[2]/div/div/select"
+                ],
+                [
+                    "pierce/#transaction-form > div.mb-6 select"
+                ]
+            ],
+            "offsetY": 23.125,
+            "offsetX": 552.1111145019531
+        },
+        {
+            "type": "change",
+            "value": "DELAYED",
+            "selectors": [
+                [
+                    "#transaction-form > div.mb-6 select"
+                ],
+                [
+                    "xpath///*[@id=\"transaction-form\"]/div[2]/div/div/select"
+                ],
+                [
+                    "pierce/#transaction-form > div.mb-6 select"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Enter 13 digit RSA ID Number"
+                ],
+                [
+                    "#id_number_rsa"
+                ],
+                [
+                    "xpath///*[@id=\"id_number_rsa\"]"
+                ],
+                [
+                    "pierce/#id_number_rsa"
+                ]
+            ],
+            "offsetY": 19.347213745117188,
+            "offsetX": 104.111083984375
+        },
+        {
+            "type": "change",
+            "value": "0000000000000",
+            "selectors": [
+                [
+                    "aria/Enter 13 digit RSA ID Number"
+                ],
+                [
+                    "#id_number_rsa"
+                ],
+                [
+                    "xpath///*[@id=\"id_number_rsa\"]"
+                ],
+                [
+                    "pierce/#id_number_rsa"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Client Reference 1 (Required)"
+                ],
+                [
+                    "#client_ref_1"
+                ],
+                [
+                    "xpath///*[@id=\"client_ref_1\"]"
+                ],
+                [
+                    "pierce/#client_ref_1"
+                ]
+            ],
+            "offsetY": 19.34722900390625,
+            "offsetX": 89.11111450195312
+        },
+        {
+            "type": "change",
+            "value": "1523422",
+            "selectors": [
+                [
+                    "aria/Client Reference 1 (Required)"
+                ],
+                [
+                    "#client_ref_1"
+                ],
+                [
+                    "xpath///*[@id=\"client_ref_1\"]"
+                ],
+                [
+                    "pierce/#client_ref_1"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Client Reference 2 (Required)"
+                ],
+                [
+                    "#client_ref_2"
+                ],
+                [
+                    "xpath///*[@id=\"client_ref_2\"]"
+                ],
+                [
+                    "pierce/#client_ref_2"
+                ]
+            ],
+            "offsetY": 12.34722900390625,
+            "offsetX": 139.111083984375
+        },
+        {
+            "type": "change",
+            "value": "5252",
+            "selectors": [
+                [
+                    "aria/Client Reference 2 (Required)"
+                ],
+                [
+                    "#client_ref_2"
+                ],
+                [
+                    "xpath///*[@id=\"client_ref_2\"]"
+                ],
+                [
+                    "pierce/#client_ref_2"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Debtor Account Name (Required)"
+                ],
+                [
+                    "#debtor_account_name"
+                ],
+                [
+                    "xpath///*[@id=\"debtor_account_name\"]"
+                ],
+                [
+                    "pierce/#debtor_account_name"
+                ]
+            ],
+            "offsetY": 24.34722900390625,
+            "offsetX": 147.11111450195312
+        },
+        {
+            "type": "change",
+            "value": "M",
+            "selectors": [
+                [
+                    "aria/Debtor Account Name (Required)"
+                ],
+                [
+                    "#debtor_account_name"
+                ],
+                [
+                    "xpath///*[@id=\"debtor_account_name\"]"
+                ],
+                [
+                    "pierce/#debtor_account_name"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "keyUp",
+            "key": "m",
+            "target": "main"
+        },
+        {
+            "type": "change",
+            "value": "M R",
+            "selectors": [
+                [
+                    "aria/Debtor Account Name (Required)"
+                ],
+                [
+                    "#debtor_account_name"
+                ],
+                [
+                    "xpath///*[@id=\"debtor_account_name\"]"
+                ],
+                [
+                    "pierce/#debtor_account_name"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "keyUp",
+            "key": "r",
+            "target": "main"
+        },
+        {
+            "type": "change",
+            "value": "M Radebe",
+            "selectors": [
+                [
+                    "aria/Debtor Account Name (Required)"
+                ],
+                [
+                    "#debtor_account_name"
+                ],
+                [
+                    "xpath///*[@id=\"debtor_account_name\"]"
+                ],
+                [
+                    "pierce/#debtor_account_name"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "keyDown",
+            "target": "main",
+            "key": "Tab"
+        },
+        {
+            "type": "keyUp",
+            "key": "Tab",
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(6) select"
+                ],
+                [
+                    "xpath///*[@id=\"transaction-form\"]/div[4]/div[6]/div/select"
+                ],
+                [
+                    "pierce/div:nth-of-type(6) select"
+                ]
+            ],
+            "offsetY": 26.34722900390625,
+            "offsetX": 99.111083984375
+        },
+        {
+            "type": "change",
+            "value": "02",
+            "selectors": [
+                [
+                    "div:nth-of-type(6) select"
+                ],
+                [
+                    "xpath///*[@id=\"transaction-form\"]/div[4]/div[6]/div/select"
+                ],
+                [
+                    "pierce/div:nth-of-type(6) select"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Debtor Account Number (Required)"
+                ],
+                [
+                    "#debtor_account_number"
+                ],
+                [
+                    "xpath///*[@id=\"debtor_account_number\"]"
+                ],
+                [
+                    "pierce/#debtor_account_number"
+                ]
+            ],
+            "offsetY": 15.34722900390625,
+            "offsetX": 204.11111450195312
+        },
+        {
+            "type": "change",
+            "value": "10207199971",
+            "selectors": [
+                [
+                    "aria/Debtor Account Number (Required)"
+                ],
+                [
+                    "#debtor_account_number"
+                ],
+                [
+                    "xpath///*[@id=\"debtor_account_number\"]"
+                ],
+                [
+                    "pierce/#debtor_account_number"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Banks (Required)"
+                ],
+                [
+                    "#banks"
+                ],
+                [
+                    "xpath///*[@id=\"banks\"]"
+                ],
+                [
+                    "pierce/#banks"
+                ]
+            ],
+            "offsetY": 15.34722900390625,
+            "offsetX": 199.11111450195312
+        },
+        {
+            "type": "change",
+            "value": "1",
+            "selectors": [
+                [
+                    "aria/Banks (Required)"
+                ],
+                [
+                    "#banks"
+                ],
+                [
+                    "xpath///*[@id=\"banks\"]"
+                ],
+                [
+                    "pierce/#banks"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/No of Instalments (Required)"
+                ],
+                [
+                    "#no_of_instalments"
+                ],
+                [
+                    "xpath///*[@id=\"no_of_instalments\"]"
+                ],
+                [
+                    "pierce/#no_of_instalments"
+                ]
+            ],
+            "offsetY": 10.34722900390625,
+            "offsetX": 157.111083984375
+        },
+        {
+            "type": "change",
+            "value": "99",
+            "selectors": [
+                [
+                    "aria/No of Instalments (Required)"
+                ],
+                [
+                    "#no_of_instalments"
+                ],
+                [
+                    "xpath///*[@id=\"no_of_instalments\"]"
+                ],
+                [
+                    "pierce/#no_of_instalments"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Tracking Selected (Required)"
+                ],
+                [
+                    "#tracking_selected"
+                ],
+                [
+                    "xpath///*[@id=\"tracking_selected\"]"
+                ],
+                [
+                    "pierce/#tracking_selected"
+                ]
+            ],
+            "offsetY": 21.6805419921875,
+            "offsetX": 282.1111145019531
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "body"
+                ],
+                [
+                    "xpath//html/body"
+                ],
+                [
+                    "pierce/body"
+                ]
+            ],
+            "offsetY": 363,
+            "offsetX": 1104
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "span.flatpickr-next-month > svg"
+                ],
+                [
+                    "xpath//html/body/div[5]/div[1]/span[2]/svg"
+                ],
+                [
+                    "pierce/span.flatpickr-next-month > svg"
+                ]
+            ],
+            "offsetY": 2.6805419921875,
+            "offsetX": 8.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/September 1, 2026"
+                ],
+                [
+                    "div.flatpickr-days span:nth-of-type(3)"
+                ],
+                [
+                    "xpath//html/body/div[5]/div[2]/div/div[2]/div/span[3]"
+                ],
+                [
+                    "pierce/div.flatpickr-days span:nth-of-type(3)"
+                ]
+            ],
+            "offsetY": 16.6805419921875,
+            "offsetX": 20.5555419921875
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Instalment Value (Required)"
+                ],
+                [
+                    "#instalment_value"
+                ],
+                [
+                    "xpath///*[@id=\"instalment_value\"]"
+                ],
+                [
+                    "pierce/#instalment_value"
+                ]
+            ],
+            "offsetY": 20.6805419921875,
+            "offsetX": 87.111083984375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Instalment Value (Required)"
+                ],
+                [
+                    "#instalment_value"
+                ],
+                [
+                    "xpath///*[@id=\"instalment_value\"]"
+                ],
+                [
+                    "pierce/#instalment_value"
+                ]
+            ],
+            "offsetY": 25.6805419921875,
+            "offsetX": 84.111083984375
+        },
+        {
+            "type": "change",
+            "value": "302.25",
+            "selectors": [
+                [
+                    "aria/Instalment Value (Required)"
+                ],
+                [
+                    "#instalment_value"
+                ],
+                [
+                    "xpath///*[@id=\"instalment_value\"]"
+                ],
+                [
+                    "pierce/#instalment_value"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/SUBMIT"
+                ],
+                [
+                    "#btnSubmit"
+                ],
+                [
+                    "xpath///*[@id=\"btnSubmit\"]"
+                ],
+                [
+                    "pierce/#btnSubmit"
+                ]
+            ],
+            "offsetY": 8.6805419921875,
+            "offsetX": 51.111114501953125
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/CONFIRM"
+                ],
+                [
+                    "#confirmation-wrapper button:nth-of-type(2)"
+                ],
+                [
+                    "xpath///*[@id=\"confirmation-modal\"]/div[2]/div/div/div/div[2]/button[2]"
+                ],
+                [
+                    "pierce/#confirmation-wrapper button:nth-of-type(2)"
+                ],
+                [
+                    "text/Confirm"
+                ]
+            ],
+            "offsetY": 16.66668701171875,
+            "offsetX": 48.9583740234375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div.mb-4"
+                ],
+                [
+                    "xpath///*[@id=\"confirmation-modal\"]/div[2]/div/div/div/div[1]"
+                ],
+                [
+                    "pierce/div.mb-4"
+                ]
+            ],
+            "offsetY": 54,
+            "offsetX": 279.111083984375,
+            "duration": 2384.5
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "chatgpt-sidebar",
+                    "div.gap-\\[6px\\] > div:nth-of-type(1) path"
+                ],
+                [
+                    "pierce/div.gap-\\[6px\\] > div:nth-of-type(1) path"
+                ]
+            ],
+            "offsetY": 8.680557250976562,
+            "offsetX": 5.625
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/DONE"
+                ],
+                [
+                    "button:nth-of-type(4)"
+                ],
+                [
+                    "xpath///*[@id=\"confirmation-modal\"]/div[2]/div/div/div/div[2]/button[4]"
+                ],
+                [
+                    "pierce/button:nth-of-type(4)"
+                ],
+                [
+                    "text/Done"
+                ]
+            ],
+            "offsetY": 19.111083984375,
+            "offsetX": 38.7916259765625,
+            "duration": 391.40000000596046,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck/000025500014054/mandate-upload",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/DebiCheck"
+                ],
+                [
+                    "div.px-4 div:nth-of-type(2) > a"
+                ],
+                [
+                    "xpath//html/body/div[2]/div[2]/nav/div[1]/div/div[1]/div/div[2]/a"
+                ],
+                [
+                    "pierce/div.px-4 div:nth-of-type(2) > a"
+                ]
+            ],
+            "offsetY": 14,
+            "offsetX": 57.02777099609375,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/DebiCheck"
+                ],
+                [
+                    "div.px-4 div:nth-of-type(2) > a"
+                ],
+                [
+                    "xpath//html/body/div[2]/div[2]/nav/div[1]/div/div[1]/div/div[2]/a"
+                ],
+                [
+                    "pierce/div.px-4 div:nth-of-type(2) > a"
+                ]
+            ],
+            "offsetY": 19,
+            "offsetX": 67.02777099609375,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/DebiCheck"
+                ],
+                [
+                    "div.px-4 div:nth-of-type(2) > a"
+                ],
+                [
+                    "xpath//html/body/div[2]/div[2]/nav/div[1]/div/div[1]/div/div[2]/a"
+                ],
+                [
+                    "pierce/div.px-4 div:nth-of-type(2) > a"
+                ]
+            ],
+            "offsetY": 18,
+            "offsetX": 65.02777099609375,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "span.text-sm"
+                ],
+                [
+                    "xpath///*[@id=\"merchantSelect\"]/div/button/span[1]"
+                ],
+                [
+                    "pierce/span.text-sm"
+                ]
+            ],
+            "offsetY": 12.277778625488281,
+            "offsetX": 116.11111068725586
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Mandate Reports",
+                    "aria/[role=\"generic\"]"
+                ],
+                [
+                    "a:nth-of-type(2) > span"
+                ],
+                [
+                    "xpath///*[@id=\"main-content\"]/div/div[2]/div/div/div/div[1]/div/div/div/div/a[2]/span"
+                ],
+                [
+                    "pierce/a:nth-of-type(2) > span"
+                ],
+                [
+                    "text/Mandate Reports"
+                ]
+            ],
+            "offsetY": 12.222213745117188,
+            "offsetX": 87.52777099609375,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck/000025500014054/mandate-search",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "#mandate_search_form"
+                ],
+                [
+                    "xpath///*[@id=\"mandate_search_form\"]"
+                ],
+                [
+                    "pierce/#mandate_search_form"
+                ]
+            ],
+            "offsetY": 671.7916564941406,
+            "offsetX": 291.1111145019531
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Date Updated",
+                    "aria/[role=\"image\"]"
+                ],
+                [
+                    "div:nth-of-type(5) button > svg"
+                ],
+                [
+                    "xpath///*[@id=\"mandate_search_form\"]/div[5]/div/div/button/svg"
+                ],
+                [
+                    "pierce/div:nth-of-type(5) button > svg"
+                ]
+            ],
+            "offsetY": 13.138885498046875,
+            "offsetX": 14
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Date Created"
+                ],
+                [
+                    "div:nth-of-type(5) li:nth-of-type(2)"
+                ],
+                [
+                    "xpath///*[@id=\"option-1\"]"
+                ],
+                [
+                    "pierce/div:nth-of-type(5) li:nth-of-type(2)"
+                ]
+            ],
+            "offsetY": 22.138885498046875,
+            "offsetX": 214.22222900390625
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/CONTINUE"
+                ],
+                [
+                    "#btnContinue"
+                ],
+                [
+                    "xpath///*[@id=\"btnContinue\"]"
+                ],
+                [
+                    "pierce/#btnContinue"
+                ],
+                [
+                    "text/Continue"
+                ]
+            ],
+            "offsetY": 15.6944580078125,
+            "offsetX": 55.111114501953125,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://merchant.nupay.co.za/debicheck/000025500014054/mandate-results",
+                    "title": ""
+                }
+            ]
+        }
+    ]
+}

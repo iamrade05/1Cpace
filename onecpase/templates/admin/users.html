@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}User Management | 1Cpase{% endblock %}
+{% block page_title %}User Management{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+  <p style="font-size:0.85rem;color:#6b7280;">Manage staff accounts and module permissions.</p>
+  <a href="{{ url_for('admin.user_add') }}" class="btn btn-primary">+ Add User</a>
+</div>
+
+<div class="table-card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Username</th>
+        <th>Role</th>
+        <th>Department</th>
+        <th>PBX</th>
+        <th>Lead Rotation</th>
+        <th>Email</th>
+        <th>Last Login</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td style="font-weight:600;">{{ u.full_name }}</td>
+        <td style="color:#6b7280;font-size:0.82rem;">{{ u.username }}</td>
+        <td>
+          <span style="font-size:0.72rem;font-weight:700;padding:2px 9px;border-radius:10px;text-transform:uppercase;
+                       background:{% if u.role=='admin' %}#185FA5;color:#fff{% elif u.role=='manager' %}#EEF4FA;color:#185FA5{% else %}#f3f4f6;color:#6b7280{% endif %};">
+            {{ u.role }}
+          </span>
+        </td>
+        <td style="font-size:0.82rem;">{{ u.department or '—' }}</td>
+        <td style="font-size:0.82rem;font-weight:700;">{{ u.pbx_extension or '—' }}</td>
+        <td style="font-size:0.78rem;">
+          {% if u.is_sales_consultant %}
+          #{{ u.sales_rotation_order or '—' }} ·
+          <span style="color:{{ 'var(--ok)' if u.sales_available and u.active else 'var(--t2)' }};">
+            {{ 'Available' if u.sales_available and u.active else 'Unavailable' }}
+          </span>
+          {% if u.sales_skip_remaining %}<br><span style="color:var(--warn);">Category {{ u.sales_disqualification_category }} · {{ u.sales_skip_remaining }} skips left</span>{% endif %}
+          {% else %}—{% endif %}
+          {% if u.is_collections_caller %}<br><span style="color:var(--info);">Collections caller</span>{% endif %}
+        </td>
+        <td style="font-size:0.82rem;color:#6b7280;">{{ u.email or '—' }}</td>
+        <td style="font-size:0.78rem;color:#9ca3af;">{{ u.last_login[:16] if u.last_login else 'Never' }}</td>
+        <td>
+          <span style="font-size:0.72rem;font-weight:600;padding:2px 8px;border-radius:10px;
+                       background:{% if u.active %}#d1fae5;color:#065f46{% else %}#fee2e2;color:#991b1b{% endif %};">
+            {{ 'Active' if u.active else 'Inactive' }}
+          </span>
+        </td>
+        <td style="display:flex;gap:8px;">
+          <a href="{{ url_for('admin.user_edit', uid=u.id) }}" class="btn btn-ghost btn-sm">Edit</a>
+          {% if u.id != session.user_id %}
+          <form method="POST" action="{{ url_for('admin.user_toggle', uid=u.id) }}" style="margin:0;">
+            <button class="btn btn-sm" style="background:{% if u.active %}#fee2e2;color:#991b1b{% else %}#d1fae5;color:#065f46{% endif %};">
+              {{ 'Disable' if u.active else 'Enable' }}
+            </button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

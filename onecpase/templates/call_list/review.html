@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Review Call List | 1Cpase{% endblock %}
+{% block page_title %}Review Call List — {{ upload.original_filename }}{% endblock %}
+
+{% block content %}
+<style>
+.clrow-form { display:flex; flex-direction:column; gap:4px; }
+.clrow-form input, .clrow-form select { padding:5px 7px; border:1px solid #d1d5db; border-radius:5px; font-size:.8rem; width:100%; }
+.clrow-form input:disabled, .clrow-form select:disabled { background:#f9fafb; color:#9ca3af; }
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+  <a href="{{ url_for('call_list.index') }}" class="btn btn-ghost btn-sm">← All Uploads</a>
+  <span style="font-weight:800;color:#172033;">{{ upload.original_filename }}</span>
+  <span class="pbadge" style="background:#f1f5f9;color:#374151;">{{ upload.row_count }} row(s) found</span>
+  {% if upload.imported_count %}
+  <span class="pbadge" style="background:#dcfce7;color:#166534;">{{ upload.imported_count }} imported</span>
+  {% endif %}
+</div>
+
+{% if upload.parser_message %}
+<div style="margin-bottom:16px;padding:10px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;font-size:.83rem;color:#0369a1;">
+  {{ upload.parser_message }}
+</div>
+{% endif %}
+
+<form id="import-form" method="POST" action="{{ url_for('call_list.import_rows', upload_id=upload.id) }}"></form>
+
+<div class="card">
+  <div class="card-body" style="padding:0;">
+    {% if rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:36px;"></th>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>What was said</th>
+            <th>Outcome</th>
+            <th>Appt. Date</th>
+            <th>Appt. Time</th>
+            <th>Confidence</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>
+              {% if row.imported_lead_id %}
+              <span title="Already imported">✓</span>
+              {% else %}
+              <input type="checkbox" name="row_id" value="{{ row.id }}" form="import-form">
+              {% endif %}
+            </td>
+            {% set editable = not row.imported_lead_id %}
+            <td colspan="6" style="padding:0;">
+              <form id="row-{{ row.id }}" method="POST"
+                    action="{{ url_for('call_list.update_row', upload_id=upload.id, row_id=row.id) }}"
+                    class="clrow-form" style="display:grid;grid-template-columns:1fr 1fr 2fr 1fr 1fr 1fr;gap:6px;padding:10px 12px;">
+                <input type="text" name="client_name" value="{{ row.client_name or '' }}" placeholder="Name" {% if not editable %}disabled{% endif %}>
+                <input type="text" name="contact" value="{{ row.contact or '' }}" placeholder="Phone" {% if not editable %}disabled{% endif %}>
+                <input type="text" name="raw_response" value="{{ row.raw_response or '' }}" placeholder="What was said" {% if not editable %}disabled{% endif %}>
+                <select name="mapped_outcome" {% if not editable %}disabled{% endif %}>
+                  {% for k, v in outcomes %}
+                  <option value="{{ k }}" {% if row.mapped_outcome==k %}selected{% endif %}>{{ v }}</option>
+                  {% endfor %}
+                </select>
+                <input type="date" name="appointment_date" value="{{ row.appointment_date or '' }}" {% if not editable %}disabled{% endif %}>
+                <input type="time" name="appointment_time" value="{{ row.appointment_time or '' }}" {% if not editable %}disabled{% endif %}>
+              </form>
+            </td>
+            <td style="font-size:.75rem;color:#9ca3af;white-space:nowrap;">{{ row.confidence|round|int }}%</td>
+            <td style="white-space:nowrap;">
+              {% if editable %}
+              <button type="submit" form="row-{{ row.id }}" class="btn btn-ghost btn-sm">Save</button>
+              {% else %}
+              <a href="{{ url_for('members.members_index') }}" style="font-size:.72rem;color:#9ca3af;">Lead #{{ row.imported_lead_id }}</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding:14px 16px;border-top:1px solid #f0f0f0;">
+      <button type="submit" form="import-form" class="btn btn-primary">Import Selected Rows into Sales CRM</button>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:48px 24px;">
+      <div class="empty-icon">🔍</div>
+      <p>No rows were detected in this document.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

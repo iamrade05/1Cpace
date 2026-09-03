@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Nutrition Guide | 1Cpase{% endblock %}
+{% block page_title %}Nutrition Guide{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+  <form method="get" style="display:flex; gap:8px;">
+    <select name="category" onchange="this.form.submit()">
+      <option value="all" {% if category == 'all' %}selected{% endif %}>All Categories</option>
+      <option value="macro" {% if category == 'macro' %}selected{% endif %}>Macronutrients</option>
+      <option value="micro" {% if category == 'micro' %}selected{% endif %}>Micronutrients</option>
+    </select>
+  </form>
+  <a href="{{ url_for('fitness.nutrition_add') }}" class="btn btn-primary">+ Add Food Item</a>
+</div>
+
+{% if foods %}
+<div class="card">
+  <div class="card-body">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th><th>Category</th><th>Serving</th>
+          <th>Calories</th><th>Protein (g)</th><th>Carbs (g)</th><th>Fiber (g)</th><th>Fat (g)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in foods %}
+        <tr>
+          <td style="font-weight:600;">{{ f.name }}</td>
+          <td>
+            <span class="badge badge-gray">{{ f.category | capitalize }}</span>
+            {% if f.macro_type %}<span style="color:#6b7280; font-size:0.78rem;">{{ f.macro_type }}</span>{% endif %}
+            {% if f.micro_type %}<span style="color:#6b7280; font-size:0.78rem;">{{ f.micro_type }}</span>{% endif %}
+          </td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ f.serving_size or '—' }}</td>
+          <td>{{ f.calories or 0 }}</td>
+          <td>{{ f.protein_g or 0 }}</td>
+          <td>{{ f.carbs_g or 0 }}</td>
+          <td>{{ f.fiber_g or 0 }}</td>
+          <td>{{ f.fat_g or 0 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">🥗</div>
+  <p>No nutrition items found.</p>
+  <a href="{{ url_for('fitness.nutrition_add') }}" class="btn btn-primary">Add First Item</a>
+</div>
+{% endif %}
+{% endblock %}

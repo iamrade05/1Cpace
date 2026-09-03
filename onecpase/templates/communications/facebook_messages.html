@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Facebook Messages | 1Cpase{% endblock %}
+{% block page_title %}Facebook Messages{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body" style="padding:0;">
+    {% if conversations %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Contact</th>
+            <th>Last message</th>
+            <th>When</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in conversations %}
+          <tr>
+            <td style="font-weight:700;color:#172033;">{{ c.sender_name or ('PSID ' + c.sender_psid[:10]) }}</td>
+            <td style="max-width:360px;color:#374151;font-size:.85rem;">{{ (c.last_content or '')[:120] }}</td>
+            <td style="font-size:.75rem;color:#9ca3af;white-space:nowrap;">{{ (c.last_message_at or '')[:16] }}</td>
+            <td style="white-space:nowrap;">
+              {% if c.unread_count %}
+              <span class="pbadge" style="background:#fee2e2;color:#991b1b;">{{ c.unread_count }} new</span>
+              {% endif %}
+              <a href="{{ url_for('comms.facebook_conversation', conv_id=c.id) }}" class="btn btn-ghost btn-sm">Open →</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:48px 24px;">
+      <div class="empty-icon">📨</div>
+      <p>No Facebook conversations yet.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>1Cpase Platform — Sign In</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: radial-gradient(circle at top left, rgba(176,132,45,0.24), transparent 24rem),
+                  linear-gradient(135deg, #002e45 0%, #001f30 100%);
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .card {
+      background: #fff; border-radius: 16px;
+      padding: 44px 40px; width: 100%; max-width: 380px;
+      box-shadow: 0 24px 64px rgba(0,46,69,0.34);
+      border: 1px solid rgba(193,194,197,0.75);
+    }
+    .brand { text-align: center; margin-bottom: 32px; }
+    .brand h1 { font-size: 1.6rem; font-weight: 800; color: #002e45; }
+    .brand p { font-size: 0.75rem; color: #9ca3af; margin-top: 5px;
+               text-transform: uppercase; letter-spacing: 1.5px; }
+
+    .form-group { margin-bottom: 18px; }
+    .form-group label {
+      display: block; font-size: 0.8rem; font-weight: 700;
+      color: #002e45; margin-bottom: 7px;
+    }
+    .form-group input {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid #c1c2c5; border-radius: 8px;
+      font-size: 0.9rem; color: #002e45; background: #fff;
+    }
+    .form-group input:focus {
+      outline: none; border-color: #b0842d;
+      box-shadow: 0 0 0 3px rgba(176,132,45,0.16);
+    }
+
+    .btn-login {
+      width: 100%; padding: 13px;
+      background: #002e45; color: #fff; border: none;
+      border-radius: 9px; font-size: 0.95rem; font-weight: 700;
+      cursor: pointer; margin-top: 6px;
+    }
+    .btn-login:hover { background: #001f30; }
+
+    .alert-error {
+      background: #fee2e2; color: #991b1b;
+      border-left: 4px solid #ef4444;
+      padding: 10px 14px; border-radius: 6px;
+      font-size: 0.85rem; margin-bottom: 18px;
+    }
+  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+</head>
+<body>
+<div class="card">
+  <div class="brand">
+    <h1>1Cpase Platform</h1>
+    <p>Power User sign in</p>
+  </div>
+
+  {% for category, msg in get_flashed_messages(with_categories=true) %}
+  <div class="alert-{{ category }}">{{ msg }}</div>
+  {% endfor %}
+
+  <form method="POST" autocomplete="on">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-group">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" required autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required autocomplete="current-password">
+    </div>
+    <button type="submit" class="btn-login">Sign In</button>
+  </form>
+</div>
+</body>
+</html>

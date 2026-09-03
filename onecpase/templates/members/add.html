@@ -1,0 +1,774 @@
+{% extends "base.html" %}
+{% block title %}Add Member | 1Cpase{% endblock %}
+{% block page_title %}Add Member{% endblock %}
+
+{% block content %}
+{% macro sel(name, options, current, placeholder='— Select —') %}
+<select name="{{ name }}" class="form-control">
+  <option value="">{{ placeholder }}</option>
+  {% for opt in options %}
+  <option value="{{ opt }}" {% if current == opt %}selected{% endif %}>{{ opt }}</option>
+  {% endfor %}
+</select>
+{% endmacro %}
+
+<style>
+/* ── Tab nav ── */
+.tab-nav {
+  display:flex; gap:0; background:#fff; border-radius:12px;
+  border:1px solid #e5e7eb; box-shadow:0 2px 8px rgba(0,0,0,.06);
+  margin-bottom:20px; overflow-x:auto; padding:6px;
+}
+.tab-btn {
+  display:flex; align-items:center; gap:9px; flex:1; justify-content:center;
+  padding:10px 14px; border:none; background:none; cursor:pointer;
+  font-size:0.8rem; font-weight:600; color:#6b7280;
+  border-radius:8px; white-space:nowrap;
+  transition:background .15s,color .15s;
+}
+.tab-btn .tab-num {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:24px; height:24px; border-radius:50%; font-size:0.72rem;
+  font-weight:700; background:#f3f4f6; color:#6b7280;
+  transition:background .15s,color .15s; flex-shrink:0;
+}
+.tab-btn.active { background:#EEF4FA; color:#185FA5; }
+.tab-btn.active .tab-num { background:#185FA5; color:#fff; }
+/* ── Section heading ── */
+.section-heading {
+  font-size:1rem; font-weight:700; color:#1F2933;
+  margin-bottom:18px; padding-bottom:12px;
+  border-bottom:2px solid #EEF4FA;
+}
+/* ── Tab panes ── */
+.tab-pane { display:none; }
+.tab-pane.active { display:block; }
+/* ── Footer nav ── */
+.tab-footer {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:18px 0 4px; margin-top:12px;
+}
+.tab-footer .btn {
+  padding: 11px 28px; font-size:0.88rem; font-weight:700;
+  border-radius:8px; letter-spacing:0.2px;
+}
+/* ── Submit button full-width dark ── */
+.btn-submit-dark {
+  display:block; width:100%; padding:14px;
+  background:#1F2933; color:#fff; border:none; border-radius:8px;
+  font-size:0.95rem; font-weight:700; letter-spacing:0.3px;
+  cursor:pointer; margin-top:8px; transition:background .15s;
+}
+.btn-submit-dark:hover { background:#111827; }
+/* ── Age badge ── */
+.age-badge {
+  display:inline-block; background:#EEF4FA; color:#185FA5;
+  font-size:0.72rem; font-weight:700; padding:2px 8px;
+  border-radius:10px; margin-left:8px; vertical-align:middle;
+}
+</style>
+
+<div>
+<form method="POST" id="memberForm" novalidate>
+
+  <!-- Tab Navigation -->
+  <div class="tab-nav" id="tabNav">
+    <button type="button" class="tab-btn active" data-tab="0">
+      <span class="tab-num">1</span> Personal
+    </button>
+    <button type="button" class="tab-btn" data-tab="1">
+      <span class="tab-num">2</span> Membership
+    </button>
+    <button type="button" class="tab-btn" data-tab="2">
+      <span class="tab-num">3</span> Payment
+    </button>
+    <button type="button" class="tab-btn" data-tab="3">
+      <span class="tab-num">4</span> Additional
+    </button>
+    <button type="button" class="tab-btn" data-tab="4">
+      <span class="tab-num">5</span> PAR-Q
+    </button>
+  </div>
+
+  <!-- Tab 1: Personal -->
+  <div class="tab-pane active" id="pane-0">
+
+    <div class="form-card" style="margin-bottom:16px;">
+      <h2 class="section-heading">Personal Details</h2>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">First Name *</label>
+          <input type="text" name="first_name" class="form-control" required value="{{ d.get('first_name','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Last Name *</label>
+          <input type="text" name="last_name" class="form-control" required value="{{ d.get('last_name','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            Identity Document *
+            <span id="ageBadge" class="age-badge" style="display:none;"></span>
+          </label>
+          <input type="text" name="id_number" id="idField" class="form-control" required
+                 minlength="13" maxlength="13" pattern="[0-9]{13}"
+                 title="SA ID number must be exactly 13 digits"
+                 placeholder="13-digit SA ID"
+                 value="{{ d.get('id_number','') }}"
+                 oninput="extractFromId(this.value)">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date of Birth</label>
+          <input type="date" name="date_of_birth" id="dobField" class="form-control"
+                 value="{{ d.get('date_of_birth','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Cell Number *</label>
+          <input type="text" name="contact" class="form-control" required placeholder="06xxxxxxxx"
+                 value="{{ d.get('contact','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" name="email" class="form-control" value="{{ d.get('email','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Gender</label>
+          <select name="gender" id="genderField" class="form-control">
+            <option value="">— Select —</option>
+            {% for g in ['Male','Female','Not Specified'] %}
+            <option value="{{ g }}" {% if d.get('gender')==g %}selected{% endif %}>{{ g }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Join Date *</label>
+          <input type="date" name="join_date" class="form-control" required value="{{ today }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-card" style="margin-bottom:16px;">
+      <h2 class="section-heading">Address</h2>
+      <!-- Address search -->
+      <div class="form-group" style="margin-bottom:14px;position:relative;">
+        <label class="form-label">Search Address</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="addressSearch" class="form-control"
+                 placeholder="Type suburb, city or full address…"
+                 autocomplete="off">
+          <button type="button" onclick="searchAddress()"
+                  style="padding:0 16px;background:#185FA5;color:#fff;border:none;
+                         border-radius:6px;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;">
+            Find
+          </button>
+        </div>
+        <div id="addressResults" style="display:none;position:absolute;z-index:200;
+             background:#fff;border:1px solid #e5e7eb;border-radius:6px;
+             box-shadow:0 4px 12px rgba(0,0,0,.12);width:100%;margin-top:2px;"></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Street Number</label>
+          <input type="text" name="street_number" id="f_street_number" class="form-control" value="{{ d.get('street_number','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Street Name</label>
+          <input type="text" name="street_name" id="f_street_name" class="form-control" value="{{ d.get('street_name','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Suburb</label>
+          <input type="text" name="suburb" id="f_suburb" class="form-control" value="{{ d.get('suburb','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">City / Town</label>
+          <input type="text" name="city" id="f_city" class="form-control" value="{{ d.get('city','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Postal Code</label>
+          <input type="text" name="postal_code" id="f_postal_code" class="form-control" maxlength="4" value="{{ d.get('postal_code','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Country</label>
+          <input type="text" name="country" id="f_country" class="form-control" value="{{ d.get('country','South Africa') }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-footer">
+      <span></span>
+      <button type="button" class="btn btn-primary" onclick="goTab(1)">Next: Membership &rarr;</button>
+    </div>
+  </div>
+
+  <!-- Tab 2: Membership -->
+  {# Build tariff lookup for JS auto-populate #}
+  {% set tariff_map = {} %}
+  {% for t in tariff_rows %}{% set _ = tariff_map.update({t.name: {'months': t.duration_months, 'amount': t.monthly_amount}}) %}{% endfor %}
+  <div class="tab-pane" id="pane-1">
+    <div class="form-card" style="margin-bottom:16px;">
+      <h2 class="section-heading">Membership</h2>
+
+      <!-- Tariff selector with auto-populate -->
+      <div class="form-group" style="margin-bottom:18px;">
+        <label class="form-label">Tariff *</label>
+        <select name="tariff" id="tariffSelect" class="form-control" onchange="applyTariff(this.value)">
+          <option value="">— Select tariff —</option>
+          {% for t in tariff_rows %}
+          <option value="{{ t.name }}"
+                  data-months="{{ t.duration_months }}"
+                  data-amount="{{ t.monthly_amount }}"
+                  {% if d.get('tariff')==t.name %}selected{% endif %}>
+            {{ t.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Auto-populated summary card -->
+      <div id="tariffSummary" style="display:none;background:#EEF4FA;border:2px solid #185FA5;
+           border-radius:10px;padding:16px 20px;margin-bottom:18px;
+           justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:0.72rem;color:#378ADD;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Selected Tariff</div>
+          <div id="tariffSummaryName" style="font-size:1rem;font-weight:800;color:#1F2933;margin-top:2px;"></div>
+          <div id="tariffSummaryDuration" style="font-size:0.8rem;color:#6b7280;margin-top:2px;"></div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:0.72rem;color:#378ADD;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Monthly</div>
+          <div id="tariffSummaryAmount" style="font-size:1.8rem;font-weight:900;color:#185FA5;"></div>
+        </div>
+      </div>
+
+      <!-- Hidden fields populated by JS -->
+      <input type="hidden" name="contract_duration" id="contractDuration" value="{{ d.get('contract_duration','') }}">
+      <input type="hidden" name="monthly_installment" id="monthlyInstallment" value="{{ d.get('monthly_installment',0) }}">
+      <input type="hidden" name="member_status" value="Unverified">
+      <input type="hidden" name="source" value="Walk-in">
+      <input type="hidden" name="entry_type" value="manual">
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Sold By (Consultant)</label>
+          <select name="uploaded_by_id" class="form-control">
+            <option value="">— Select consultant —</option>
+            {% for c in consultants %}
+            <option value="{{ c.id }}" {% if d.get('uploaded_by_id')|string==c.id|string %}selected{% endif %}>
+              {{ c.full_name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Package Label <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+          <input type="text" name="package" id="pkgLabel" class="form-control"
+                 placeholder="Short custom label" value="{{ d.get('package','') }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-footer">
+      <button type="button" class="btn btn-secondary" onclick="goTab(0)">&larr; Back</button>
+      <button type="button" class="btn btn-primary" onclick="goTab(2)">Next: Payment &rarr;</button>
+    </div>
+  </div>
+
+  <!-- Tab 3: Payment & Banking -->
+  <div class="tab-pane" id="pane-2">
+    <div class="form-card" style="margin-bottom:16px;">
+      <h2 class="section-heading">Payment &amp; Banking</h2>
+      <div class="form-grid-2" style="margin-bottom:12px;">
+        <div class="form-group">
+          <label class="form-label">Payment Type</label>
+          <select name="payment_type" id="paymentType" class="form-control" onchange="togglePayment()">
+            {% for pt in ['Cash','Debit Order','Third-Party Debit Order'] %}
+            <option value="{{ pt }}" {% if d.get('payment_type','Debit Order')==pt %}selected{% endif %}>{{ pt }}</option>
+            {% endfor %}
+          </select>
+          <input type="hidden" name="payer_type" id="payerType" value="{{ d.get('payer_type','self') }}">
+          <div class="form-hint">Choose cash, the member's bank account, or a third-party payer.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Debit Order Date</label>
+          <select name="debit_order_date" class="form-control">
+            <option value="">— Select —</option>
+            {% for day in ['1','15','20','25','30'] %}
+            <option value="{{ day }}" {% if d.get('debit_order_date')==day %}selected{% endif %}>{{ day }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div id="debitFields">
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label class="form-label">Account Holder Name *</label>
+            <input type="text" name="account_name" id="accountName" class="form-control required-if-debit" maxlength="30"
+                   placeholder="Name registered at the bank" value="{{ d.get('account_name','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Bank *</label>
+            <select name="bank" id="bankSelect" class="form-control required-if-debit" onchange="autoBranch(this)">
+              <option value="">— Select bank —</option>
+              {% for bname, bcode in banks %}
+              <option value="{{ bname }}" data-branch="{{ bcode }}"
+                      {% if d.get('bank')==bname %}selected{% endif %}>{{ bname }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Account Type *</label>
+            <select name="account_type" class="form-control required-if-debit">
+              <option value="">— Select —</option>
+              {% for at in ['Cheque/Current','Savings','Transmission'] %}
+              <option value="{{ at }}" {% if d.get('account_type')==at %}selected{% endif %}>{{ at }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Account Number *</label>
+            <input type="text" name="account_number" class="form-control required-if-debit"
+                   maxlength="11" placeholder="Max 11 digits"
+                   value="{{ d.get('account_number','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Branch Code *</label>
+            <input type="text" name="branch_code" id="branchCode" class="form-control required-if-debit"
+                   maxlength="6" placeholder="6-digit code"
+                   value="{{ d.get('branch_code','') }}">
+            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">
+              {% for b, c in [('ABSA','632005'),('FNB','250655'),('Nedbank','198765'),('Std Bank','051001'),('Capitec','470010'),('Disc','679000'),('Tyme','678910')] %}
+              <button type="button" onclick="document.getElementById('branchCode').value='{{ c }}'"
+                      style="font-size:10px;padding:2px 7px;background:#1F2933;border:1px solid #374151;
+                             border-radius:4px;color:#9ca3af;cursor:pointer;">
+                {{ b }} {{ c }}
+              </button>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;">
+          <div id="payerFields" class="light-panel" style="display:none;background:#fef9f0;border:1px solid #fde68a;border-radius:8px;padding:14px;">
+            <div style="font-size:0.72rem;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
+              Third-Party Payer — ID and Banking Authority
+            </div>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label">Payer Full Name</label>
+                <input type="text" name="payer_name" class="form-control" value="{{ d.get('payer_name','') }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Payer ID Number</label>
+                <input type="text" name="payer_id_number" class="form-control"
+                       maxlength="13" inputmode="numeric" pattern="[0-9]{13}"
+                       placeholder="13-digit SA ID number" value="{{ d.get('payer_id_number','') }}">
+              </div>
+            </div>
+            <div class="form-hint" style="color:#92400e;margin-top:8px;">The banking details above must belong to this payer.</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="debicheckFields" style="margin-top:18px;padding-top:18px;border-top:1px solid #374151;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+          <div>
+            <h3 style="font-size:0.9rem;color:#fff;margin-bottom:4px;">NuPay DebiCheck Mandate</h3>
+            <p style="font-size:0.76rem;color:#9ca3af;">RADEpulse mandate information. The client approves after submission.</p>
+          </div>
+          <span class="badge badge-info">Client approval required</span>
+        </div>
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label class="form-label">Authentication Type</label>
+            <select name="debicheck_auth_type" class="form-control">
+              <option value="cell" {% if d.get('debicheck_auth_type','cell')=='cell' %}selected{% endif %}>Electronic Banking (TT1 Delayed)</option>
+              <option value="rm_realtime" {% if d.get('debicheck_auth_type')=='rm_realtime' %}selected{% endif %}>RM Realtime</option>
+              <option value="rm_batch" {% if d.get('debicheck_auth_type')=='rm_batch' %}selected{% endif %}>RM Batch</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Submit Date</label>
+            <input type="date" name="debicheck_submit_date" class="form-control" min="{{ today }}"
+                   value="{{ d.get('debicheck_submit_date',today) }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Client Reference 1</label>
+            <input type="text" name="debicheck_client_ref1" class="form-control" maxlength="25"
+                   placeholder="Generated if blank" value="{{ d.get('debicheck_client_ref1','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Client Reference 2 — Staff Number</label>
+            <input type="text" name="debicheck_client_ref2" class="form-control" maxlength="4"
+                   inputmode="numeric" pattern="[0-9]{4}"
+                   placeholder="4-digit staff number" value="{{ d.get('debicheck_client_ref2','') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Frequency</label>
+            <select name="debicheck_frequency" class="form-control">
+              {% for value, label in [('1','Weekly'),('2','Bi-weekly'),('3','Monthly'),('5','End of Month'),('6','Last Friday of Month')] %}
+              <option value="{{ value }}" {% if d.get('debicheck_frequency','3')==value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Number of Instalments</label>
+            <input type="number" name="debicheck_installments" id="debicheckInstallments" class="form-control"
+                   min="1" value="{{ d.get('debicheck_installments','99') }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tracking</label>
+            <select name="debicheck_tracking" class="form-control">
+              {% for value, label in [('12','No Tracking'),('13','1 Day'),('01','2 Days'),('14','3 Days'),('02','4 Days'),('03','5 Days'),('04','6 Days'),('15','7 Days'),('05','8 Days'),('06','9 Days'),('07','10 Days')] %}
+              <option value="{{ value }}" {% if d.get('debicheck_tracking','14')==value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Identity Type</label>
+            <select name="debicheck_id_type" id="debicheckIdType" class="form-control" onchange="toggleDebicheckIdentity()">
+              <option value="0" {% if d.get('debicheck_id_type','0')=='0' %}selected{% endif %}>RSA ID Number</option>
+              <option value="1" {% if d.get('debicheck_id_type')=='1' %}selected{% endif %}>Passport</option>
+              <option value="4" {% if d.get('debicheck_id_type')=='4' %}selected{% endif %}>Juristic Account</option>
+            </select>
+          </div>
+          <div class="form-group" id="debicheckPassportField" style="display:none;">
+            <label class="form-label">Passport Number</label>
+            <input type="text" name="debicheck_passport" class="form-control" value="{{ d.get('debicheck_passport','') }}">
+          </div>
+          <div class="form-group" id="debicheckJuristicField" style="display:none;">
+            <label class="form-label">Juristic Account</label>
+            <input type="text" name="debicheck_juristic" class="form-control" maxlength="15" value="{{ d.get('debicheck_juristic','') }}">
+          </div>
+        </div>
+        <div style="margin-top:16px;background:#EEF4FA;border:1px solid #bfdbfe;border-radius:8px;padding:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div>
+            <strong style="display:block;color:#0f3460;font-size:0.86rem;">Save member and request debit authorization</strong>
+            <span style="font-size:0.74rem;color:#4b5563;">The mandate is saved before NuPay is contacted, so failures remain retryable.</span>
+          </div>
+          <button type="submit" name="submit_action" value="push_nupay" class="btn btn-primary" id="pushNupayBtn">Push to NuPay</button>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:14px;">
+        <label class="form-label">Marketing Opt-In</label>
+        <select name="opt_in" class="form-control" style="max-width:200px;">
+          <option value="yes" {% if d.get('opt_in',1) %}selected{% endif %}>Yes</option>
+          <option value="no" {% if not d.get('opt_in',1) %}selected{% endif %}>No</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="tab-footer">
+      <button type="button" class="btn btn-secondary" onclick="goTab(1)">&larr; Back</button>
+      <button type="button" class="btn btn-primary" onclick="goTab(3)">Next: Additional &rarr;</button>
+    </div>
+  </div>
+
+  <!-- Tab 4: Additional -->
+  <div class="tab-pane" id="pane-3">
+    <div class="form-card" style="margin-bottom:16px;">
+      <h2 class="section-heading">Additional Information</h2>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Occupation</label>
+          <input type="text" name="occupation" class="form-control"
+                 placeholder="e.g. Teacher, Engineer"
+                 value="{{ d.get('occupation','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Access Level</label>
+          <select name="access_level" class="form-control">
+            <option value="Local" {% if d.get('access_level','Local')=='Local' %}selected{% endif %}>Local</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Promotion / Promo Code</label>
+          <input type="text" name="promotion" class="form-control"
+                 placeholder="e.g. BLACKFRIDAY2025"
+                 value="{{ d.get('promotion','') }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-card" style="margin-bottom:16px;">
+      <h2 class="section-heading">Emergency Contact</h2>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Contact Name</label>
+          <input type="text" name="emergency_contact_name" class="form-control"
+                 value="{{ d.get('emergency_contact_name','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contact Number</label>
+          <input type="text" name="emergency_contact_number" class="form-control"
+                 value="{{ d.get('emergency_contact_number','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Relation</label>
+          <input type="text" name="emergency_contact_relation" class="form-control"
+                 placeholder="e.g. Spouse, Parent, Sibling"
+                 value="{{ d.get('emergency_contact_relation','') }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-card" style="margin-bottom:16px;">
+      <h2 class="section-heading">Fitness Profile</h2>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Fitness Goal</label>
+          <input type="text" name="fitness_goal" class="form-control"
+                 placeholder="Weight loss, toning, strength..."
+                 value="{{ d.get('fitness_goal','') }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Prior Training Experience</label>
+          <select name="training_experience" class="form-control">
+            <option value="no">No</option>
+            <option value="yes" {% if d.get('training_experience') %}selected{% endif %}>Yes</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-footer">
+      <button type="button" class="btn btn-secondary" onclick="goTab(2)">&larr; Back</button>
+      <button type="button" class="btn btn-primary" onclick="goTab(4)">Next: PAR-Q &rarr;</button>
+    </div>
+  </div>
+
+  <!-- Tab 5: PAR-Q -->
+  <div class="tab-pane" id="pane-4">
+    <div class="form-card" style="margin-bottom:16px;">
+      <h2 class="section-heading">PAR-Q Health Screening</h2>
+      <p style="font-size:0.78rem;color:#6b7280;margin-bottom:16px;">
+        Answer <strong>Yes</strong> or <strong>No</strong> to each question honestly.
+        A YES answer does not prevent membership — it may require a doctor's clearance.
+      </p>
+      {% set parq = [
+        ('parq_q1','Has a doctor ever told you that you have a heart condition and recommended only medically supervised physical activity?'),
+        ('parq_q2','Do you feel pain in your chest when you do physical activity?'),
+        ('parq_q3','In the past month, have you had chest pain when you were NOT doing physical activity?'),
+        ('parq_q4','Do you lose your balance because of dizziness or do you ever lose consciousness?'),
+        ('parq_q5','Do you have a bone or joint problem (back, knee, hip) that could be made worse by a change in your physical activity?'),
+        ('parq_q6','Is your doctor currently prescribing medication for your blood pressure or heart condition?'),
+        ('parq_q7','Do you know of any other reason why you should not do physical activity?'),
+        ('parq_q8','Are you pregnant or have you given birth in the past 6 weeks?'),
+        ('parq_q9','Are you 69 years of age or older and not accustomed to vigorous exercise?'),
+      ] %}
+      {% for field, question in parq %}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;
+                  padding:10px 0;border-bottom:1px solid #f3f4f6;gap:16px;">
+        <div style="font-size:0.82rem;color:#374151;flex:1;">{{ loop.index }}. {{ question }}</div>
+        <div style="display:flex;gap:14px;flex-shrink:0;">
+          <label style="display:flex;align-items:center;gap:5px;font-size:0.82rem;cursor:pointer;font-weight:500;">
+            <input type="radio" name="{{ field }}" value="no"
+                   {% if not d.get(field) %}checked{% endif %}
+                   style="accent-color:#185FA5;"> No
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:0.82rem;cursor:pointer;font-weight:500;color:#ef4444;">
+            <input type="radio" name="{{ field }}" value="yes"
+                   {% if d.get(field) %}checked{% endif %}
+                   style="accent-color:#ef4444;"> Yes
+          </label>
+        </div>
+      </div>
+      {% endfor %}
+      <div id="parqWarning" style="display:none;margin-top:14px;background:#fef2f2;border:1px solid #fca5a5;
+           border-radius:8px;padding:10px 14px;font-size:0.8rem;color:#b91c1c;">
+        ⚠️ One or more YES answers detected. The member may require a doctor's clearance before starting exercise.
+      </div>
+    </div>
+
+    <div class="tab-footer" style="flex-direction:column;gap:10px;">
+      <button type="submit" class="btn-submit-dark">Create Member</button>
+      <button type="button" class="btn btn-secondary" onclick="goTab(3)" style="width:100%;text-align:center;">&larr; Back to Additional</button>
+    </div>
+  </div>
+
+</form>
+</div>
+
+<script>
+/* ── Tab switching ── */
+const TABS = 5;
+function goTab(n) {
+  for (let i = 0; i < TABS; i++) {
+    document.getElementById('pane-' + i).classList.toggle('active', i === n);
+    const btn = document.querySelector(`.tab-btn[data-tab="${i}"]`);
+    btn.classList.toggle('active', i === n);
+  }
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+document.getElementById('tabNav').addEventListener('click', e => {
+  const btn = e.target.closest('.tab-btn');
+  if (btn) goTab(parseInt(btn.dataset.tab));
+});
+
+/* ── Surface validation errors instead of failing silently ──
+   Required/invalid fields on a tab you've navigated away from can't show
+   the browser's native tooltip (it's not rendered), so submission just
+   does nothing. Jump to that tab, focus the field, and report why. */
+const TAB_LABELS = ['Personal', 'Membership', 'Payment', 'Additional', 'PAR-Q'];
+document.getElementById('memberForm').addEventListener('submit', function(e) {
+  const invalid = this.querySelector(':invalid');
+  if (!invalid) return;
+  e.preventDefault();
+  const pane = invalid.closest('.tab-pane');
+  const idx = pane ? parseInt(pane.id.replace('pane-', '')) : 0;
+  goTab(idx);
+  const fieldLabel = invalid.closest('.form-group')?.querySelector('.form-label')?.textContent?.trim()
+                      || invalid.name || 'This field';
+  invalid.focus();
+  invalid.reportValidity();
+  showFormError(`${fieldLabel} needs your attention (${TAB_LABELS[idx]} tab).`);
+});
+
+function showFormError(msg) {
+  let banner = document.getElementById('formErrorBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'formErrorBanner';
+    banner.style.cssText = 'background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;'
+      + 'border-radius:8px;padding:10px 14px;font-size:0.82rem;font-weight:600;margin-bottom:14px;';
+    document.getElementById('memberForm').prepend(banner);
+  }
+  banner.textContent = msg;
+}
+
+/* ── ID → DOB / Gender ── */
+function extractFromId(id) {
+  const dobField = document.getElementById('dobField');
+  const gField   = document.getElementById('genderField');
+  const ageBadge = document.getElementById('ageBadge');
+  if (!id || id.length < 6) { ageBadge.style.display='none'; return; }
+  const yy = parseInt(id.substring(0,2),10), mm = id.substring(2,4), dd = id.substring(4,6);
+  const today = new Date(), cy = parseInt(String(today.getFullYear()).substring(2),10);
+  const year  = (yy > cy ? 1900 : 2000) + yy;
+  const dob   = new Date(`${year}-${mm}-${dd}`);
+  if (isNaN(dob.getTime())) { ageBadge.style.display='none'; return; }
+  if (!dobField.value) dobField.value = `${year}-${mm}-${dd}`;
+  let age = today.getFullYear() - dob.getFullYear();
+  if (today.getMonth()-dob.getMonth()<0||(today.getMonth()===dob.getMonth()&&today.getDate()<dob.getDate())) age--;
+  ageBadge.textContent = `Age ${age}`;
+  ageBadge.style.display = 'inline-block';
+  if (id.length>=10 && !gField.value) gField.value = parseInt(id.substring(6,10))>=5000?'Male':'Female';
+}
+
+/* -- Address search (OpenStreetMap Nominatim) -- */
+let _searchTimer = null;
+const addrIn  = document.getElementById('addressSearch');
+const addrRes = document.getElementById('addressResults');
+
+function searchAddress() {
+  const q = (addrIn?.value || '').trim();
+  if (q.length < 3) return;
+  fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(q) + '&countrycodes=za&format=json&addressdetails=1&limit=6',
+        {headers:{'Accept-Language':'en'}})
+    .then(r => r.json())
+    .then(results => {
+      addrRes.innerHTML = '';
+      if (!results.length) {
+        addrRes.innerHTML = '<div style="padding:10px 14px;font-size:0.8rem;color:#6b7280;">No results found.</div>';
+      } else {
+        results.forEach(r => {
+          const row = document.createElement('div');
+          row.textContent = r.display_name;
+          row.style.cssText = 'padding:8px 14px;font-size:0.8rem;cursor:pointer;border-bottom:1px solid #f3f4f6;color:#374151;';
+          row.addEventListener('mouseenter', () => row.style.background='#EEF4FA');
+          row.addEventListener('mouseleave', () => row.style.background='');
+          row.addEventListener('click', () => fillAddress(r.address));
+          addrRes.appendChild(row);
+        });
+      }
+      addrRes.style.display = 'block';
+    })
+    .catch(() => {});
+}
+
+addrIn?.addEventListener('keydown', e => { if(e.key==='Enter'){e.preventDefault();searchAddress();}});
+addrIn?.addEventListener('input', () => {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(searchAddress, 600);
+});
+document.addEventListener('click', e => {
+  if (!addrRes?.contains(e.target) && e.target !== addrIn) addrRes.style.display='none';
+});
+
+function fillAddress(a) {
+  const set = (id, val) => { const el=document.getElementById(id); if(el&&val) el.value=val; };
+  set('f_street_number', a.house_number || '');
+  set('f_street_name',   a.road || a.pedestrian || '');
+  set('f_suburb',        a.suburb || a.neighbourhood || a.village || '');
+  set('f_city',          a.city || a.town || a.county || '');
+  set('f_postal_code',   (a.postcode||'').replace(/\D/g,'').slice(0,4));
+  set('f_country',       a.country || 'South Africa');
+  addrIn.value = '';
+  addrRes.style.display = 'none';
+}
+
+function autoBranch(sel) {
+  const code = sel.options[sel.selectedIndex]?.getAttribute('data-branch');
+  const b = document.getElementById('branchCode');
+  if (code && !b.value) b.value = code;
+}
+function togglePayment() {
+  const pt = document.getElementById('paymentType').value;
+  const isDebit = pt === 'Debit Order' || pt === 'Third-Party Debit Order';
+  const isThirdParty = pt === 'Third-Party Debit Order';
+  document.getElementById('debitFields').style.display = isDebit ? 'block' : 'none';
+  document.getElementById('debicheckFields').style.display = isDebit ? 'block' : 'none';
+  document.getElementById('payerFields').style.display = isThirdParty ? 'block' : 'none';
+  document.getElementById('payerType').value = isThirdParty ? 'third_party' : 'self';
+  document.querySelectorAll('.required-if-debit').forEach(el => { el.required = isDebit; });
+  const accountName = document.getElementById('accountName');
+  if (!isThirdParty && accountName && !accountName.value) {
+    const first = document.querySelector('[name="first_name"]')?.value || '';
+    const last = document.querySelector('[name="last_name"]')?.value || '';
+    accountName.value = `${first} ${last}`.trim();
+  }
+}
+function toggleDebicheckIdentity() {
+  const type = document.getElementById('debicheckIdType').value;
+  document.getElementById('debicheckPassportField').style.display = type === '1' ? 'flex' : 'none';
+  document.getElementById('debicheckJuristicField').style.display = type === '4' ? 'flex' : 'none';
+}
+function applyTariff(val) {
+  const sel = document.getElementById('tariffSelect');
+  const opt = sel.options[sel.selectedIndex];
+  const months = opt.dataset.months;
+  const amount = parseFloat(opt.dataset.amount || 0);
+  const summary = document.getElementById('tariffSummary');
+
+  if (val && months) {
+    document.getElementById('contractDuration').value  = months + ' months';
+    document.getElementById('monthlyInstallment').value = amount.toFixed(2);
+    document.getElementById('tariffSummaryName').textContent    = val;
+    document.getElementById('tariffSummaryDuration').textContent = months + '-month contract';
+    document.getElementById('tariffSummaryAmount').textContent  = 'R ' + amount.toFixed(2);
+    summary.style.display = 'flex';
+    const lbl = document.getElementById('pkgLabel');
+    if (!lbl.value) lbl.value = val;
+  } else {
+    summary.style.display = 'none';
+    document.getElementById('contractDuration').value   = '';
+    document.getElementById('monthlyInstallment').value = '0';
+  }
+}
+function checkParq() {
+  const hasYes = [...document.querySelectorAll('input[name^="parq_"]:checked')]
+                   .some(r => r.value === 'yes');
+  document.getElementById('parqWarning').style.display = hasYes ? 'block' : 'none';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const id = document.getElementById('idField');
+  if (id?.value) extractFromId(id.value);
+  togglePayment();
+  toggleDebicheckIdentity();
+  {% if d.get('_open_payment') %}goTab(2);{% endif %}
+  document.querySelectorAll('input[name^="parq_"]').forEach(r => r.addEventListener('change', checkParq));
+  checkParq();
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Reports – Membership{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>📊 Reports – Membership</h1>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
+  <a href="{{ url_for('reports.overview') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Overview</a>
+  <a href="{{ url_for('reports.membership') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#e94560;color:#fff;">Membership</a>
+  <a href="{{ url_for('reports.finance') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Finance</a>
+  <a href="{{ url_for('reports.arrears') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Arrears &amp; PTP</a>
+  <a href="{{ url_for('reports.queries_report') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Queries</a>
+  <a href="{{ url_for('access_report.index') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Access</a>
+</div>
+<!-- Period filter -->
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center;">
+  <span style="font-size:0.78rem;font-weight:700;color:#6b7280;margin-right:2px;">Period:</span>
+  {% for val, label in periods %}
+  <a href="?period={{ val }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;{% if period == val %}background:#e94560;color:#fff;{% else %}background:#f3f4f6;color:#6b7280;{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:1.5rem;">
+  <div class="kpi-card" style="border-left-color:#28a745;">
+    <div class="kpi-label">Total Members</div>
+    <div class="kpi-value">{{ total_members }}</div>
+  </div>
+  {% for r in status_breakdown %}
+  <div class="kpi-card" style="border-left-color:{% if r['member_status']=='Active' %}#28a745{% elif r['member_status']=='Frozen' %}#17a2b8{% else %}#dc3545{% endif %};">
+    <div class="kpi-label">{{ r['member_status'] }}</div>
+    <div class="kpi-value">{{ r['cnt'] }}</div>
+    {% if total_members > 0 %}
+    <div style="font-size:.75rem;color:#6c757d;">{{ '{:.1f}'.format(r['cnt']/total_members*100) }}%</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+
+  <!-- New Members by Month -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">New Members by Month</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Month</th><th class="text-right">New Joins</th></tr></thead>
+        <tbody>
+          {% for r in new_by_month %}
+          <tr>
+            <td>{{ r['month'] }}</td>
+            <td class="text-right"><strong>{{ r['cnt'] }}</strong></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="text-center text-muted">No data for period</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Gender Breakdown -->
+  <div style="display:flex;flex-direction:column;gap:1rem;">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Gender Breakdown</h3></div>
+      <div class="card-body" style="padding:0;">
+        <table class="data-table" style="font-size:.83rem;">
+          <thead><tr><th>Gender</th><th class="text-right">Count</th></tr></thead>
+          <tbody>
+            {% for r in gender_breakdown %}
+            <tr><td>{{ r['gender'] | title }}</td><td class="text-right">{{ r['cnt'] }}</td></tr>
+            {% else %}
+            <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">Payment Type</h3></div>
+      <div class="card-body" style="padding:0;">
+        <table class="data-table" style="font-size:.83rem;">
+          <thead><tr><th>Payment Type</th><th class="text-right">Count</th></tr></thead>
+          <tbody>
+            {% for r in payment_type_breakdown %}
+            <tr><td>{{ r['payment_type'] | title }}</td><td class="text-right">{{ r['cnt'] }}</td></tr>
+            {% else %}
+            <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+
+  <!-- Package Breakdown -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Members by Package</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Package</th><th>Status</th><th class="text-right">Count</th></tr></thead>
+        <tbody>
+          {% for r in package_breakdown %}
+          <tr>
+            <td>{{ r['package'] }}</td>
+            <td><span class="badge {% if r['member_status']=='Active' %}badge-success{% elif r['member_status']=='Frozen' %}badge-info{% else %}badge-danger{% endif %}">{{ r['member_status'] }}</span></td>
+            <td class="text-right">{{ r['cnt'] }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Consultant Breakdown -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Members by Consultant</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Consultant</th><th class="text-right">Total</th><th class="text-right">Active</th></tr></thead>
+        <tbody>
+          {% for r in consultant_breakdown %}
+          <tr>
+            <td>{{ r['consultant'] or 'Unassigned' }}</td>
+            <td class="text-right">{{ r['cnt'] }}</td>
+            <td class="text-right" style="color:#28a745;">{{ r['active_cnt'] }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+
+  <!-- Contract Duration -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Contract Duration</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Duration</th><th class="text-right">Count</th></tr></thead>
+        <tbody>
+          {% for r in contract_duration %}
+          <tr><td>{{ r['contract_duration'] }}</td><td class="text-right">{{ r['cnt'] }}</td></tr>
+          {% else %}
+          <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Source Breakdown -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Lead Source</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Source</th><th class="text-right">Count</th></tr></thead>
+        <tbody>
+          {% for r in source_breakdown %}
+          <tr><td>{{ r['source'] | title }}</td><td class="text-right">{{ r['cnt'] }}</td></tr>
+          {% else %}
+          <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Recently Joined -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Recently Joined ({{ period_label }})</h3>
+    <span class="badge badge-info">{{ recently_joined | length }}</span>
+  </div>
+  <div class="card-body" style="padding:0;">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead>
+        <tr>
+          <th>Name</th><th>Package</th><th>Status</th>
+          <th>Contact</th><th>Join Date</th><th>Consultant</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in recently_joined %}
+        <tr>
+          <td><a href="{{ url_for('members.member_detail', mid=m['id']) }}">{{ m['first_name'] }} {{ m['last_name'] }}</a></td>
+          <td>{{ m['package'] or '—' }}</td>
+          <td><span class="badge {% if m['member_status']=='Active' %}badge-success{% elif m['member_status']=='Frozen' %}badge-info{% else %}badge-danger{% endif %}">{{ m['member_status'] }}</span></td>
+          <td>{{ m['contact'] or '—' }}</td>
+          <td>{{ m['join_date'] or '—' }}</td>
+          <td>{{ m['consultant'] or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted">No new members for this period</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

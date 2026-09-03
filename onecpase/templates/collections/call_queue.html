@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Collections Call Queue | 1Cpase{% endblock %}
+{% block page_title %}Collections Call Queue{% endblock %}
+
+{% block content %}
+<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--b1);overflow-x:auto;">
+  <a href="{{ url_for('collections.collections_index') }}" style="padding:10px 20px;color:var(--t2);white-space:nowrap;">💳 Payment Records</a>
+  <a href="{{ url_for('ptp.ptp_dashboard') }}" style="padding:10px 20px;color:var(--t2);white-space:nowrap;">🔴 PTP / Collection</a>
+  <a href="{{ url_for('collections.call_queue') }}" style="padding:10px 20px;color:var(--red);border-bottom:2px solid var(--red);margin-bottom:-2px;font-weight:700;white-space:nowrap;">☎ Collections Call Queue</a>
+  <a href="{{ url_for('ptp.legal_referrals') }}" style="padding:10px 20px;color:var(--t2);white-space:nowrap;">⚖ Legal Referrals</a>
+</div>
+
+{% if cycle %}
+<div class="form-card" style="margin-bottom:16px;border-left:4px solid var(--red);">
+  <div style="display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:center;">
+    <div>
+      <div style="color:var(--red);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;">{{ 'Outstanding Balance Reminders' if cycle.phase == 'reminder' else 'Failed Debit Collections' }}</div>
+      <h3 style="margin:5px 0;">Debit cycle {{ cycle.scheduled.strftime('%d %B %Y') }}</h3>
+      <div style="color:var(--t2);">Operational start: <strong>{{ cycle.operational.strftime('%d %B %Y') }}</strong>{% if cycle.scheduled != cycle.operational %} — moved to Friday because the debit date is on a weekend{% endif %}</div>
+      {% if cycle.phase == 'reminder' %}<div style="color:var(--t2);margin-top:6px;font-size:.82rem;">Message: You have an outstanding balance. Please make sure there are enough funds for the coming debit.</div>{% endif %}
+    </div>
+    <div style="color:var(--t2);font-size:.82rem;max-width:420px;line-height:1.5;">Only clients with a current outstanding balance appear. Failed Debit means both a failed debit record and money still owing. Fully paid clients are removed automatically.</div>
+  </div>
+</div>
+{% endif %}
+
+{% if not callers %}
+<div class="alert alert-warning"><strong>No Collections callers configured.</strong> Enable “Collections caller” in User Management.</div>
+{% endif %}
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-bottom:16px;">
+  {% for summary in summaries %}
+  <div class="form-card" style="border-top:3px solid var(--navy-l);">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px;">
+      <strong>{{ summary.full_name }}</strong>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('collections.call_queue', caller=summary.id) }}">View calls</a>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div><div style="font-size:.7rem;color:var(--t2);text-transform:uppercase;">Calls</div><div style="font-size:1.55rem;font-weight:800;color:{{ 'var(--ok)' if (summary.calls or 0) >= daily_call_target else 'var(--txt)' }};">{{ summary.calls or 0 }}<span style="font-size:.8rem;color:var(--t2);"> / {{ daily_call_target }}</span></div></div>
+      <div><div style="font-size:.7rem;color:var(--t2);text-transform:uppercase;">Clients reached</div><div style="font-size:1.55rem;font-weight:800;color:{{ 'var(--ok)' if (summary.contacts or 0) >= daily_contact_target else 'var(--txt)' }};">{{ summary.contacts or 0 }}<span style="font-size:.8rem;color:var(--t2);"> / {{ daily_contact_target }}</span></div></div>
+    </div>
+    <div style="margin-top:10px;color:var(--t2);font-size:.78rem;">{{ summary.assigned or 0 }} calls assigned for {{ today_label }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="form-card" style="margin-bottom:16px;">
+  <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+    <div>
+      <strong>Today’s workload</strong>
+      <span style="color:var(--t2);margin-left:8px;">{{ tasks|length }} shown</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:.76rem;">
+      <span class="badge badge-info">Reminders {{ queue_counts.get('reminder',0) }}</span>
+      <span class="badge badge-danger">Failed debit {{ queue_counts.get('failed_debit',0) }}</span>
+      <span class="badge badge-gray">Older owing {{ queue_counts.get('old_owing',0) }}</span>
+      {% if caller_filter %}<a href="{{ url_for('collections.call_queue') }}" class="btn btn-ghost btn-sm">Show both callers</a>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="table-card" style="overflow-x:auto;">
+  <table class="data-table" style="min-width:760px;">
+    <thead><tr><th>#</th><th>Priority</th><th>Member</th><th>Assigned to</th><th>Status</th><th>Client brief</th></tr></thead>
+    <tbody>
+      {% for task in tasks %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>
+          {% if task.queue_type == 'reminder' %}<span class="badge badge-info">Reminder</span>
+          {% elif task.queue_type == 'failed_debit' %}<span class="badge badge-danger">Failed debit</span>
+          {% else %}<span class="badge badge-gray">Older owing</span>{% endif %}
+        </td>
+        <td><a href="{{ url_for('members.member_detail', mid=task.member_id) }}"><strong>{{ task.first_name }} {{ task.last_name }}</strong></a><br><small style="color:var(--t2);">{{ task.member_ref }}</small></td>
+        <td>{{ task.caller_name }}</td>
+        <td>{% if task.status == 'completed' %}<span class="badge {{ 'badge-success' if task.successful_contact else 'badge-warning' }}">{{ task.outcome|replace('_',' ')|title }}</span><br><small style="color:var(--t2);">{{ task.called_at|string|truncate(16,true,'') }}</small>{% else %}<span class="badge badge-info">Pending call</span>{% endif %}</td>
+        <td><a href="{{ url_for('collections.call_profile', task_id=task.id) }}" class="btn btn-primary btn-sm">Open Client Profile</a></td>
+      </tr>
+      {% else %}<tr><td colspan="6" style="padding:28px;text-align:center;color:var(--t2);">No calls assigned for today.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

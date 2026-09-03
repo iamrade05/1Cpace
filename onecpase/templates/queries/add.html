@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+{% block title %}New Query | 1Cpase{% endblock %}
+{% block page_title %}Log New Query{% endblock %}
+
+{% block content %}
+<style>
+.qform-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.qform-grid.three { grid-template-columns:1fr 1fr 1fr; }
+.qform-full { grid-column:1/-1; }
+.decision-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.decision-grid .dcell { background:#f9fafb; border:1px solid #eef1f5; border-radius:8px; padding:10px 12px; }
+.decision-grid .dcell small { display:block; font-size:.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#9ca3af; margin-bottom:3px; }
+.decision-grid .dcell strong { font-size:.95rem; color:#172033; }
+@media(max-width:700px){ .qform-grid, .qform-grid.three { grid-template-columns:1fr; } .decision-grid { grid-template-columns:1fr 1fr; } }
+</style>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+  <a href="{{ url_for('queries.index') }}" class="btn btn-ghost btn-sm">← Back</a>
+  <h2 style="font-size:1rem;font-weight:800;color:#172033;margin:0;">Log New Query / Ticket</h2>
+</div>
+
+<form method="POST">
+  {% if member %}<input type="hidden" name="member_id" value="{{ member.id }}">{% endif %}
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><h2>Member / Contact Details</h2></div>
+    <div class="card-body">
+      {% if member %}
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;margin-bottom:12px;
+                  display:flex;align-items:center;gap:12px;">
+        <div style="font-size:1.4rem;">👤</div>
+        <div>
+          <div style="font-weight:700;color:#172033;">{{ member.first_name }} {{ member.last_name }}</div>
+          <div style="font-size:.78rem;color:#0369a1;">{{ member.contact or '' }} &bull; Member #{{ member.id }}</div>
+        </div>
+        <a href="{{ url_for('queries.add') }}" style="margin-left:auto;font-size:.75rem;color:#9ca3af;">Remove link</a>
+      </div>
+      {% else %}
+      <div class="qform-grid">
+        <div class="form-group">
+          <label class="form-label">Member Name <span style="color:#9ca3af;font-size:.75rem;">(or walk-in/prospect)</span></label>
+          <input type="text" name="member_name" class="form-control" placeholder="Full name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contact Number</label>
+          <input type="text" name="contact" class="form-control" placeholder="0XX XXX XXXX">
+        </div>
+      </div>
+      <div style="font-size:.78rem;color:#667085;margin-top:-6px;">
+        Or search for a member:
+        <a href="{{ url_for('members.members_index') }}" style="color:#1769aa;">open member list →</a>
+        then click "Add Query" on their profile.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><h2>Query Details</h2></div>
+    <div class="card-body">
+      <div class="qform-grid">
+        <div class="form-group">
+          <label class="form-label">Category *</label>
+          <select name="category" id="cat-select" class="form-control" required onchange="loadTypes()">
+            <option value="">— Select category —</option>
+            {% for k,v in categories %}
+            <option value="{{ k }}">{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Query Type</label>
+          <select name="query_type" id="type-select" class="form-control">
+            <option value="">— Select type —</option>
+          </select>
+          <div id="type-hint" style="display:none;margin-top:6px;font-size:.78rem;color:#6b7280;"></div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Description / Notes *</label>
+        <textarea name="description" class="form-control" rows="4"
+                  placeholder="Describe the query in full…" required></textarea>
+      </div>
+
+      <div class="qform-grid three">
+        <div class="form-group">
+          <label class="form-label">Priority</label>
+          <select name="priority" class="form-control">
+            {% for k,v in priorities %}
+            <option value="{{ k }}" {% if k=='medium' %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Assign To</label>
+          <select name="assigned_to" class="form-control">
+            <option value="">Unassigned</option>
+            {% for u in users %}
+            <option value="{{ u.id }}">{{ u.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Department</label>
+          <select name="department" class="form-control">
+            <option value="">— None —</option>
+            {% for d in departments %}
+            <option value="{{ d }}">{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="qform-grid">
+        <div class="form-group">
+          <label class="form-label">Due Date</label>
+          <input type="date" name="due_date" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Follow-up Date</label>
+          <input type="date" name="follow_up_date" class="form-control">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Membership Snapshot (shown for the membership category once a member is linked) -->
+  <div id="membershipPanel" class="card" style="display:none;margin-bottom:16px;border-left:4px solid var(--fp-primary);">
+    <div class="card-header"><h2>Membership Snapshot</h2></div>
+    <div class="card-body" style="padding:16px;">
+      <div class="decision-grid">
+        <div class="dcell"><small>Package</small><strong id="mpPackage">—</strong></div>
+        <div class="dcell"><small>Contract Term</small><strong id="mpDuration">—</strong></div>
+        <div class="dcell"><small>Contract End Date</small><strong id="mpEndDate">—</strong></div>
+        <div class="dcell"><small>Months Remaining</small><strong id="mpRemaining">—</strong></div>
+        <div class="dcell"><small>Access Status</small><strong id="mpAccess">—</strong></div>
+        <div class="dcell"><small>Balance</small><strong id="mpBalance">—</strong></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cancellation Details (shown only for the cancellation category) -->
+  <div id="cancellationPanel" class="card" style="display:none;margin-bottom:16px;border-left:4px solid #e11d48;">
+    <div class="card-header"><h2>Cancellation Details</h2></div>
+    <div class="card-body">
+      <div class="qform-grid three">
+        <div class="form-group">
+          <label class="form-label">Contract Type *</label>
+          <select name="cancellation_contract_months" id="cancelContractMonths" class="form-control">
+            <option value="">— Select —</option>
+            <option value="12">12 months</option>
+            <option value="24">24 months</option>
+            <option value="36">36 months</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Months Completed *</label>
+          <input type="number" name="cancellation_months_completed" id="cancelMonthsCompleted" class="form-control" min="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Monthly Fee (R) *</label>
+          <input type="number" step="0.01" name="cancellation_monthly_fee" id="cancelMonthlyFee" class="form-control">
+        </div>
+      </div>
+      <div class="qform-grid">
+        <div class="form-group">
+          <label class="form-label">Payment Method</label>
+          <select name="cancellation_payment_method" class="form-control">
+            <option value="">— Select —</option>
+            {% for k,v in cancellation_payment_methods %}
+            <option value="{{ k }}">{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Manual Discount % <span style="color:#9ca3af;font-size:.72rem;">(ignored when the auto-settlement rule applies)</span></label>
+          <input type="number" step="1" min="0" max="100" value="0" name="cancellation_discount_pct" class="form-control">
+        </div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:.85rem;color:#374151;margin-top:4px;">
+        <input type="checkbox" name="cancel_member" value="1" style="margin-top:3px;">
+        <span>Cancel this member's account now (sets status to Cancelled)</span>
+      </label>
+      <div style="margin-top:10px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:.78rem;color:#7f1d1d;">
+        The cancellation fee and settlement amount are calculated automatically per the
+        membership agreement §11.3 penalty schedule once you save this query — the
+        breakdown appears on the query page.
+      </div>
+    </div>
+  </div>
+
+  <!-- Account Decision Summary (shown for financial categories once a member is linked) -->
+  <div id="decisionPanel" class="card" style="display:none;margin-bottom:16px;border-left:4px solid var(--fp-primary);">
+    <div class="card-header"><h2>Payment / Arrears Decision</h2></div>
+    <div class="card-body" style="padding:16px;">
+      <div class="decision-grid">
+        <div class="dcell"><small>Total Outstanding</small><strong id="dpOutstanding">—</strong></div>
+        <div class="dcell"><small>Arrears Months</small><strong id="dpMonths">—</strong></div>
+        <div class="dcell"><small>Discount Rule</small><strong id="dpDiscount">—</strong></div>
+        <div class="dcell"><small>Write-off Amount</small><strong id="dpDiscountAmount">—</strong></div>
+        <div class="dcell"><small>Settlement Amount</small><strong id="dpSettlement">—</strong></div>
+        <div class="dcell"><small>Payment Method</small><strong id="dpPaymentMethod">—</strong></div>
+        <div class="dcell"><small>PTP Required</small><strong id="dpPtpRequired">—</strong></div>
+        <div class="dcell"><small>POP Required</small><strong id="dpPopRequired">—</strong></div>
+        <div class="dcell"><small>Bank Statement</small><strong id="dpBankStatement">—</strong></div>
+        <div class="dcell"><small>Income Verified</small><strong id="dpIncomeVerified">—</strong></div>
+        <div class="dcell"><small>Access Status</small><strong id="dpAccess">—</strong></div>
+        <div class="dcell"><small>Access Decision</small><strong id="dpAccessDecision">—</strong></div>
+        <div class="dcell"><small>Follow-up</small><strong id="dpFollowUp">—</strong></div>
+        <div class="dcell"><small>Assigned To</small><strong id="dpAssignedTo">—</strong></div>
+        <div class="dcell"><small>Open Queries</small><strong id="dpOpenQueries">—</strong></div>
+        <div class="dcell"><small>Priority</small><strong id="dpPriority">—</strong></div>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:.85rem;color:#374151;">
+        <strong>Recommended Action:</strong> <span id="dpRecommendation">—</span>
+      </div>
+      <div id="managerApprovalWarning" style="display:none;margin-top:10px;background:#fee2e2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:.8rem;font-weight:700;color:#991b1b;">
+        ⚠ Manager approval required before applying this discount.
+      </div>
+      <div id="ptpRequirementsWarning" style="display:none;margin-top:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;font-size:.8rem;font-weight:700;color:#92400e;">
+        ⚠ A debit order / DebiCheck, bank statement and confirmed income are recommended before finalising a PTP.
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;">
+    <button type="submit" class="btn btn-primary">Save Query</button>
+    <a href="{{ url_for('queries.index') }}" class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+
+<script>
+const TYPES = {{ query_types | tojson }};
+const HINTS = {{ query_type_hints | tojson }};
+function loadTypes(){
+  const cat = document.getElementById('cat-select').value;
+  const sel = document.getElementById('type-select');
+  sel.innerHTML = '<option value="">— Select type —</option>';
+  (TYPES[cat] || []).forEach(t => {
+    const o = document.createElement('option');
+    o.value = t; o.textContent = t;
+    sel.appendChild(o);
+  });
+  updateTypeHint();
+  refreshDecisionPanel();
+  refreshMembershipPanel();
+  refreshCancellationPanel();
+}
+
+function updateTypeHint(){
+  const cat = document.getElementById('cat-select').value;
+  const type = document.getElementById('type-select').value;
+  const hintEl = document.getElementById('type-hint');
+  const hint = (HINTS[cat] || {})[type];
+  if (hint) {
+    hintEl.textContent = hint;
+    hintEl.style.display = 'block';
+  } else {
+    hintEl.style.display = 'none';
+  }
+}
+
+// ── Account Decision Summary ────────────────────────────────────────────────
+const financialCategories = new Set([
+  'payments', 'ptp_collections', 'cancellation', 'freeze', 'refund', 'access_card'
+]);
+const membershipCategories = new Set(['membership']);
+const cancellationCategories = new Set(['cancellation']);
+
+function money(value) {
+  return 'R' + Number(value || 0).toLocaleString('en-ZA',
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+async function refreshDecisionPanel() {
+  const memberInput = document.querySelector('[name="member_id"]');
+  const categoryInput = document.getElementById('cat-select');
+  const panel = document.getElementById('decisionPanel');
+  if (!panel) return;
+
+  const memberId = memberInput ? memberInput.value : '';
+  const category = categoryInput ? categoryInput.value : '';
+
+  if (!memberId || !financialCategories.has(category)) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  try {
+    const res = await fetch(`{{ url_for('queries.member_summary', member_id=0) }}`.replace('/0', '/' + memberId));
+    const data = await res.json();
+    if (!data.ok) { panel.style.display = 'none'; return; }
+
+    document.getElementById('dpOutstanding').textContent = money(data.total_outstanding);
+    document.getElementById('dpMonths').textContent = data.arrears_months + ' month(s)';
+    document.getElementById('dpDiscount').textContent = (data.discount_range_label || data.discount_percent + '%')
+      + (data.discount_min_percent !== data.discount_max_percent ? ` (rec. ${data.discount_percent}%)` : '');
+    document.getElementById('dpDiscountAmount').textContent = money(data.discount_amount);
+    document.getElementById('dpSettlement').textContent = money(data.settlement_amount);
+    document.getElementById('dpPaymentMethod').textContent = data.payment_type || 'Cash / card / EFT / debit order';
+    document.getElementById('dpPtpRequired').textContent = data.ptp_required || 'No';
+    document.getElementById('dpPopRequired').textContent = data.proof_of_payment_required || 'No';
+    document.getElementById('dpBankStatement').textContent = data.has_bank_statement ? 'On file' : 'Not on file';
+    document.getElementById('dpIncomeVerified').textContent = data.income_verified ? 'Yes' : 'No';
+    document.getElementById('dpAccess').textContent = data.is_blocked ? 'Blocked' : (data.access_status || 'Allowed');
+    document.getElementById('dpAccessDecision').textContent = data.access_decision || '—';
+    document.getElementById('dpFollowUp').textContent = data.payment_follow_up || '5 working days';
+    document.getElementById('dpAssignedTo').textContent = data.payment_assigned_to || 'Collections';
+    document.getElementById('dpOpenQueries').textContent = data.query_open;
+    document.getElementById('dpPriority').textContent = data.payment_priority || 'Medium';
+    document.getElementById('dpRecommendation').textContent = data.recommended_action;
+    document.getElementById('managerApprovalWarning').style.display =
+      data.manager_approval_required ? 'block' : 'none';
+    document.getElementById('ptpRequirementsWarning').style.display =
+      (category === 'ptp_collections' && !data.ptp_requirements_met) ? 'block' : 'none';
+    panel.style.display = 'block';
+  } catch (e) {
+    panel.style.display = 'none';
+  }
+}
+
+async function refreshMembershipPanel() {
+  const memberInput = document.querySelector('[name="member_id"]');
+  const categoryInput = document.getElementById('cat-select');
+  const panel = document.getElementById('membershipPanel');
+  if (!panel) return;
+
+  const memberId = memberInput ? memberInput.value : '';
+  const category = categoryInput ? categoryInput.value : '';
+
+  if (!memberId || !membershipCategories.has(category)) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  try {
+    const res = await fetch(`{{ url_for('queries.member_summary', member_id=0) }}`.replace('/0', '/' + memberId));
+    const data = await res.json();
+    if (!data.ok) { panel.style.display = 'none'; return; }
+
+    document.getElementById('mpPackage').textContent = data.package || '—';
+    document.getElementById('mpDuration').textContent = data.contract_duration || '—';
+    document.getElementById('mpEndDate').textContent = data.contract_end_date || '—';
+    document.getElementById('mpRemaining').textContent = (data.contract_remaining_months !== null && data.contract_remaining_months !== undefined)
+      ? data.contract_remaining_months + ' month(s)' + (data.contract_expired ? ' (expired)' : '')
+      : '—';
+    document.getElementById('mpAccess').textContent = data.is_blocked ? 'Blocked' : (data.access_status || 'Allowed');
+    document.getElementById('mpBalance').textContent = data.is_owing ? money(data.total_outstanding) + ' owing' : 'Zero balance';
+    panel.style.display = 'block';
+  } catch (e) {
+    panel.style.display = 'none';
+  }
+}
+
+let cancelFieldsPrefilled = false;
+
+async function refreshCancellationPanel() {
+  const memberInput = document.querySelector('[name="member_id"]');
+  const categoryInput = document.getElementById('cat-select');
+  const panel = document.getElementById('cancellationPanel');
+  if (!panel) return;
+
+  const memberId = memberInput ? memberInput.value : '';
+  const category = categoryInput ? categoryInput.value : '';
+
+  if (!memberId || !cancellationCategories.has(category)) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+  if (cancelFieldsPrefilled) return;
+
+  try {
+    const res = await fetch(`{{ url_for('queries.member_summary', member_id=0) }}`.replace('/0', '/' + memberId));
+    const data = await res.json();
+    if (!data.ok) return;
+
+    const months = parseInt((data.contract_duration || '').match(/\d+/), 10);
+    const monthsField = document.getElementById('cancelContractMonths');
+    if (months && monthsField && !monthsField.value) monthsField.value = months;
+    const feeField = document.getElementById('cancelMonthlyFee');
+    if (data.monthly_installment && feeField && !feeField.value) feeField.value = data.monthly_installment;
+    cancelFieldsPrefilled = true;
+  } catch (e) { /* leave the fields for manual entry */ }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  const categoryInput = document.getElementById('cat-select');
+  const typeInput = document.getElementById('type-select');
+  if (categoryInput) categoryInput.addEventListener('change', refreshDecisionPanel);
+  if (categoryInput) categoryInput.addEventListener('change', refreshMembershipPanel);
+  if (categoryInput) categoryInput.addEventListener('change', refreshCancellationPanel);
+  if (typeInput) typeInput.addEventListener('change', updateTypeHint);
+  refreshDecisionPanel();
+  refreshMembershipPanel();
+  refreshCancellationPanel();
+});
+</script>
+{% endblock %}

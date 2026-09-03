@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Applications | 1Cpase{% endblock %}
+{% block page_title %}Membership Applications{% endblock %}
+
+{% block content %}
+
+<!-- Status filter tabs -->
+<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; align-items:center;">
+  <a href="{{ url_for('applications.applications_index') }}"
+     style="padding:6px 14px; border-radius:20px; font-size:0.78rem; font-weight:700;
+            text-decoration:none; transition:all 0.15s;
+            background: {% if not status_filter %}#e94560{% else %}#f3f4f6{% endif %};
+            color: {% if not status_filter %}#fff{% else %}#6b7280{% endif %};">
+    All ({{ counts.values() | sum }})
+  </a>
+  {% for key, label in statuses %}
+  {% set cnt = counts.get(key, 0) %}
+  <a href="{{ url_for('applications.applications_index', status=key) }}"
+     style="padding:6px 14px; border-radius:20px; font-size:0.78rem; font-weight:700;
+            text-decoration:none; transition:all 0.15s;
+            background: {% if status_filter == key %}{{ status_colors[key] }}{% else %}#f3f4f6{% endif %};
+            color: {% if status_filter == key %}#fff{% else %}#6b7280{% endif %};">
+    {{ label }} ({{ cnt }})
+  </a>
+  {% endfor %}
+
+  {% if pending_approvals > 0 %}
+  <a href="{{ url_for('applications.approvals_queue') }}"
+     style="margin-left:auto; padding:6px 14px; border-radius:20px; font-size:0.78rem; font-weight:700;
+            text-decoration:none; background:#f97316; color:#fff;">
+    ⚠️ {{ pending_approvals }} Pending Approval{{ 's' if pending_approvals != 1 }}
+  </a>
+  {% endif %}
+</div>
+
+<!-- Search -->
+<form method="get" style="display:flex;gap:8px;align-items:center;max-width:420px;margin-bottom:14px;">
+  <input type="hidden" name="status" value="{{ status_filter }}">
+  <input type="text" name="q" value="{{ search }}" placeholder="Search applicant or lead name…"
+         style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:0.85rem;outline:none;">
+  <button type="submit" class="btn btn-primary btn-sm">Search</button>
+  {% if search %}<a href="{{ url_for('applications.applications_index', status=status_filter) }}" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
+</form>
+
+<!-- Table -->
+<div class="table-card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Applicant</th>
+        <th>Package</th>
+        <th>Status</th>
+        <th>Progress</th>
+        <th>Completed</th>
+        <th>Still Missing</th>
+        <th>Date</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in applications %}
+      {% set color = status_colors.get(a.application_status, '#6b7280') %}
+      {% set requirements = [
+        ('Contract', a.contract_status == 'signed'),
+        ('DebiCheck', a.debit_check_status == 'approved'),
+        ('Bank statement', a.bank_statement_status in ('uploaded', 'analysed')),
+        ('ID copy', a.id_copy_status in ('uploaded', 'verified')),
+        ('POS payment', a.pos_status == 'paid'),
+        ('Manager approval', a.manager_approval_status in ('not_required', 'approved'))
+      ] %}
+      <tr>
+        <td style="font-size:0.8rem; color:#9ca3af;">#{{ a.id }}</td>
+        <td style="font-weight:600;">
+          {% if a.first_name %}
+            {{ a.first_name }} {{ a.last_name }}
+          {% elif a.lead_name %}
+            {{ a.lead_name }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td style="font-size:0.82rem;">{{ a.package or '—' }}</td>
+        <td>
+          <span style="background:{{ color }}22; color:{{ color }};
+                       padding:3px 10px; border-radius:20px; font-size:0.74rem; font-weight:700;">
+            {{ a.application_status | replace('_', ' ') | title }}
+          </span>
+        </td>
+        <td style="min-width:120px;">
+          <div style="display:flex;align-items:center;gap:7px;">
+            <div style="height:7px;flex:1;background:#e5e7eb;border-radius:5px;overflow:hidden;">
+              <div style="height:100%;width:{{ a.progress_pct or 0 }}%;background:{{ color }};"></div>
+            </div>
+            <span style="font-size:0.72rem;font-weight:700;color:#6b7280;">{{ a.progress_pct or 0 }}%</span>
+          </div>
+        </td>
+        <td style="max-width:240px;">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            {% for label, done in requirements %}
+              {% if done %}
+              <span style="padding:3px 7px;border-radius:12px;background:#dcfce7;color:#166534;font-size:.69rem;font-weight:700;">✓ {{ label }}</span>
+              {% endif %}
+            {% endfor %}
+            {% if a.guardian_required == 'required' and a.guardian_status == 'approved' %}
+              <span style="padding:3px 7px;border-radius:12px;background:#dcfce7;color:#166534;font-size:.69rem;font-weight:700;">✓ Guardian consent</span>
+            {% endif %}
+          </div>
+        </td>
+        <td style="max-width:240px;">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+            {% for label, done in requirements %}
+              {% if not done %}
+              <span style="padding:3px 7px;border-radius:12px;background:#fef3c7;color:#92400e;font-size:.69rem;font-weight:700;">• {{ label }}</span>
+              {% endif %}
+            {% endfor %}
+            {% if a.guardian_required == 'required' and a.guardian_status != 'approved' %}
+              <span style="padding:3px 7px;border-radius:12px;background:#fef3c7;color:#92400e;font-size:.69rem;font-weight:700;">• Guardian consent</span>
+            {% endif %}
+          </div>
+        </td>
+        <td style="font-size:0.78rem; color:#9ca3af;">
+          {{ a.created_at[:10] if a.created_at else '—' }}
+        </td>
+        <td>
+          <a href="{{ url_for('applications.application_detail', aid=a.id) }}"
+             style="font-size:0.78rem; color:#e94560; text-decoration:none; font-weight:600;">
+            Open →
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not applications %}
+      <tr><td colspan="9" style="text-align:center; padding:32px; color:#9ca3af;">
+        No applications found.
+      </td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

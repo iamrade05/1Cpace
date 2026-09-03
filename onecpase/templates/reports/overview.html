@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}Reports – Overview{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>📊 Reports</h1>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center;">
+  <a href="{{ url_for('reports.overview') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#e94560;color:#fff;">Overview</a>
+  <a href="{{ url_for('reports.membership') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Membership</a>
+  <a href="{{ url_for('reports.finance') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Finance</a>
+  <a href="{{ url_for('reports.arrears') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Arrears &amp; PTP</a>
+  <a href="{{ url_for('reports.queries_report') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Queries</a>
+  <a href="{{ url_for('access_report.index') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Access</a>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:1.5rem;">
+  <div class="kpi-card" style="border-left-color:#28a745;">
+    <div class="kpi-label">Active Members</div>
+    <div class="kpi-value" style="color:#28a745;">{{ stats.active_members | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#6c757d;">
+    <div class="kpi-label">Frozen Members</div>
+    <div class="kpi-value" style="color:#6c757d;">{{ stats.frozen_members | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#dc3545;">
+    <div class="kpi-label">Cancelled</div>
+    <div class="kpi-value" style="color:#dc3545;">{{ stats.cancelled_members | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#007bff;">
+    <div class="kpi-label">Total Members</div>
+    <div class="kpi-value">{{ stats.total_members | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#17a2b8;">
+    <div class="kpi-label">New This Month</div>
+    <div class="kpi-value" style="color:#17a2b8;">{{ stats.new_this_month | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#28a745;">
+    <div class="kpi-label">Collected (Month)</div>
+    <div class="kpi-value" style="color:#28a745;">R {{ '{:,.2f}'.format(stats.collected_this_month | float) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#dc3545;">
+    <div class="kpi-label">Outstanding</div>
+    <div class="kpi-value" style="color:#dc3545;">R {{ '{:,.2f}'.format(stats.total_outstanding | float) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#ffc107;">
+    <div class="kpi-label">Open Queries</div>
+    <div class="kpi-value" style="color:#ffc107;">{{ stats.open_queries | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#007bff;">
+    <div class="kpi-label">Active PTPs</div>
+    <div class="kpi-value" style="color:#007bff;">{{ stats.active_ptps | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#dc3545;">
+    <div class="kpi-label">Broken PTPs</div>
+    <div class="kpi-value" style="color:#dc3545;">{{ stats.broken_ptps | default(0) }}</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+
+  <!-- Collections last 6 months -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Collections — Last 6 Months</h3>
+      <a href="{{ url_for('reports.finance') }}" class="btn btn-xs btn-outline">Full Report →</a>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.82rem;">
+        <thead>
+          <tr><th>Month</th><th class="text-right">Collected</th><th class="text-right">Outstanding</th><th class="text-right">Records</th></tr>
+        </thead>
+        <tbody>
+          {% for r in monthly %}
+          <tr>
+            <td>{{ r['month'] }}</td>
+            <td class="text-right">R {{ '{:,.2f}'.format(r['collected'] | float) }}</td>
+            <td class="text-right">R {{ '{:,.2f}'.format(r['outstanding'] | float) }}</td>
+            <td class="text-right">{{ r['cnt'] }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- New Joins last 6 months -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">New Joins — Last 6 Months</h3>
+      <a href="{{ url_for('reports.membership') }}" class="btn btn-xs btn-outline">Full Report →</a>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.82rem;">
+        <thead>
+          <tr><th>Month</th><th class="text-right">New Members</th></tr>
+        </thead>
+        <tbody>
+          {% for r in joins_monthly %}
+          <tr>
+            <td>{{ r['month'] }}</td>
+            <td class="text-right"><strong>{{ r['cnt'] }}</strong></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+
+  <!-- Top Packages -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Top Packages (Active Members)</h3>
+      <a href="{{ url_for('reports.membership') }}" class="btn btn-xs btn-outline">Full Report →</a>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.82rem;">
+        <thead>
+          <tr><th>Package</th><th class="text-right">Active</th></tr>
+        </thead>
+        <tbody>
+          {% for r in top_packages %}
+          <tr>
+            <td>{{ r['package'] }}</td>
+            <td class="text-right"><strong>{{ r['cnt'] }}</strong></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Queries this month -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Queries This Month by Category</h3>
+      <a href="{{ url_for('reports.queries_report') }}" class="btn btn-xs btn-outline">Full Report →</a>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.82rem;">
+        <thead>
+          <tr><th>Category</th><th class="text-right">Count</th></tr>
+        </thead>
+        <tbody>
+          {% for r in query_cats %}
+          <tr>
+            <td>{{ r['category'] | replace('_',' ') | title }}</td>
+            <td class="text-right"><strong>{{ r['cnt'] }}</strong></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="text-center text-muted">No queries this month</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div style="margin-top:1rem;display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;">
+  <a href="{{ url_for('reports.membership') }}" class="card" style="padding:1rem;text-decoration:none;color:inherit;text-align:center;border-top:3px solid #28a745;">
+    <div style="font-size:1.5rem;">👥</div>
+    <div style="font-weight:600;margin-top:.25rem;">Membership</div>
+    <div style="font-size:.78rem;color:#6c757d;">Status, packages, new joins</div>
+  </a>
+  <a href="{{ url_for('reports.finance') }}" class="card" style="padding:1rem;text-decoration:none;color:inherit;text-align:center;border-top:3px solid #007bff;">
+    <div style="font-size:1.5rem;">💰</div>
+    <div style="font-weight:600;margin-top:.25rem;">Finance</div>
+    <div style="font-size:.78rem;color:#6c757d;">Collections, payments, outstanding</div>
+  </a>
+  <a href="{{ url_for('reports.arrears') }}" class="card" style="padding:1rem;text-decoration:none;color:inherit;text-align:center;border-top:3px solid #dc3545;">
+    <div style="font-size:1.5rem;">📋</div>
+    <div style="font-weight:600;margin-top:.25rem;">Arrears &amp; PTP</div>
+    <div style="font-size:.78rem;color:#6c757d;">Debt, PTPs, access blocks</div>
+  </a>
+  <a href="{{ url_for('reports.queries_report') }}" class="card" style="padding:1rem;text-decoration:none;color:inherit;text-align:center;border-top:3px solid #ffc107;">
+    <div style="font-size:1.5rem;">🎫</div>
+    <div style="font-weight:600;margin-top:.25rem;">Queries</div>
+    <div style="font-size:.78rem;color:#6c757d;">Tickets, resolutions, trends</div>
+  </a>
+</div>
+{% endblock %}

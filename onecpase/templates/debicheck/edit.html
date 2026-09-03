@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Edit DebiCheck #{{ mandate.id }} | 1Cpase{% endblock %}
+{% block page_title %}Edit DebiCheck #{{ mandate.id }}{% endblock %}
+{% block content %}
+<form method="post" id="debicheckEditForm">
+  <div class="form-card" style="max-width:1000px;margin:auto;">
+    <h2 class="section-heading">{{ mandate.first_name }} {{ mandate.last_name }}</h2>
+    <div style="font-size:0.8rem;color:#6b7280;margin-bottom:18px;">
+      Editing the mandate's own details. Doesn't touch the member profile or re-submit anything to NuPay —
+      use Push to NuPay from the mandate page for that once these are correct.
+    </div>
+
+    <h3 class="section-heading" style="font-size:0.9rem;">Banking &amp; Mandate</h3>
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label class="form-label">Account Holder Name</label>
+        <input name="account_name" id="dcAccountName" class="form-control" maxlength="30" required
+               value="{{ mandate.account_name or '' }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Bank</label>
+        <select id="dcBank" class="form-control">
+          <option value="">— Select bank (fills branch code) —</option>
+          {% for name, code in banks %}
+          <option value="{{ name }}" data-branch="{{ code }}">{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Account Type</label>
+        <select name="account_type" class="form-control" required>
+          {% for value, label in [('1','Cheque/Current'),('2','Savings'),('3','Transmission')] %}
+          <option value="{{ value }}" {% if mandate.account_type==value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Account Number</label>
+        <input name="account_number" class="form-control" maxlength="11" inputmode="numeric" required
+               value="{{ mandate.account_number or '' }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Branch Code</label>
+        <input name="branch_code" id="dcBranch" class="form-control" maxlength="6" inputmode="numeric"
+               pattern="[0-9]{6}" required value="{{ mandate.branch_code or '' }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Instalment Amount (R)</label>
+        <input type="number" name="instalment_amount" min="0.01" step="0.01" class="form-control" required
+               value="{{ mandate.instalment_amount }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Client Reference 1</label>
+        <input name="client_ref1" class="form-control" maxlength="25" required
+               value="{{ mandate.client_ref1 or '' }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Client Reference 2 — Staff Number</label>
+        <input name="client_ref2" class="form-control" maxlength="4" inputmode="numeric" pattern="[0-9]{4}"
+               placeholder="4 digits (optional for now)" value="{{ mandate.client_ref2 or '' }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Submit Date</label>
+        <input type="date" name="submit_date" class="form-control" min="{{ today }}" required
+               value="{{ mandate.submit_date or today }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Frequency</label>
+        <select name="frequency" class="form-control">
+          {% for value, label in [('1','Weekly'),('2','Bi-weekly'),('3','Monthly'),('5','End of Month'),('6','Last Friday of Month')] %}
+          <option value="{{ value }}" {% if (mandate.frequency or '3')==value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Number of Instalments</label>
+        <input type="number" name="no_installments" min="1" class="form-control"
+               value="{{ mandate.no_installments or 99 }}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tracking</label>
+        <select name="tracking" class="form-control">
+          {% for value, label in [('12','No Tracking'),('13','1 Day'),('01','2 Days'),('14','3 Days'),('02','4 Days'),('03','5 Days'),('04','6 Days'),('15','7 Days'),('05','8 Days'),('06','9 Days'),('07','10 Days')] %}
+          <option value="{{ value }}" {% if (mandate.tracking or '14')==value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Who Owns the Bank Account?</label>
+        <select name="payer_type" class="form-control">
+          <option value="self" {% if mandate.payer_type=='self' %}selected{% endif %}>Member</option>
+          <option value="third_party" {% if mandate.payer_type=='third_party' %}selected{% endif %}>Somebody Else</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Identity Type</label>
+        <select name="id_type" id="dcIdType" class="form-control">
+          <option value="0" {% if mandate.id_type=='0' %}selected{% endif %}>RSA ID Number</option>
+          <option value="1" {% if mandate.id_type=='1' %}selected{% endif %}>Passport</option>
+          <option value="4" {% if mandate.id_type=='4' %}selected{% endif %}>Juristic Account</option>
+        </select>
+      </div>
+      <div class="form-group" id="dcIdNumberField">
+        <label class="form-label">SA ID Number</label>
+        <input name="id_number" class="form-control" maxlength="13" inputmode="numeric"
+               value="{{ mandate.id_number or '' }}">
+      </div>
+      <div class="form-group" id="dcPassportField" style="display:none;">
+        <label class="form-label">Passport Number</label>
+        <input name="passport" class="form-control" value="{{ mandate.passport or '' }}">
+      </div>
+      <div class="form-group" id="dcJuristicField" style="display:none;">
+        <label class="form-label">Juristic Account</label>
+        <input name="juristic_account" class="form-control" maxlength="15" value="{{ mandate.juristic_account or '' }}">
+      </div>
+    </div>
+
+    <div class="form-actions" style="justify-content:flex-end;margin-top:16px;">
+      <a href="{{ url_for('debicheck.detail', mandate_id=mandate.id) }}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save Details</button>
+    </div>
+  </div>
+</form>
+<script>
+document.getElementById('dcBank').addEventListener('change', e => {
+  const code = e.target.options[e.target.selectedIndex]?.dataset.branch;
+  if (code) document.getElementById('dcBranch').value = code;
+});
+function toggleDcIdentity() {
+  const type = document.getElementById('dcIdType').value;
+  document.getElementById('dcIdNumberField').style.display = type === '0' ? 'flex' : 'none';
+  document.getElementById('dcPassportField').style.display = type === '1' ? 'flex' : 'none';
+  document.getElementById('dcJuristicField').style.display = type === '4' ? 'flex' : 'none';
+}
+document.getElementById('dcIdType').addEventListener('change', toggleDcIdentity);
+toggleDcIdentity();
+</script>
+{% endblock %}

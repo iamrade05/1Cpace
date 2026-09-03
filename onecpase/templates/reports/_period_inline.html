@@ -1,0 +1,9 @@
+<div style="display:flex;gap:5px;flex-wrap:wrap;">
+  {% for pval, plabel in periods %}
+  <a href="{{ url_for('reports.index') }}?tab={{ tab }}&period={{ pval }}"
+     style="padding:5px 12px;border-radius:20px;font-size:0.75rem;font-weight:700;text-decoration:none;
+            {% if period == pval %}background:#e94560;color:#fff;{% else %}background:#f3f4f6;color:#6b7280;{% endif %}">
+    {{ plabel }}
+  </a>
+  {% endfor %}
+</div>

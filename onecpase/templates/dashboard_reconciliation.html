@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Itensity Reconciliation{% endblock %}
+
+{% block content %}
+<section class="fd-panel" style="max-width:1000px;margin:24px auto;">
+  <div class="fd-panel-head">
+    <div>
+      <h2 class="fd-panel-title">Itensity reconciliation</h2>
+      <p class="fd-panel-sub">Compare local member status totals with the live Itensity dashboard snapshot.</p>
+    </div>
+    <a class="fd-btn fd-btn-secondary" href="{{ url_for('dashboard.dashboard') }}">Back to dashboard</a>
+  </div>
+
+  <form method="post" action="{{ url_for('dashboard.dashboard_reconciliation_sync') }}" style="margin:18px 0;">
+    <button type="submit" class="fd-btn fd-btn-primary">Sync members from Itensity</button>
+  </form>
+
+  <div class="fd-legend" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:18px 0;">
+    <div class="fd-panel" style="padding:14px;">
+      <div class="fd-panel-sub">Local total</div>
+      <strong>{{ "{:,}".format(reconciliation.local_total) }}</strong>
+    </div>
+    <div class="fd-panel" style="padding:14px;">
+      <div class="fd-panel-sub">Live Itensity total</div>
+      <strong>{{ "{:,}".format(reconciliation.live_total) }}</strong>
+    </div>
+    <div class="fd-panel" style="padding:14px;">
+      <div class="fd-panel-sub">Drift</div>
+      <strong>{{ "{:,}".format(reconciliation.drift_total) }}</strong>
+    </div>
+    <div class="fd-panel" style="padding:14px;">
+      <div class="fd-panel-sub">Status</div>
+      <strong>{% if reconciliation.is_matched %}Matched{% else %}Needs sync{% endif %}</strong>
+    </div>
+  </div>
+
+  <table class="fd-table" style="width:100%;border-collapse:collapse;">
+    <thead>
+      <tr>
+        <th>Status</th>
+        <th>Local app</th>
+        <th>Live Itensity</th>
+        <th>Delta</th>
+        <th>Match</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in reconciliation.status_rows %}
+      <tr>
+        <td>{{ row.status }}</td>
+        <td>{{ "{:,}".format(row.local) }}</td>
+        <td>{{ "{:,}".format(row.live) }}</td>
+        <td>{% if row.delta > 0 %}+{% endif %}{{ "{:,}".format(row.delta) }}</td>
+        <td>{% if row.matches %}Yes{% else %}No{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

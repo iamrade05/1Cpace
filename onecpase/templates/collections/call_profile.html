@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}{{ task.first_name }} {{ task.last_name }} | Collections Call{% endblock %}
+{% block page_title %}Collections Client Brief{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+  <a href="{{ url_for('collections.call_queue') }}" class="btn btn-ghost">← Back to Call List</a>
+  <span class="badge badge-info">Assigned to {{ task.caller_name }}</span>
+</div>
+
+<div class="form-card" style="margin-bottom:16px;border-left:4px solid var(--red);">
+  <div style="display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:flex-start;">
+    <div>
+      <div style="font-size:.75rem;color:var(--t2);">{{ task.member_ref }}</div>
+      <h2 style="margin:4px 0;">{{ task.first_name }} {{ task.last_name }}</h2>
+      <div><strong>{{ task.contact or 'No contact number recorded' }}</strong>
+        {% if task.contact %}<button type="button" class="btn btn-primary btn-sm" onclick="startCollectionPbxCall('{{ task.contact|e }}', {{ task.id }})">Call via PBX</button>{% endif %}
+        · {{ task.email or 'No email' }}</div>
+      <div style="color:var(--t2);margin-top:5px;">{{ task.member_status }} member · Debit date {{ task.debit_order_date or 'not recorded' }}</div>
+    </div>
+    <div><span class="badge {% if task.queue_type == 'failed_debit' %}badge-danger{% elif task.queue_type == 'reminder' %}badge-info{% else %}badge-warning{% endif %}">{{ task.queue_type|replace('_',' ')|title }}</span></div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px;">
+  <div class="form-card"><div class="kpi-label">Total Owing</div><div class="kpi-value" style="color:var(--err);">R{{ '%.2f'|format(arrears.total_arrears or 0) }}</div><div class="kpi-sub">From payment ledger</div></div>
+  <div class="form-card"><div class="kpi-label">Months Owing</div><div class="kpi-value">{{ arrears.months_in_arrears or 0 }}</div><div class="kpi-sub">{{ arrears.category_label }}</div></div>
+  <div class="form-card"><div class="kpi-label">Failed Payments</div><div class="kpi-value" style="color:var(--err);">{{ payment_stats.payments_failed or 0 }}</div><div class="kpi-sub">Debit/payment failures</div></div>
+  <div class="form-card"><div class="kpi-label">Payments Made</div><div class="kpi-value" style="color:var(--ok);">{{ payment_stats.payments_made or 0 }}</div><div class="kpi-sub">R{{ '%.2f'|format(payment_stats.total_paid or 0) }} paid</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:16px;margin-bottom:16px;">
+  <section class="form-card">
+    <h3 style="margin-bottom:12px;">Payment &amp; Debit Profile</h3>
+    <table style="width:100%;font-size:.82rem;">
+      <tr><td style="color:var(--t2);padding:6px;">DebiCheck in place</td><td><strong>{% if mandate %}{{ mandate.status|title }}{% else %}No mandate recorded{% endif %}</strong></td></tr>
+      {% if mandate %}<tr><td style="color:var(--t2);padding:6px;">Mandate amount</td><td>R{{ '%.2f'|format(mandate.instalment_amount or 0) }}</td></tr><tr><td style="color:var(--t2);padding:6px;">Submitted</td><td>{{ mandate.submitted_at or mandate.created_at }}</td></tr>{% endif %}
+      <tr><td style="color:var(--t2);padding:6px;">Last payment</td><td>{{ payment_stats.last_payment_date or 'No payment recorded' }}</td></tr>
+      <tr><td style="color:var(--t2);padding:6px;vertical-align:top;">Payment methods</td><td>{% for method in payment_methods %}<div><strong>{{ ('Debit Order' if method.method == 'debicheck' else method.method|title) }}</strong>: {{ method.payments }} payment{{ 's' if method.payments != 1 }} · R{{ '%.2f'|format(method.amount or 0) }}</div>{% else %}No successful payment methods recorded{% endfor %}</td></tr>
+    </table>
+  </section>
+
+  <section class="form-card">
+    <h3 style="margin-bottom:12px;">Gym Activity &amp; Queries</h3>
+    <div style="padding:10px;background:var(--s2);border-radius:8px;margin-bottom:12px;">
+      <div class="kpi-label">Last Gym Visit</div>
+      {% if last_gym_visit %}<strong>{{ last_gym_visit.last_visited }}</strong><div style="color:var(--t2);font-size:.78rem;">{{ last_gym_visit.days_ago }} days ago · {{ last_gym_visit.shift }} · {{ last_gym_visit.source }}</div>{% else %}<strong>No visit found</strong>{% endif %}
+    </div>
+    <div><strong>{{ queries|length }} recent quer{{ 'y' if queries|length == 1 else 'ies' }}</strong></div>
+    {% for query in queries %}<div style="border-top:1px solid var(--b1);padding:8px 0;font-size:.8rem;"><span class="badge badge-gray">{{ query.status|replace('_',' ')|title }}</span> <strong>{{ query.category|replace('_',' ')|title }}</strong> — {{ query.query_type or query.description }}<br><small style="color:var(--t2);">{{ query.reference or ('Query #' ~ query.id) }} · {{ query.created_at }}</small></div>{% else %}<p style="color:var(--t2);font-size:.82rem;">No query has been logged for this client.</p>{% endfor %}
+  </section>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:16px;">
+  <section class="form-card">
+    <h3 style="margin-bottom:12px;">Previous Payment Arrangements</h3>
+    {% for arrangement in arrangements %}<div style="padding:10px;border:1px solid var(--b1);border-radius:8px;margin-bottom:8px;font-size:.82rem;"><div style="display:flex;justify-content:space-between;gap:8px;"><strong>R{{ '%.2f'|format(arrangement.promise_amount or 0) }} by {{ arrangement.promise_date }}</strong><span class="badge {{ 'badge-success' if arrangement.ptp_status == 'paid' else 'badge-warning' }}">{{ arrangement.ptp_status|replace('_',' ')|title }}</span></div><div style="color:var(--t2);margin-top:5px;">{{ arrangement.arrangement_type|replace('_',' ')|title }} · {{ arrangement.payment_method|replace('_',' ')|title }}{% if arrangement.notes %} · {{ arrangement.notes }}{% endif %}</div></div>{% else %}<p style="color:var(--t2);">No previous payment arrangement recorded.</p>{% endfor %}
+  </section>
+  <section class="form-card">
+    <h3 style="margin-bottom:12px;">Previous Collections Calls</h3>
+    {% for call in previous_calls %}<div style="padding:8px 0;border-bottom:1px solid var(--b1);font-size:.82rem;"><strong>{{ call.outcome|replace('_',' ')|title }}</strong> · {{ call.caller_name }}<br><small style="color:var(--t2);">{{ call.called_at }}{% if call.notes %} · {{ call.notes }}{% endif %}</small></div>{% else %}<p style="color:var(--t2);">No previous Collections call recorded.</p>{% endfor %}
+  </section>
+</div>
+
+<section class="form-card" style="border-left:4px solid var(--info);">
+  <h3 style="margin-bottom:6px;">Record Today’s Call</h3>
+  {% if task.status == 'completed' %}
+  <div class="alert alert-success"><strong>Completed:</strong> {{ task.outcome|replace('_',' ')|title }}{% if task.notes %} — {{ task.notes }}{% endif %}</div>
+  {% if task.outcome in ('no_answer', 'busy', 'voicemail', 'wrong_number') %}
+  <div style="margin-top:14px;padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+    <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#059669;margin-bottom:8px;">Escalation — WhatsApp Template</div>
+    <div id="wa-template" style="font-size:0.82rem;color:#374151;line-height:1.6;white-space:pre-wrap;background:#fff;border:1px solid #d1fae5;border-radius:6px;padding:12px 14px;">{{ whatsapp_message }}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+      <button type="button" onclick="copyWaTemplate()" class="btn btn-ghost btn-sm" style="border-color:#059669;color:#059669;">Copy Message</button>
+      <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
+        <input type="hidden" name="channel" value="whatsapp">
+        <button type="submit" class="btn btn-ghost btn-sm" {% if task.whatsapp_sent %}disabled{% endif %}>{% if task.whatsapp_sent %}✓ WhatsApp sent{% else %}Mark WhatsApp sent{% endif %}</button>
+      </form>
+      <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
+        <input type="hidden" name="channel" value="sms">
+        <button type="submit" class="btn btn-ghost btn-sm" {% if task.sms_sent %}disabled{% endif %}>{% if task.sms_sent %}✓ SMS sent{% else %}Mark SMS sent{% endif %}</button>
+      </form>
+      <span class="badge {{ 'badge-success' if task.email_sent else 'badge-gray' }}">{{ 'Email sent' if task.email_sent else 'No email on file / not sent' }}</span>
+    </div>
+  </div>
+  {% endif %}
+  {% else %}
+  <form method="post" action="{{ url_for('collections.record_call_result', task_id=task.id) }}">
+    <div class="form-grid-2">
+      <div class="form-group"><label class="form-label">Call outcome *</label><select name="outcome" id="outcome-select" class="form-control" required onchange="outcomeChanged()"><option value="">Select result…</option>{% for key,label,successful in call_outcomes %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label class="form-label" id="notes-label">Notes / promise date</label><input name="notes" id="notes-input" class="form-control" placeholder="Record what the client said"></div>
+    </div>
+    <div class="form-group" id="callback-date-group" style="display:none;">
+      <label class="form-label">Callback date *</label>
+      <input type="date" name="callback_date" id="callback-date-input" class="form-control">
+    </div>
+    <button class="btn btn-primary" type="submit">Save Call Result</button>
+  </form>
+  <script>
+  function outcomeChanged() {
+    var outcome = document.getElementById('outcome-select').value;
+    var callbackGroup = document.getElementById('callback-date-group');
+    var callbackInput = document.getElementById('callback-date-input');
+    var notesInput = document.getElementById('notes-input');
+    var notesLabel = document.getElementById('notes-label');
+    var showCallback = outcome === 'asked_callback';
+    callbackGroup.style.display = showCallback ? 'block' : 'none';
+    callbackInput.required = showCallback;
+    var needsReason = outcome === 'refused' || outcome === 'disputed';
+    notesInput.required = needsReason;
+    notesLabel.textContent = needsReason ? 'Notes — reason required *' : 'Notes / promise date';
+  }
+  </script>
+  {% endif %}
+</section>
+<script>
+function copyWaTemplate() {
+  var el = document.getElementById('wa-template');
+  if (!el) return;
+  navigator.clipboard.writeText(el.innerText).then(function() {
+    var btn = event.target;
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  });
+}
+</script>
+{% endblock %}
+
+<script>
+async function startCollectionPbxCall(phone, taskId) {
+  const token = document.querySelector('input[name="csrf_token"]')?.value || '';
+  try {
+    const r = await fetch('{{ url_for("pbx.dial") }}', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken':token},
+      body:JSON.stringify({phone:phone, collection_task_id:taskId})
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'PBX call failed');
+    alert('Call started. Complete the outcome below after the call.');
+  } catch (e) { alert(e.message); }
+}
+</script>

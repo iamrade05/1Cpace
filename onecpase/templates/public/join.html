@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Join {{ tenant.name }}</title>
+  <style>
+    :root{--navy:#002e45;--navy-d:#001e2d;--gold:#b0842d;--gold-d:#866421;--bg:#0b0b10;--s1:#10111a;--s2:#161820;--b1:#252832;--txt:#f0eff6;--t2:#9b9db4;--err:#ef4444}
+    *{box-sizing:border-box} body{margin:0;min-height:100vh;background:radial-gradient(circle at top,var(--navy),var(--bg) 48%);color:var(--txt);font-family:Arial,sans-serif;padding:28px 16px}.wrap{width:min(680px,100%);margin:auto}.brand{letter-spacing:.1em;color:var(--gold);font-weight:800;text-transform:uppercase}.card{background:rgba(16,17,26,.96);border:1px solid var(--b1);border-radius:14px;padding:clamp(20px,5vw,38px);box-shadow:0 22px 55px #0008}h1{margin:8px 0;font-size:clamp(1.8rem,6vw,3rem)}.intro{color:var(--t2);line-height:1.55;margin-bottom:24px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.full{grid-column:1/-1}label,legend{display:block;font-size:.83rem;font-weight:700;margin-bottom:7px}input,select{width:100%;padding:12px;border-radius:8px;border:1px solid #30333f;background:var(--s2);color:var(--txt);font-size:1rem}input:focus,select:focus{outline:2px solid var(--gold);border-color:transparent}.consent{display:flex;gap:10px;align-items:flex-start;color:var(--t2);font-weight:400;line-height:1.4}.consent input{width:auto;margin-top:3px}.errors{border:1px solid var(--err);background:#ef44441f;color:#fecaca;border-radius:8px;padding:12px;margin-bottom:18px}.errors ul{margin:0;padding-left:18px}.btn{border:0;border-radius:8px;background:var(--gold);color:#080808;font-weight:800;font-size:1rem;padding:14px 20px;cursor:pointer;width:100%}.btn:hover{background:var(--gold-d);color:white}.honeypot{position:absolute;left:-10000px}@media(max-width:600px){.grid{grid-template-columns:1fr}.full{grid-column:auto}}
+  </style>
+</head>
+<body><main class="wrap"><div class="card">
+  <div class="brand">{{ tenant.name }}</div>
+  <h1>Start your fitness journey</h1>
+  <p class="intro">Complete this short form and one of our sales consultants will contact you. Enquiry channel: {{ campaign }}.</p>
+  {% if errors %}<div class="errors"><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="honeypot"><label>Company website<input name="company_website" tabindex="-1" autocomplete="off"></label></div>
+    <div class="grid">
+      <div class="full"><label for="full_name">Full name</label><input id="full_name" name="full_name" required value="{{ values.get('full_name','') }}" autocomplete="name"></div>
+      <div><label for="phone">Cellphone number</label><input id="phone" name="phone" required value="{{ values.get('phone','') }}" inputmode="tel" autocomplete="tel"></div>
+      <div><label for="email">Email (optional)</label><input id="email" name="email" type="email" value="{{ values.get('email','') }}" autocomplete="email"></div>
+      <div class="full"><label for="training_experience">What is your training experience?</label><select id="training_experience" name="training_experience" required><option value="">Select one</option><option value="none" {% if values.get('training_experience')=='none' %}selected{% endif %}>No training experience</option><option value="some" {% if values.get('training_experience')=='some' %}selected{% endif %}>Some training experience</option><option value="experienced" {% if values.get('training_experience')=='experienced' %}selected{% endif %}>Experienced</option></select></div>
+      <div class="full"><label for="training_preference">How would you like to train?</label><select id="training_preference" name="training_preference" required><option value="">Select one</option><option value="personal_trainer" {% if values.get('training_preference')=='personal_trainer' %}selected{% endif %}>I require a personal trainer</option><option value="train_alone" {% if values.get('training_preference')=='train_alone' %}selected{% endif %}>I will train alone</option><option value="not_sure" {% if values.get('training_preference')=='not_sure' %}selected{% endif %}>I am not sure yet</option></select></div>
+      <div class="full"><label for="joining_preference">Will you be joining alone?</label><select id="joining_preference" name="joining_preference" required><option value="">Select one</option><option value="alone" {% if values.get('joining_preference')=='alone' %}selected{% endif %}>Yes, joining alone</option><option value="with_someone" {% if values.get('joining_preference')=='with_someone' %}selected{% endif %}>No, joining with someone</option></select></div>
+      <div class="full"><label class="consent"><input type="checkbox" name="contact_consent" value="1" required> I agree that {{ tenant.name }} may contact me about this enquiry.</label></div>
+      <div class="full"><button class="btn" type="submit">Send my enquiry</button></div>
+    </div>
+  </form>
+</div></main></body></html>

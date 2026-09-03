@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block title %}Incident Log | 1Cpase{% endblock %}
+{% block page_title %}Incident Log{% endblock %}
+
+{% block content %}
+<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; margin-bottom:20px;">
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.6rem; font-weight:700; color:#f59e0b;">{{ open_count }}</div>
+    <div style="font-size:0.75rem; color:#6b7280;">Open Incidents</div>
+  </div></div>
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.6rem; font-weight:700; color:#ef4444;">{{ high_count }}</div>
+    <div style="font-size:0.75rem; color:#6b7280;">High Severity</div>
+  </div></div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 340px; gap:20px;">
+  <div>
+    <form method="get" style="display:flex; gap:10px; margin-bottom:14px;">
+      <select name="status" onchange="this.form.submit()">
+        <option value="all" {% if status == 'all' %}selected{% endif %}>All Statuses</option>
+        <option value="open" {% if status == 'open' %}selected{% endif %}>Open</option>
+        <option value="warned" {% if status == 'warned' %}selected{% endif %}>Warned</option>
+        <option value="resolved" {% if status == 'resolved' %}selected{% endif %}>Resolved</option>
+      </select>
+      <select name="severity" onchange="this.form.submit()">
+        <option value="all" {% if sev == 'all' %}selected{% endif %}>All Severities</option>
+        <option value="low" {% if sev == 'low' %}selected{% endif %}>Low</option>
+        <option value="medium" {% if sev == 'medium' %}selected{% endif %}>Medium</option>
+        <option value="high" {% if sev == 'high' %}selected{% endif %}>High</option>
+      </select>
+    </form>
+
+    <div class="card">
+      <div class="card-body">
+        {% if incidents %}
+        <table>
+          <thead>
+            <tr><th>Who</th><th>Type</th><th>Severity</th><th>Date</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for i in incidents %}
+            <tr>
+              <td style="font-weight:500;">{{ i.member_name or i.walk_in_name or '—' }}</td>
+              <td style="font-size:0.82rem;">{{ i.incident_type | replace('_',' ') | capitalize }}</td>
+              <td>
+                {% if i.severity == 'high' %}<span class="badge badge-danger">High</span>
+                {% elif i.severity == 'medium' %}<span class="badge badge-warning">Medium</span>
+                {% else %}<span class="badge badge-gray">Low</span>{% endif %}
+              </td>
+              <td style="color:#6b7280; font-size:0.82rem;">{{ i.date }}{% if i.time %} {{ i.time }}{% endif %}</td>
+              <td>
+                {% if i.status == 'open' %}<span class="badge badge-warning">Open</span>
+                {% elif i.status == 'warned' %}<span class="badge badge-warning">Warned</span>
+                {% else %}<span class="badge badge-success">Resolved</span>{% endif %}
+              </td>
+              <td style="white-space:nowrap;">
+                {% if i.status != 'resolved' %}
+                <form method="post" action="{{ url_for('fitness.incident_update', iid=i.id) }}" style="display:inline-flex; gap:4px;">
+                  <select name="status" style="font-size:0.78rem; padding:2px 4px;">
+                    <option value="open" {% if i.status == 'open' %}selected{% endif %}>Open</option>
+                    <option value="warned" {% if i.status == 'warned' %}selected{% endif %}>Warned</option>
+                    <option value="resolved">Resolved</option>
+                  </select>
+                  <button type="submit" class="btn btn-success btn-sm">Update</button>
+                </form>
+                {% endif %}
+                {% if wa_messages.get(i.id) %}
+                <a href="{{ wa_messages[i.id] }}" target="_blank" class="btn btn-ghost btn-sm">WhatsApp</a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state" style="padding:32px;">
+          <div class="empty-icon">🚨</div>
+          <p>No incidents match this filter.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if repeats %}
+    <div class="card" style="margin-top:16px;">
+      <div class="card-header"><h2>Repeat Members</h2></div>
+      <div class="card-body">
+        <table>
+          <thead><tr><th>Member</th><th>Incidents</th></tr></thead>
+          <tbody>
+            {% for r in repeats %}
+            <tr><td>{{ r.member_name }}</td><td>{{ r.c }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card" style="align-self:start;">
+    <div class="card-header"><h2>Log Incident</h2></div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('fitness.incident_add') }}">
+        <div class="form-group">
+          <label>Member</label>
+          <select name="member_id" class="member-picker">
+            <option value="">— Walk-in instead —</option>
+            {% for m in members %}
+            <option value="{{ m.id }}">{{ m.first_name }} {{ m.last_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Walk-in Name</label>
+          <input name="walk_in_name" placeholder="If not an existing member">
+        </div>
+        <div class="form-group">
+          <label>Walk-in Contact</label>
+          <input name="walk_in_contact">
+        </div>
+        <div class="form-group">
+          <label>Incident Type</label>
+          <select name="incident_type">
+            <option value="equipment">🏋️ Equipment Left on Floor</option>
+            <option value="attire">👟 Improper Attire</option>
+            <option value="disrespect">🚫 Disrespectful Behaviour</option>
+            <option value="noise">🔊 Noise / Disturbance</option>
+            <option value="other" selected>📋 Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Severity</label>
+          <select name="severity">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Description *</label>
+          <textarea name="description" rows="3" required></textarea>
+        </div>
+        <div class="form-group">
+          <label>Logged By</label>
+          <select name="logged_by_id">
+            <option value="">— Select instructor —</option>
+            {% for s in instructors %}
+            <option value="{{ s.id }}">{{ s.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Log Incident</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}Reports – Queries{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>📊 Reports – Queries &amp; Tickets</h1>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
+  <a href="{{ url_for('reports.overview') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Overview</a>
+  <a href="{{ url_for('reports.membership') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Membership</a>
+  <a href="{{ url_for('reports.finance') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Finance</a>
+  <a href="{{ url_for('reports.arrears') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Arrears &amp; PTP</a>
+  <a href="{{ url_for('reports.queries_report') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#e94560;color:#fff;">Queries</a>
+  <a href="{{ url_for('access_report.index') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Access</a>
+</div>
+<!-- Period filter -->
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center;">
+  <span style="font-size:0.78rem;font-weight:700;color:#6b7280;margin-right:2px;">Period:</span>
+  {% for val, label in periods %}
+  <a href="?period={{ val }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;{% if period == val %}background:#e94560;color:#fff;{% else %}background:#f3f4f6;color:#6b7280;{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:1.5rem;">
+  <div class="kpi-card" style="border-left-color:#007bff;">
+    <div class="kpi-label">Total Queries</div>
+    <div class="kpi-value">{{ totals['total'] | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#ffc107;">
+    <div class="kpi-label">Open</div>
+    <div class="kpi-value" style="color:#ffc107;">{{ totals['open_cnt'] | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#dc3545;">
+    <div class="kpi-label">Escalated</div>
+    <div class="kpi-value" style="color:#dc3545;">{{ totals['escalated_cnt'] | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#dc3545;">
+    <div class="kpi-label">Urgent</div>
+    <div class="kpi-value" style="color:#dc3545;">{{ totals['urgent_cnt'] | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#28a745;">
+    <div class="kpi-label">Resolved</div>
+    <div class="kpi-value" style="color:#28a745;">{{ totals['resolved_cnt'] | default(0) }}</div>
+    {% if totals['total'] and totals['total'] > 0 %}
+    <div style="font-size:.75rem;color:#6c757d;">{{ '{:.1f}'.format(totals['resolved_cnt']/totals['total']*100) }}%</div>
+    {% endif %}
+  </div>
+  <div class="kpi-card" style="border-left-color:#dc3545;">
+    <div class="kpi-label">Overdue</div>
+    <div class="kpi-value" style="color:#dc3545;">{{ overdue | length }}</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem;">
+
+  <!-- Status Breakdown -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">By Status</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Status</th><th class="text-right">Count</th></tr></thead>
+        <tbody>
+          {% for r in status_breakdown %}
+          <tr>
+            <td>
+              <span class="badge
+                {% if r['status']=='open' %}badge-warning
+                {% elif r['status']=='resolved' %}badge-success
+                {% elif r['status']=='closed' %}badge-secondary
+                {% elif r['status']=='escalated' %}badge-danger
+                {% elif r['status']=='in_progress' %}badge-info
+                {% else %}badge-secondary{% endif %}">
+                {{ r['status'] | replace('_',' ') | title }}
+              </span>
+            </td>
+            <td class="text-right"><strong>{{ r['cnt'] }}</strong></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="text-center text-muted">No queries for period</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Priority Breakdown -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">By Priority</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Priority</th><th class="text-right">Count</th></tr></thead>
+        <tbody>
+          {% for r in priority_breakdown %}
+          <tr>
+            <td>
+              <span class="badge
+                {% if r['priority']=='urgent' %}badge-danger
+                {% elif r['priority']=='high' %}badge-warning
+                {% elif r['priority']=='medium' %}badge-info
+                {% else %}badge-secondary{% endif %}">
+                {{ r['priority'] | title }}
+              </span>
+            </td>
+            <td class="text-right"><strong>{{ r['cnt'] }}</strong></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Monthly Trend -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Trend — Last 6 Months</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Month</th><th class="text-right">Logged</th><th class="text-right">Resolved</th></tr></thead>
+        <tbody>
+          {% for r in monthly_trend %}
+          <tr>
+            <td>{{ r['month'] }}</td>
+            <td class="text-right">{{ r['cnt'] }}</td>
+            <td class="text-right" style="color:#28a745;">{{ r['resolved'] }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+
+  <!-- Category Breakdown -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">By Category</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead>
+          <tr><th>Category</th><th class="text-right">Total</th><th class="text-right">Open</th><th class="text-right">Urgent</th></tr>
+        </thead>
+        <tbody>
+          {% for r in category_breakdown %}
+          <tr>
+            <td>{{ r['category'] | replace('_',' ') | title }}</td>
+            <td class="text-right">{{ r['cnt'] }}</td>
+            <td class="text-right" style="{% if r['open_cnt'] > 0 %}color:#ffc107;{% endif %}">{{ r['open_cnt'] }}</td>
+            <td class="text-right" style="{% if r['urgent_cnt'] > 0 %}color:#dc3545;{% endif %}">{{ r['urgent_cnt'] }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Assigned Staff -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">By Assigned Staff</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead>
+          <tr><th>Staff</th><th class="text-right">Assigned</th><th class="text-right">Resolved</th></tr>
+        </thead>
+        <tbody>
+          {% for r in assigned_breakdown %}
+          <tr>
+            <td>{{ r['staff'] or 'Unassigned' }}</td>
+            <td class="text-right">{{ r['cnt'] }}</td>
+            <td class="text-right" style="color:#28a745;">{{ r['resolved_cnt'] }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Overdue Queries -->
+{% if overdue %}
+<div class="card" style="margin-bottom:1rem;">
+  <div class="card-header">
+    <h3 class="card-title">Overdue Queries (Follow-up Date Passed)</h3>
+    <span class="badge badge-danger">{{ overdue | length }}</span>
+  </div>
+  <div class="card-body" style="padding:0;">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead>
+        <tr><th>Ref</th><th>Member</th><th>Category</th><th>Priority</th><th>Follow-up</th><th>Assigned</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in overdue %}
+        <tr>
+          <td style="font-family:monospace;font-size:.78rem;">{{ r['reference'] }}</td>
+          <td>{{ r['member_name'] or r['name'] or '—' }}</td>
+          <td>{{ r['category'] | replace('_',' ') | title }}</td>
+          <td>
+            <span class="badge {% if r['priority']=='urgent' %}badge-danger{% elif r['priority']=='high' %}badge-warning{% else %}badge-info{% endif %}">
+              {{ r['priority'] | title }}
+            </span>
+          </td>
+          <td style="color:#dc3545;">{{ r['follow_up_date'] }}</td>
+          <td>{{ r['assigned_to_name'] or '—' }}</td>
+          <td><a href="{{ url_for('queries.detail', query_id=r['id']) }}" class="btn btn-xs btn-outline">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Recent Queries -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">All Queries — {{ period_label }}</h3>
+    <div style="display:flex;gap:.5rem;">
+      <span class="badge badge-info">{{ recent | length }}</span>
+      <a href="{{ url_for('queries.index') }}" class="btn btn-xs btn-outline">Manage Queries →</a>
+    </div>
+  </div>
+  <div class="card-body" style="padding:0;">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead>
+        <tr><th>Ref</th><th>Member</th><th>Category</th><th>Priority</th><th>Status</th><th>Assigned</th><th>Created</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for r in recent %}
+        <tr>
+          <td style="font-family:monospace;font-size:.78rem;">{{ r['reference'] }}</td>
+          <td>{{ r['member_name'] or r['name'] or '—' }}</td>
+          <td>{{ r['category'] | replace('_',' ') | title }}</td>
+          <td>
+            <span class="badge {% if r['priority']=='urgent' %}badge-danger{% elif r['priority']=='high' %}badge-warning{% elif r['priority']=='medium' %}badge-info{% else %}badge-secondary{% endif %}">
+              {{ r['priority'] | title }}
+            </span>
+          </td>
+          <td>
+            <span class="badge {% if r['status']=='open' %}badge-warning{% elif r['status'] in ['resolved','closed'] %}badge-success{% elif r['status']=='escalated' %}badge-danger{% else %}badge-info{% endif %}">
+              {{ r['status'] | replace('_',' ') | title }}
+            </span>
+          </td>
+          <td>{{ r['assigned_to_name'] or '—' }}</td>
+          <td style="color:#6c757d;">{{ r['created_at'][:10] if r['created_at'] else '—' }}</td>
+          <td><a href="{{ url_for('queries.detail', query_id=r['id']) }}" class="btn btn-xs btn-outline">View</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted">No queries for this period</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

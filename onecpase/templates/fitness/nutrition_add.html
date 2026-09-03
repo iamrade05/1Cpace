@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Add Food Item | 1Cpase{% endblock %}
+{% block page_title %}Add Nutrition Item{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <form method="post">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Name *</label>
+        <input name="name" required>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select name="category" id="categorySelect"
+                onchange="document.getElementById('macroWrap').style.display=(this.value=='macro')?'block':'none'; document.getElementById('microWrap').style.display=(this.value=='micro')?'block':'none';">
+          <option value="macro">Macronutrient</option>
+          <option value="micro">Micronutrient</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group" id="macroWrap">
+      <label>Macro Type</label>
+      <select name="macro_type">
+        <option value="protein">Protein</option>
+        <option value="carb">Carb</option>
+        <option value="fiber">Fiber</option>
+        <option value="fat">Fat</option>
+      </select>
+    </div>
+    <div class="form-group" id="microWrap" style="display:none;">
+      <label>Micro Type</label>
+      <select name="micro_type">
+        <option value="vitamin">Vitamin</option>
+        <option value="mineral">Mineral</option>
+        <option value="electrolyte">Electrolyte</option>
+        <option value="antioxidant">Antioxidant</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Serving Size</label>
+      <input name="serving_size" placeholder="e.g. 100g, 1 cup">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Calories</label>
+        <input type="number" step="0.1" name="calories">
+      </div>
+      <div class="form-group">
+        <label>Protein (g)</label>
+        <input type="number" step="0.1" name="protein_g">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Carbs (g)</label>
+        <input type="number" step="0.1" name="carbs_g">
+      </div>
+      <div class="form-group">
+        <label>Fiber (g)</label>
+        <input type="number" step="0.1" name="fiber_g">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Fat (g)</label>
+      <input type="number" step="0.1" name="fat_g">
+    </div>
+
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea name="notes" rows="2"></textarea>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Add Item</button>
+      <a href="{{ url_for('fitness.nutrition_index') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

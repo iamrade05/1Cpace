@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Sales Funnel | 1Cpase{% endblock %}
+{% block page_title %}Sales Funnel & Attribution{% endblock %}
+
+{% macro rate(value, base) -%}
+  {{ '%.1f'|format((value * 100 / base) if base else 0) }}%
+{%- endmacro %}
+
+{% macro report_table(rows, label) %}
+<div class="form-card" style="margin-bottom:18px;overflow-x:auto;">
+  <h3 style="margin-bottom:12px;">By {{ label }}</h3>
+  <table style="width:100%;font-size:.8rem;white-space:nowrap;">
+    <thead><tr><th>{{ label }}</th><th>Prospects</th><th>Assigned</th><th>Contacted</th><th>Appointments</th><th>Showed</th><th>Consulted</th><th>Joined</th><th>Conversion</th><th>Monthly Sales Value</th></tr></thead>
+    <tbody>
+      {% for name, row in rows %}<tr><td><strong>{{ name }}</strong></td><td>{{ row.prospects }}</td><td>{{ row.assigned }}</td><td>{{ row.contacted }}</td><td>{{ row.appointment }}</td><td>{{ row.showed }}</td><td>{{ row.consulted }}</td><td>{{ row.joined }}</td><td>{{ rate(row.joined, row.prospects) }}</td><td>R{{ '%.2f'|format(row.sales_value) }}</td></tr>
+      {% else %}<tr><td colspan="10">No prospect data yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><a href="{{ url_for('leads.leads_index') }}" class="btn btn-secondary">Back to Pipeline</a></div>
+<div class="form-card" style="margin-bottom:18px;overflow-x:auto;">
+  <h3 style="margin-bottom:12px;">Overall Funnel</h3>
+  <div style="display:flex;gap:8px;align-items:stretch;min-width:760px;">
+    {% for key in stage_keys %}
+    <div style="flex:1;background:{% if key == 'joined' %}#dcfce7{% else %}#eff6ff{% endif %};padding:14px 8px;text-align:center;border-radius:8px;">
+      <div style="font-size:.7rem;text-transform:uppercase;color:#64748b;font-weight:700;">{{ key|title }}</div>
+      <div style="font-size:1.6rem;font-weight:800;color:#1e3a8a;">{{ overall[key] }}</div>
+      <div style="font-size:.7rem;color:#64748b;">{{ rate(overall[key], overall.prospects) }} of prospects</div>
+    </div>
+    {% if not loop.last %}<div style="display:flex;align-items:center;color:#94a3b8;">→</div>{% endif %}
+    {% endfor %}
+  </div>
+  <div style="margin-top:12px;font-size:.83rem;"><strong>Total monthly sales value:</strong> R{{ '%.2f'|format(overall.sales_value) }}</div>
+</div>
+
+{{ report_table(groups.consultants, 'Consultant') }}
+{{ report_table(groups.sources, 'Original Source') }}
+{{ report_table(groups.channels, 'Lead Channel') }}
+{{ report_table(groups.campaigns, 'Campaign') }}
+{{ report_table(groups.referrers, 'Referrer') }}
+
+<div style="display:flex;gap:18px;flex-wrap:wrap;">
+  <div class="form-card" style="flex:1;min-width:280px;">
+    <h3 style="margin-bottom:12px;">Recycle Reasons</h3>
+    {% for reason, count in recycle_reason_counts %}<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:8px 0;"><span>{{ reason }}</span><strong>{{ count }}</strong></div>{% else %}<p style="color:#6b7280;">No recycled prospects yet.</p>{% endfor %}
+  </div>
+  <div class="form-card" style="flex:1;min-width:280px;">
+    <h3 style="margin-bottom:12px;">Common Rejection Notes</h3>
+    {% for reason, count in rejection_reasons %}<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:8px 0;"><span>{{ reason }}</span><strong>{{ count }}</strong></div>{% else %}<p style="color:#6b7280;">No objection notes recorded yet.</p>{% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Body Matrix: {{ full_name }} | 1Cpase{% endblock %}
+{% block page_title %}{{ full_name }} — Body Matrix{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+  <div style="display:flex; gap:8px;">
+    <a href="{{ url_for('fitness.body_matrix_member', mid=member.id, view='weekly') }}"
+       class="btn btn-sm {% if view == 'weekly' %}btn-secondary{% else %}btn-ghost{% endif %}">Weekly</a>
+    <a href="{{ url_for('fitness.body_matrix_member', mid=member.id, view='monthly') }}"
+       class="btn btn-sm {% if view == 'monthly' %}btn-secondary{% else %}btn-ghost{% endif %}">Monthly</a>
+  </div>
+  <a href="{{ url_for('fitness.body_matrix_index') }}" class="btn btn-ghost btn-sm">All Members</a>
+</div>
+
+{% if latest %}
+<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:20px;">
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.4rem; font-weight:700;">{{ latest.weight_kg or '—' }}</div>
+    <div style="font-size:0.75rem; color:#6b7280;">Weight (kg)</div>
+  </div></div>
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.4rem; font-weight:700;">{{ latest.body_fat_pct or '—' }}</div>
+    <div style="font-size:0.75rem; color:#6b7280;">Body Fat %</div>
+  </div></div>
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.4rem; font-weight:700;">{{ latest.muscle_mass_kg or '—' }}</div>
+    <div style="font-size:0.75rem; color:#6b7280;">Muscle Mass (kg)</div>
+  </div></div>
+  <div class="card"><div class="card-body" style="text-align:center;">
+    <div style="font-size:1.4rem; font-weight:700;">{{ latest.waist_cm or '—' }}</div>
+    <div style="font-size:0.75rem; color:#6b7280;">Waist (cm)</div>
+  </div></div>
+</div>
+{% endif %}
+
+<div style="display:grid; grid-template-columns:1fr 340px; gap:20px;">
+  <div class="card">
+    <div class="card-header"><h2>Trend</h2></div>
+    <div class="card-body">
+      {% if entries %}
+      <div style="height:280px;"><canvas id="matrixChart"></canvas></div>
+      <table style="margin-top:20px;">
+        <thead>
+          <tr><th>Date</th><th>Weight</th><th>Body Fat %</th><th>Muscle Mass</th><th>Waist</th></tr>
+        </thead>
+        <tbody>
+          {% for e in entries %}
+          <tr>
+            <td style="color:#6b7280; font-size:0.82rem;">{{ e.period }}</td>
+            <td>{{ e.weight_kg or '—' }}</td>
+            <td>{{ e.body_fat_pct or '—' }}</td>
+            <td>{{ e.muscle_mass_kg or '—' }}</td>
+            <td>{{ e.waist_cm or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state" style="padding:32px;">
+        <div class="empty-icon">📈</div>
+        <p>No entries yet — add the first one.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card" style="align-self:start;">
+    <div class="card-header"><h2>Add Entry</h2></div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('fitness.body_matrix_add', mid=member.id) }}">
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" name="date">
+        </div>
+        <div class="form-group">
+          <label>Recorded By</label>
+          <select name="recorded_by_id">
+            <option value="">— Me —</option>
+            {% for s in staff %}
+            <option value="{{ s.id }}">{{ s.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Weight (kg)</label>
+            <input type="number" step="0.1" name="weight_kg">
+          </div>
+          <div class="form-group">
+            <label>Body Fat %</label>
+            <input type="number" step="0.1" name="body_fat_pct">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Muscle Mass (kg)</label>
+            <input type="number" step="0.1" name="muscle_mass_kg">
+          </div>
+          <div class="form-group">
+            <label>BMI</label>
+            <input type="number" step="0.1" name="bmi">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Chest (cm)</label>
+            <input type="number" step="0.1" name="chest_cm">
+          </div>
+          <div class="form-group">
+            <label>Waist (cm)</label>
+            <input type="number" step="0.1" name="waist_cm">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Hips (cm)</label>
+            <input type="number" step="0.1" name="hips_cm">
+          </div>
+          <div class="form-group">
+            <label>Arms (cm)</label>
+            <input type="number" step="0.1" name="arms_cm">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Thighs (cm)</label>
+          <input type="number" step="0.1" name="thighs_cm">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes" rows="2"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Save Entry</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if entries %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+new Chart(document.getElementById('matrixChart'), {
+  type: 'line',
+  data: {
+    labels: {{ labels | tojson }},
+    datasets: [
+      { label: 'Weight (kg)', data: {{ weights | tojson }}, borderColor: '#185FA5', backgroundColor: 'rgba(24,95,165,0.1)', tension: 0.3 },
+      { label: 'Body Fat %', data: {{ body_fats | tojson }}, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', tension: 0.3 },
+      { label: 'Muscle Mass (kg)', data: {{ muscles | tojson }}, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', tension: 0.3 },
+      { label: 'Waist (cm)', data: {{ waists | tojson }}, borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.1)', tension: 0.3 }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+      y: { grid: { color: '#f3f4f6' }, ticks: { font: { size: 11 } } }
+    }
+  }
+});
+</script>
+{% endif %}
+{% endblock %}

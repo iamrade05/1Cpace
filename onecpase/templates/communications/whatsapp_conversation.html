@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ conv.contact_name or conv.contact_phone }} | 1Cpase{% endblock %}
+{% block page_title %}WhatsApp — {{ conv.contact_name or conv.contact_phone }}{% endblock %}
+
+{% block content %}
+<style>
+.chat-thread { display:flex; flex-direction:column; gap:8px; padding:16px; max-height:520px; overflow-y:auto; background:#f9fafb; }
+.chat-bubble { max-width:65%; padding:8px 12px; border-radius:12px; font-size:.85rem; line-height:1.4; }
+.chat-bubble.inbound { align-self:flex-start; background:#fff; border:1px solid #e4e8f0; color:#172033; }
+.chat-bubble.outbound { align-self:flex-end; background:var(--fp-primary); color:#fff; }
+.chat-meta { font-size:.65rem; color:#9ca3af; margin-top:3px; }
+.chat-bubble.outbound + .chat-meta, .chat-meta.outbound { text-align:right; }
+</style>
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+  <a href="{{ url_for('comms.whatsapp_inbox', number=number) }}" class="btn btn-ghost btn-sm">← Inbox</a>
+  <span style="font-weight:800;color:#172033;font-size:1rem;">{{ conv.contact_name or conv.contact_phone }}</span>
+  <span style="font-size:.78rem;color:#9ca3af;">{{ conv.contact_phone }}</span>
+  <div style="margin-left:auto;">
+    <a href="{{ url_for('comms.whatsapp_link_lead', number=number, conv_id=conv.id) }}" class="btn btn-ghost btn-sm">
+      {% if conv.linked_lead_id or conv.linked_member_id %}🔗 Linked{% else %}🔗 Link to lead / member{% endif %}
+    </a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="chat-thread">
+    {% if messages %}
+      {% for m in messages %}
+      <div class="chat-bubble {{ m.direction }}">{{ m.content }}</div>
+      <div class="chat-meta {{ m.direction }}">{{ (m.timestamp or '')[:16] }}{% if m.status == 'sent' %} · sent{% endif %}</div>
+      {% endfor %}
+    {% else %}
+      <div style="text-align:center;color:#9ca3af;font-size:.82rem;padding:20px 0;">No messages yet.</div>
+    {% endif %}
+  </div>
+  <div class="card-body" style="border-top:1px solid #e4e8f0;">
+    <form method="POST" style="display:flex;gap:10px;align-items:flex-end;">
+      <textarea name="message" class="form-control" rows="2" style="flex:1;" placeholder="Type a reply…" required></textarea>
+      <button type="submit" class="btn btn-primary btn-sm" style="margin-bottom:0;">Send</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

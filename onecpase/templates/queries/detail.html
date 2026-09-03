@@ -1,0 +1,549 @@
+{% extends "base.html" %}
+{% block title %}{{ qry.reference }} | 1Cpase{% endblock %}
+{% block page_title %}Query {{ qry.reference }}{% endblock %}
+
+{% block content %}
+{% set pc = priority_colours.get(qry.priority, '#9ca3af') %}
+{% set sc = status_colours.get(qry.status, '#9ca3af') %}
+<style>
+.q-detail-grid { display:grid; grid-template-columns:1fr 340px; gap:20px; }
+.q-info-row { display:flex; gap:8px; padding:9px 0; border-bottom:1px solid #f3f4f6; font-size:.85rem; }
+.q-info-row:last-child { border-bottom:none; }
+.q-info-label { font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:#9ca3af; width:130px; flex-shrink:0; padding-top:2px; }
+.timeline { display:flex; flex-direction:column; gap:0; }
+.tl-item { display:flex; gap:12px; padding:10px 0; border-bottom:1px solid #f3f4f6; }
+.tl-item:last-child { border-bottom:none; }
+.tl-dot { width:28px; height:28px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:.8rem; margin-top:2px; }
+.tl-body { flex:1; min-width:0; }
+.tl-meta { font-size:.7rem; color:#9ca3af; margin-top:2px; }
+.pbadge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:.7rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+.acct-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid #f6f7f9; font-size:.82rem; }
+.acct-row:last-child { border-bottom:none; }
+.acct-label { font-size:.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#9ca3af; flex-shrink:0; }
+@media(max-width:900px){ .q-detail-grid { grid-template-columns:1fr; } }
+</style>
+
+<!-- Top bar -->
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+  <a href="{{ url_for('queries.index') }}" class="btn btn-ghost btn-sm">← All Queries</a>
+  <span style="font-weight:800;color:#172033;font-size:1rem;">{{ qry.reference }}</span>
+  <span class="pbadge" style="background:{{ pc }}22;color:{{ pc }};">{{ qry.priority|title }}</span>
+  <span class="pbadge" style="background:{{ sc }}22;color:{{ sc }};">{{ qry.status|replace('_',' ')|title }}</span>
+  {% if qry.status not in ('closed','resolved') %}
+  <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+    {% if qry.member_id %}
+    <form method="POST" action="{{ url_for('queries.convert_ptp', qid=qry.id) }}" style="margin:0;">
+      <button class="btn btn-ghost btn-sm" style="border-color:#e11d48;color:#e11d48;"
+              onclick="return confirm('Convert to PTP and open member PTP tab?')">
+        💳 Convert to PTP
+      </button>
+    </form>
+    {% endif %}
+    <button class="btn btn-ghost btn-sm" style="border-color:#7c3aed;color:#7c3aed;"
+            onclick="document.getElementById('escalate-form').style.display='block'">
+      ⚡ Escalate
+    </button>
+    <button class="btn btn-ghost btn-sm" style="border-color:#059669;color:#059669;"
+            onclick="document.getElementById('close-form').style.display='block'">
+      ✓ Close Query
+    </button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Owing warning for cancellation / freeze on an owing account -->
+{% if requires_ack %}
+<div style="background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:8px;padding:14px 18px;margin-bottom:16px;">
+  <div style="font-weight:800;color:#991b1b;font-size:.92rem;margin-bottom:5px;">
+    ⚠ Account owing — {{ cat_label(qry.category) }} requires a zero balance
+  </div>
+  <div style="font-size:.83rem;color:#7f1d1d;line-height:1.5;">
+    This account has an outstanding balance of
+    <strong>R{{ '%.2f'|format(summary.total_outstanding) }}</strong>.
+    {{ cat_label(qry.category) }} requests should be on a zero balance — the client
+    must be informed that this amount has to be settled, or it will be added to the
+    {{ cat_label(qry.category)|lower }} amount, before we proceed. You will be asked to
+    confirm this when closing the query.
+  </div>
+</div>
+{% endif %}
+
+<!-- Escalate inline form -->
+<div id="escalate-form" style="display:none;background:#faf5ff;border:1px solid #d8b4fe;border-radius:8px;padding:14px 18px;margin-bottom:16px;">
+  <form method="POST" action="{{ url_for('queries.escalate', qid=qry.id) }}">
+    <div class="form-group" style="margin-bottom:10px;">
+      <label class="form-label">Escalation Reason</label>
+      <textarea name="reason" class="form-control" rows="2" placeholder="Why is this being escalated?"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button type="submit" class="btn btn-sm" style="background:#7c3aed;color:#fff;">Confirm Escalate</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('escalate-form').style.display='none'">Cancel</button>
+    </div>
+  </form>
+</div>
+
+<!-- Close inline form -->
+<div id="close-form" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin-bottom:16px;">
+  <form method="POST" action="{{ url_for('queries.close', qid=qry.id) }}">
+    <div class="form-group" style="margin-bottom:10px;">
+      <label class="form-label">Resolution Notes</label>
+      <textarea name="resolution_notes" class="form-control" rows="2" placeholder="How was this resolved?"></textarea>
+    </div>
+    {% if requires_ack %}
+    <label style="display:flex;gap:8px;align-items:flex-start;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px;margin-bottom:10px;font-size:.8rem;color:#7f1d1d;">
+      <input type="checkbox" name="owing_ack" value="1" required style="margin-top:2px;">
+      <span>I confirm the client has been informed that the outstanding
+      <strong>R{{ '%.2f'|format(summary.total_outstanding) }}</strong> must be settled, or
+      will be added to the {{ cat_label(qry.category)|lower }} amount, before proceeding.</span>
+    </label>
+    {% endif %}
+    <div style="display:flex;gap:8px;">
+      <button type="submit" class="btn btn-sm" style="background:#059669;color:#fff;">Close Query</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('close-form').style.display='none'">Cancel</button>
+    </div>
+  </form>
+</div>
+
+<div class="q-detail-grid">
+
+  <!-- Left: Details + Update -->
+  <div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header"><h2>Query Details</h2></div>
+      <div class="card-body" style="padding:0 20px;">
+
+        <div class="q-info-row">
+          <div class="q-info-label">Member</div>
+          <div>
+            {% if qry.member_id %}
+              <a href="{{ url_for('members.member_detail', mid=qry.member_id) }}"
+                 style="font-weight:700;color:#1769aa;text-decoration:none;">
+                {{ qry.member_full_name }}
+              </a>
+              <div style="font-size:.72rem;color:#9ca3af;">{{ qry.member_contact or '' }}</div>
+            {% elif qry.member_name %}
+              <span style="font-weight:600;">{{ qry.member_name }}</span>
+              {% if qry.contact %}<div style="font-size:.72rem;color:#9ca3af;">{{ qry.contact }}</div>{% endif %}
+            {% else %}
+              <span style="color:#9ca3af;">Walk-in / Unknown</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="q-info-row">
+          <div class="q-info-label">Category</div>
+          <div>
+            {% for k,v in categories %}{% if k==qry.category %}<strong>{{ v }}</strong>{% endif %}{% endfor %}
+          </div>
+        </div>
+
+        {% if qry.query_type %}
+        <div class="q-info-row">
+          <div class="q-info-label">Query Type</div>
+          <div>{{ qry.query_type }}</div>
+        </div>
+        {% endif %}
+
+        <div class="q-info-row">
+          <div class="q-info-label">Description</div>
+          <div style="white-space:pre-wrap;color:#374151;">{{ qry.description }}</div>
+        </div>
+
+        {% if qry.action_taken %}
+        <div class="q-info-row">
+          <div class="q-info-label">Action Taken</div>
+          <div style="white-space:pre-wrap;color:#374151;">{{ qry.action_taken }}</div>
+        </div>
+        {% endif %}
+
+        {% if qry.resolution_notes %}
+        <div class="q-info-row" style="background:#f0fdf4;border-radius:6px;padding:10px;border:none;margin:4px 0;">
+          <div class="q-info-label" style="color:#059669;">Resolution</div>
+          <div style="white-space:pre-wrap;color:#166534;">{{ qry.resolution_notes }}</div>
+        </div>
+        {% endif %}
+
+        <div class="q-info-row">
+          <div class="q-info-label">Logged By</div>
+          <div style="font-size:.82rem;">{{ qry.logged_by_name or '—' }} &bull; {{ qry.created_at[:16] }}</div>
+        </div>
+        {% if qry.closed_by_name %}
+        <div class="q-info-row">
+          <div class="q-info-label">Closed By</div>
+          <div style="font-size:.82rem;">{{ qry.closed_by_name }} &bull; {{ (qry.closed_at or '')[:16] }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Cancellation fee / settlement breakdown -->
+    {% if qry.category == 'cancellation' %}
+    <div class="card" style="margin-bottom:16px;border-left:4px solid #e11d48;">
+      <div class="card-header"><h2>Cancellation Fee &amp; Settlement</h2></div>
+      <div class="card-body" style="padding:16px;">
+        <div class="decision-grid">
+          <div class="dcell"><small>Contract</small><strong>{{ qry.cancellation_contract_months }} months</strong></div>
+          <div class="dcell"><small>Months Completed</small><strong>{{ qry.cancellation_months_completed }}</strong></div>
+          <div class="dcell"><small>Monthly Fee</small><strong>R{{ '%.2f'|format(qry.cancellation_monthly_fee) }}</strong></div>
+          <div class="dcell"><small>Penalty (§11.3)</small><strong>{{ qry.cancellation_penalty_months }} month(s)</strong></div>
+          <div class="dcell"><small>Cancellation Fee</small><strong>R{{ '%.2f'|format(qry.cancellation_fee) }}</strong></div>
+          <div class="dcell"><small>Outstanding at capture</small><strong>R{{ '%.2f'|format(qry.cancellation_outstanding) }}</strong></div>
+          <div class="dcell"><small>Payment Method</small><strong>{{ qry.cancellation_payment_method|replace('_',' ')|title or '—' }}</strong></div>
+          <div class="dcell"><small>Settlement Rule</small>
+            <strong>
+              {% if qry.cancellation_settlement_rule == 'discount_50' %}50% lump-sum discount
+              {% elif qry.cancellation_settlement_rule == 'flat_1500' %}Flat installment amount
+              {% else %}Manual discount ({{ qry.cancellation_discount_pct|int }}%){% endif %}
+            </strong>
+          </div>
+          <div class="dcell" style="background:#fef2f2;border-color:#fecaca;">
+            <small style="color:#991b1b;">Settlement Amount</small>
+            <strong style="color:#991b1b;">R{{ '%.2f'|format(qry.cancellation_settlement_amount) }}</strong>
+          </div>
+        </div>
+        {% if qry.member_cancelled %}
+        <div style="margin-top:12px;padding:8px 12px;background:#fee2e2;border:1px solid #fecaca;border-radius:6px;font-size:.8rem;font-weight:700;color:#991b1b;">
+          ✓ Member account was cancelled when this query was logged.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Update form -->
+    {% if qry.status not in ('closed',) %}
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header"><h2>Update Query</h2></div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('queries.update', qid=qry.id) }}">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+            <div class="form-group">
+              <label class="form-label">Status</label>
+              <select name="status" class="form-control">
+                {% set status_options = payment_arrears_statuses if qry.category == 'payments' else statuses %}
+                {% for k,v in status_options %}
+                <option value="{{ k }}" {% if qry.status==k %}selected{% endif %}>{{ v }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Priority</label>
+              <select name="priority" class="form-control">
+                {% for k,v in priorities %}
+                <option value="{{ k }}" {% if qry.priority==k %}selected{% endif %}>{{ v }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Assign To</label>
+              <select name="assigned_to" class="form-control">
+                <option value="">Unassigned</option>
+                {% for u in users %}
+                <option value="{{ u.id }}" {% if qry.assigned_to==u.id %}selected{% endif %}>{{ u.full_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+            <div class="form-group">
+              <label class="form-label">Department</label>
+              <select name="department" class="form-control">
+                <option value="">— None —</option>
+                {% for d in departments %}
+                <option value="{{ d }}" {% if qry.department==d %}selected{% endif %}>{{ d }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Follow-up Date</label>
+              <input type="date" name="follow_up_date" class="form-control"
+                     value="{{ qry.follow_up_date or '' }}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Due Date</label>
+              <input type="date" name="due_date" class="form-control"
+                     value="{{ qry.due_date or '' }}">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Action Taken</label>
+            <textarea name="action_taken" class="form-control" rows="2"
+                      placeholder="What was done?">{{ qry.action_taken or '' }}</textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Add Note -->
+    <div class="card">
+      <div class="card-header"><h2>Add Note</h2></div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('queries.add_note', qid=qry.id) }}">
+          <div style="display:flex;gap:10px;align-items:flex-end;">
+            <textarea name="note" class="form-control" rows="2" style="flex:1;"
+                      placeholder="Type a follow-up note or action taken…"></textarea>
+            <button type="submit" class="btn btn-primary btn-sm" style="margin-bottom:0;">Add</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Sidebar cards + Timeline -->
+  <div>
+    <!-- Account Summary (member context) -->
+    {% if summary %}
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <h2>Account Summary</h2>
+        <a href="{{ url_for('members.member_detail', mid=qry.member_id) }}"
+           style="font-size:.72rem;font-weight:700;color:#1769aa;text-decoration:none;">Open account →</a>
+      </div>
+      <div class="card-body" style="padding:12px 16px;">
+        <div style="font-weight:800;color:#172033;font-size:.9rem;margin-bottom:8px;">
+          {{ summary.member.first_name }} {{ summary.member.last_name }}
+        </div>
+
+        <div class="acct-row">
+          <span class="acct-label">Balance</span>
+          {% if summary.is_owing %}
+            <span class="pbadge" style="background:#fee2e2;color:#991b1b;">Owing R{{ '%.2f'|format(summary.total_outstanding) }}</span>
+          {% else %}
+            <span class="pbadge" style="background:#dcfce7;color:#166534;">Zero balance</span>
+          {% endif %}
+        </div>
+
+        {% if qry.category == 'membership' %}
+        <!-- Membership / contract snapshot -->
+        <div style="margin:8px 0;background:#f0f9ff;border:1px solid #bae6fd;border-left:4px solid var(--fp-primary);border-radius:8px;padding:10px 12px;">
+          <div style="font-size:.72rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#0369a1;margin-bottom:6px;">
+            Membership Snapshot
+          </div>
+          <div class="acct-row" style="border-bottom-color:#e0f2fe;">
+            <span class="acct-label" style="color:#0369a1;">Package</span>
+            <span style="font-weight:700;color:#172033;">{{ summary.package or '—' }}</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#e0f2fe;">
+            <span class="acct-label" style="color:#0369a1;">Contract term</span>
+            <span style="font-weight:700;color:#172033;">{{ summary.contract_duration or '—' }}</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#e0f2fe;">
+            <span class="acct-label" style="color:#0369a1;">Contract end date</span>
+            <span style="font-weight:700;color:#172033;">{{ summary.contract_end_date or '—' }}</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#e0f2fe;">
+            <span class="acct-label" style="color:#0369a1;">Months remaining</span>
+            <span style="font-weight:700;color:#172033;">
+              {% if summary.contract_remaining_months is not none %}
+                {{ summary.contract_remaining_months }} month(s){% if summary.contract_expired %} (expired){% endif %}
+              {% else %}—{% endif %}
+            </span>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if qry.category in ('payments', 'ptp_collections') or summary.is_owing %}
+        <!-- Payment / arrears decision support -->
+        <div style="margin:8px 0;background:#fbf8f0;border:1px solid #ded6c6;border-left:4px solid var(--fp-primary);border-radius:8px;padding:10px 12px;">
+          <div style="font-size:.72rem;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#8d6720;margin-bottom:6px;">
+            Payment / Arrears Decision
+          </div>
+          <div class="acct-row" style="border-bottom-color:#eee4d2;">
+            <span class="acct-label" style="color:#8d6720;">Total owing</span>
+            <span style="font-weight:800;color:#002e45;">R{{ '%.2f'|format(summary.total_outstanding) }}</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#fde9d3;">
+            <span class="acct-label" style="color:#9a6a2f;">Arrears</span>
+            <span style="font-weight:700;color:#7c2d12;">{{ summary.arrears_months }} month(s)</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#fde9d3;">
+            <span class="acct-label" style="color:#9a6a2f;">Discount rule</span>
+            <span style="font-weight:700;color:#7c2d12;text-align:right;">
+              {{ summary.discount_range_label }}{% if summary.discount_min_percent != summary.discount_max_percent %} (rec. {{ summary.discount_percent }}%){% endif %}
+              {% if summary.discount_amount %}<br>(−R{{ '%.2f'|format(summary.discount_amount) }}){% endif %}
+            </span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#fde9d3;">
+            <span class="acct-label" style="color:#9a6a2f;">Member pays</span>
+            <span style="font-weight:800;color:#065f46;">R{{ '%.2f'|format(summary.settlement_amount) }}</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#fde9d3;">
+            <span class="acct-label" style="color:#9a6a2f;">PTP required</span>
+            <span style="font-weight:700;color:#7c2d12;">{{ summary.ptp_required }}</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#fde9d3;">
+            <span class="acct-label" style="color:#9a6a2f;">Proof required</span>
+            <span style="font-weight:700;color:#7c2d12;">{{ summary.proof_of_payment_required }}</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#fde9d3;">
+            <span class="acct-label" style="color:#9a6a2f;">Bank statement</span>
+            <span style="font-weight:700;color:#7c2d12;">{{ 'On file' if summary.has_bank_statement else 'Not on file' }}</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#fde9d3;">
+            <span class="acct-label" style="color:#9a6a2f;">Income verified</span>
+            <span style="font-weight:700;color:#7c2d12;">{{ 'Yes' if summary.income_verified else 'No' }}</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#fde9d3;">
+            <span class="acct-label" style="color:#9a6a2f;">Access decision</span>
+            <span style="font-weight:700;color:#7c2d12;text-align:right;">{{ summary.access_decision }}</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#fde9d3;">
+            <span class="acct-label" style="color:#9a6a2f;">Follow-up</span>
+            <span style="font-weight:700;color:#7c2d12;">{{ summary.payment_follow_up }}</span>
+          </div>
+          <div class="acct-row" style="border-bottom-color:#fde9d3;">
+            <span class="acct-label" style="color:#9a6a2f;">Assigned to</span>
+            <span style="font-weight:700;color:#7c2d12;">{{ summary.payment_assigned_to }}</span>
+          </div>
+          <div style="font-size:.78rem;color:#7c2d12;margin-top:8px;line-height:1.45;">
+            <strong>Recommended:</strong> {{ summary.recommended_action }}
+          </div>
+          {% if summary.manager_approval_required %}
+          <div style="margin-top:8px;background:#fee2e2;border:1px solid #fecaca;border-radius:6px;padding:7px 10px;font-size:.76rem;font-weight:700;color:#991b1b;">
+            ⚠ Manager approval required before applying this discount.
+          </div>
+          {% endif %}
+          {% if qry.category == 'ptp_collections' and not summary.ptp_requirements_met %}
+          <div style="margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:7px 10px;font-size:.76rem;font-weight:700;color:#92400e;">
+            ⚠ A debit order / DebiCheck, bank statement and confirmed income are recommended before finalising a PTP.
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="acct-row">
+          <span class="acct-label">Debit order</span>
+          {% if summary.has_debit_order %}
+            <span style="font-weight:700;color:#166534;">Yes{% if summary.debit_order_status %} · {{ summary.debit_order_status|title }}{% endif %}</span>
+          {% else %}
+            <span style="font-weight:700;color:#b45309;">None on file</span>
+          {% endif %}
+        </div>
+
+        <div class="acct-row">
+          <span class="acct-label">Access</span>
+          {% if summary.is_blocked %}
+            <span class="pbadge" style="background:#fee2e2;color:#991b1b;">Blocked</span>
+          {% else %}
+            <span class="pbadge" style="background:#dcfce7;color:#166534;">Allowed</span>
+          {% endif %}
+        </div>
+
+        <div class="acct-row">
+          <span class="acct-label">Queries</span>
+          <span><strong>{{ summary.query_total }}</strong> total · {{ summary.query_open }} open</span>
+        </div>
+
+        <div class="acct-row">
+          <span class="acct-label">Disputes</span>
+          {% if summary.dispute_count %}
+            <span class="pbadge" style="background:#fef3c7;color:#92400e;">{{ summary.dispute_count }} on record</span>
+          {% else %}
+            <span style="color:#9ca3af;">None</span>
+          {% endif %}
+        </div>
+
+        <!-- Banking (show / hide) -->
+        <div style="margin-top:12px;border-top:1px solid #f3f4f6;padding-top:10px;">
+          <button type="button" class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;"
+                  onclick="var b=document.getElementById('acct-banking');b.style.display=(b.style.display==='none'||!b.style.display)?'block':'none';">
+            🏦 Show banking
+          </button>
+          <div id="acct-banking" style="display:none;margin-top:10px;">
+            <div class="acct-row"><span class="acct-label">Bank</span><span>{{ summary.bank or '—' }}</span></div>
+            <div class="acct-row"><span class="acct-label">Account name</span><span>{{ summary.account_name or '—' }}</span></div>
+            <div class="acct-row"><span class="acct-label">Account no.</span><span>{{ summary.account_masked or '—' }}</span></div>
+            <div class="acct-row"><span class="acct-label">Branch</span><span>{{ summary.branch_code or '—' }}</span></div>
+            <div class="acct-row"><span class="acct-label">Debit date</span><span>{{ summary.debit_order_date or '—' }}</span></div>
+            {% if has_perm('new_debicheck') %}
+            <a href="{{ url_for('debicheck.add', member_id=qry.member_id) }}"
+               class="btn btn-primary btn-sm" style="width:100%;justify-content:center;margin-top:10px;">
+              ＋ Load Debit Order
+            </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Summary card -->
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-body" style="padding:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div style="background:#f9fafb;border-radius:6px;padding:10px 12px;">
+            <div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin-bottom:3px;">Priority</div>
+            <span class="pbadge" style="background:{{ pc }}22;color:{{ pc }};">{{ qry.priority|title }}</span>
+          </div>
+          <div style="background:#f9fafb;border-radius:6px;padding:10px 12px;">
+            <div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin-bottom:3px;">Status</div>
+            <span class="pbadge" style="background:{{ sc }}22;color:{{ sc }};">{{ qry.status|replace('_',' ')|title }}</span>
+          </div>
+        </div>
+        {% if qry.assigned_to_name %}
+        <div style="font-size:.75rem;margin-bottom:6px;">
+          <span style="color:#9ca3af;font-weight:700;">ASSIGNED TO</span><br>
+          <span style="font-weight:700;color:#172033;">{{ qry.assigned_to_name }}</span>
+          {% if qry.department %}<span style="color:#9ca3af;"> &bull; {{ qry.department }}</span>{% endif %}
+        </div>
+        {% endif %}
+        {% if qry.follow_up_date %}
+        <div style="font-size:.75rem;margin-bottom:6px;
+          {% if qry.follow_up_date <= today %}color:#e11d48;{% else %}color:#374151;{% endif %}">
+          <span style="color:#9ca3af;font-weight:700;">FOLLOW-UP</span><br>
+          <strong>{{ qry.follow_up_date }}</strong>
+          {% if qry.follow_up_date <= today %}<span style="font-size:.7rem;"> ⚠ Overdue</span>{% endif %}
+        </div>
+        {% endif %}
+        {% if qry.due_date %}
+        <div style="font-size:.75rem;
+          {% if qry.due_date <= today %}color:#e11d48;{% else %}color:#374151;{% endif %}">
+          <span style="color:#9ca3af;font-weight:700;">DUE DATE</span><br>
+          <strong>{{ qry.due_date }}</strong>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Activity Timeline -->
+    <div class="card" id="timeline">
+      <div class="card-header"><h2>Activity Timeline</h2></div>
+      <div class="card-body" style="padding:0 20px;">
+        {% if notes %}
+        <div class="timeline">
+          {% for n in notes %}
+          {% set dot_colours = {
+              'status_change': '#d97706', 'assignment': '#1769aa',
+              'escalated': '#7c3aed', 'closed': '#059669', 'ptp': '#e11d48'
+          } %}
+          {% set dot_icons = {
+              'status_change': '🔄', 'assignment': '👤',
+              'escalated': '⚡', 'closed': '✓', 'ptp': '💳', 'note': '💬'
+          } %}
+          <div class="tl-item">
+            <div class="tl-dot" style="background:{{ (dot_colours.get(n.action_type,'#e5e7eb')) + '33' }};">
+              {{ dot_icons.get(n.action_type, '💬') }}
+            </div>
+            <div class="tl-body">
+              <div style="font-size:.83rem;color:#374151;">{{ n.note }}</div>
+              <div class="tl-meta">
+                {{ n.author or 'System' }} &bull; {{ n.created_at[:16] }}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div style="padding:20px 0;text-align:center;color:#9ca3af;font-size:.82rem;">No activity yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const today = "{{ today }}";
+</script>
+{% endblock %}

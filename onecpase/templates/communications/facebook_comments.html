@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Facebook Comments | 1Cpase{% endblock %}
+{% block page_title %}Facebook Comments{% endblock %}
+
+{% block content %}
+<div style="padding:8px 0 16px;display:flex;gap:6px;flex-wrap:wrap;">
+  <a href="{{ url_for('comms.facebook_comments_view') }}" class="q-chip {% if filter_mode=='all' %}active{% endif %}">All</a>
+  <a href="{{ url_for('comms.facebook_comments_view', filter='new') }}" class="q-chip {% if filter_mode=='new' %}active{% endif %}">Not Replied</a>
+  <a href="{{ url_for('comms.facebook_comments_view', filter='interested') }}" class="q-chip {% if filter_mode=='interested' %}active{% endif %}">Interested</a>
+</div>
+<style>
+.q-chip { display:inline-flex; align-items:center; gap:4px; padding:4px 11px; border-radius:20px;
+  border:1px solid #e4e8f0; font-size:.77rem; font-weight:700; color:#374151;
+  text-decoration:none; transition:all .12s; background:#fff; white-space:nowrap; }
+.q-chip:hover { border-color:#1769aa; color:#1769aa; }
+.q-chip.active { background:#1769aa; color:#fff; border-color:#1769aa; }
+</style>
+
+<div class="card">
+  <div class="card-body" style="padding:0;">
+    {% if comments %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Commenter</th>
+            <th>Comment</th>
+            <th>When</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in comments %}
+          <tr>
+            <td style="font-weight:700;color:#172033;white-space:nowrap;">{{ c.commenter_name or 'Unknown' }}</td>
+            <td style="max-width:420px;color:#374151;font-size:.85rem;">{{ c.content }}</td>
+            <td style="font-size:.75rem;color:#9ca3af;white-space:nowrap;">{{ (c.timestamp or '')[:16] }}</td>
+            <td style="white-space:nowrap;">
+              {% if c.linked_lead_id %}
+              <span class="pbadge" style="background:#dcfce7;color:#166534;">Lead created</span>
+              {% elif c.is_interested %}
+              <span class="pbadge" style="background:#fef3c7;color:#92400e;">Interested</span>
+              {% else %}
+              <span class="pbadge" style="background:#f1f5f9;color:#94a3b8;">New</span>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap;">
+              <form method="POST" action="{{ url_for('comms.facebook_comment_flag', comment_id=c.id, filter=filter_mode) }}" style="display:inline;">
+                <button type="submit" class="btn btn-ghost btn-sm">
+                  {{ '★ Unflag' if c.is_interested else '☆ Flag interested' }}
+                </button>
+              </form>
+              {% if not c.linked_lead_id %}
+              <form method="POST" action="{{ url_for('comms.facebook_comment_create_lead', comment_id=c.id) }}" style="display:inline;">
+                <button type="submit" class="btn btn-primary btn-sm">+ Create Lead</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:48px 24px;">
+      <div class="empty-icon">💭</div>
+      <p>No comments{% if filter_mode != 'all' %} match this filter{% endif %}.</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

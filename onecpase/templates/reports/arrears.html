@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{% block title %}Reports – Arrears &amp; PTP{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>📊 Reports – Arrears &amp; PTP</h1>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center;">
+  <a href="{{ url_for('reports.overview') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Overview</a>
+  <a href="{{ url_for('reports.membership') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Membership</a>
+  <a href="{{ url_for('reports.finance') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Finance</a>
+  <a href="{{ url_for('reports.arrears') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#e94560;color:#fff;">Arrears &amp; PTP</a>
+  <a href="{{ url_for('reports.queries_report') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Queries</a>
+  <a href="{{ url_for('access_report.index') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Access</a>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(165px,1fr));margin-bottom:1.5rem;">
+  <div class="kpi-card" style="border-left-color:#dc3545;">
+    <div class="kpi-label">Total PTPs</div>
+    <div class="kpi-value">{{ ptp_totals['total'] | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#28a745;">
+    <div class="kpi-label">Paid</div>
+    <div class="kpi-value" style="color:#28a745;">{{ ptp_totals['paid'] | default(0) }}</div>
+    {% if ptp_totals['total'] > 0 %}
+    <div style="font-size:.75rem;color:#6c757d;">{{ '{:.1f}'.format(ptp_totals['paid']/ptp_totals['total']*100) }}% success</div>
+    {% endif %}
+  </div>
+  <div class="kpi-card" style="border-left-color:#007bff;">
+    <div class="kpi-label">Active PTPs</div>
+    <div class="kpi-value" style="color:#007bff;">{{ ptp_totals['active'] | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#dc3545;">
+    <div class="kpi-label">Broken</div>
+    <div class="kpi-value" style="color:#dc3545;">{{ ptp_totals['broken'] | default(0) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#dc3545;">
+    <div class="kpi-label">Total Arrears</div>
+    <div class="kpi-value" style="color:#dc3545;font-size:1.1rem;">R {{ '{:,.2f}'.format(ptp_totals['total_arrears'] | float) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#28a745;">
+    <div class="kpi-label">Total Promised</div>
+    <div class="kpi-value" style="color:#28a745;font-size:1.1rem;">R {{ '{:,.2f}'.format(ptp_totals['total_promised'] | float) }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#ffc107;">
+    <div class="kpi-label">Overdue PTPs</div>
+    <div class="kpi-value" style="color:#ffc107;">{{ overdue_ptps | length }}</div>
+  </div>
+  <div class="kpi-card" style="border-left-color:#6c757d;">
+    <div class="kpi-label">Access Blocked</div>
+    <div class="kpi-value" style="color:#6c757d;">{{ access_blocked | length }}</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem;">
+
+  <!-- PTP Status -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">PTP Status</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Status</th><th class="text-right">Count</th><th class="text-right">Promised</th></tr></thead>
+        <tbody>
+          {% for r in ptp_status_breakdown %}
+          <tr>
+            <td>
+              <span class="badge
+                {% if r['ptp_status']=='paid' %}badge-success
+                {% elif r['ptp_status']=='broken' %}badge-danger
+                {% elif r['ptp_status'] in ['pending','partially_paid'] %}badge-warning
+                {% else %}badge-info{% endif %}">
+                {{ r['ptp_status'] | replace('_',' ') | title }}
+              </span>
+            </td>
+            <td class="text-right">{{ r['cnt'] }}</td>
+            <td class="text-right">R {{ '{:,.2f}'.format(r['total_promised'] | float) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Arrangement Type -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Arrangement Type</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Type</th><th class="text-right">Total</th><th class="text-right">Paid</th></tr></thead>
+        <tbody>
+          {% for r in ptp_by_arrangement %}
+          <tr>
+            <td>{{ r['arrangement_type'] or 'Unknown' }}</td>
+            <td class="text-right">{{ r['cnt'] }}</td>
+            <td class="text-right" style="color:#28a745;">{{ r['paid_cnt'] }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Payment Methods -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">PTP Payment Method</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Method</th><th class="text-right">Count</th><th class="text-right">Total</th></tr></thead>
+        <tbody>
+          {% for r in ptp_by_payment_method %}
+          <tr>
+            <td>{{ r['payment_method'] or 'Unknown' }}</td>
+            <td class="text-right">{{ r['cnt'] }}</td>
+            <td class="text-right">R {{ '{:,.2f}'.format(r['total'] | float) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+
+  <!-- Monthly PTP Trend -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">PTP Trend — Last 6 Months</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Month</th><th class="text-right">Created</th><th class="text-right">Paid</th><th class="text-right">Broken</th></tr></thead>
+        <tbody>
+          {% for r in ptp_monthly %}
+          <tr>
+            <td>{{ r['month'] }}</td>
+            <td class="text-right">{{ r['created'] }}</td>
+            <td class="text-right" style="color:#28a745;">{{ r['paid'] }}</td>
+            <td class="text-right" style="color:#dc3545;">{{ r['broken'] }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-muted">No data</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Contact Log Summary (last 30 days) -->
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Call Log Summary — Last 30 Days</h3></div>
+    <div class="card-body" style="padding:0;">
+      <table class="data-table" style="font-size:.83rem;">
+        <thead><tr><th>Call Code</th><th class="text-right">Count</th></tr></thead>
+        <tbody>
+          {% for r in contact_log_summary %}
+          <tr>
+            <td>{{ r['call_code'] or 'Unknown' }}</td>
+            <td class="text-right"><strong>{{ r['cnt'] }}</strong></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="2" class="text-center text-muted">No call logs in last 30 days</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Top Arrears -->
+<div class="card" style="margin-bottom:1rem;">
+  <div class="card-header"><h3 class="card-title">Top 25 Members by Arrears</h3></div>
+  <div class="card-body" style="padding:0;">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead>
+        <tr><th>#</th><th>Name</th><th>Package</th><th>Status</th><th>Access</th><th class="text-right">Arrears</th><th class="text-right">PTPs</th><th class="text-right">Broken</th><th>Contact</th></tr>
+      </thead>
+      <tbody>
+        {% for r in top_arrears %}
+        <tr>
+          <td style="color:#6c757d;">{{ loop.index }}</td>
+          <td><a href="{{ url_for('members.member_detail', mid=r['member_id']) }}">{{ r['first_name'] }} {{ r['last_name'] }}</a></td>
+          <td>{{ r['package'] or '—' }}</td>
+          <td><span class="badge {% if r['member_status']=='Active' %}badge-success{% elif r['member_status']=='Frozen' %}badge-info{% else %}badge-danger{% endif %}">{{ r['member_status'] }}</span></td>
+          <td>
+            {% if r['gym_access_status'] == 'blocked' %}
+            <span class="badge badge-danger">Blocked</span>
+            {% elif r['gym_access_status'] == 'temp_unblocked' %}
+            <span class="badge badge-warning">Temp</span>
+            {% else %}
+            <span class="badge badge-success">OK</span>
+            {% endif %}
+          </td>
+          <td class="text-right" style="color:#dc3545;font-weight:700;">R {{ '{:,.2f}'.format(r['arrears'] | float) }}</td>
+          <td class="text-right">{{ r['ptp_count'] }}</td>
+          <td class="text-right" style="color:#dc3545;">{{ r['broken_count'] }}</td>
+          <td>{{ r['contact'] or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center text-muted">No arrears data</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Overdue PTPs -->
+<div class="card" style="margin-bottom:1rem;">
+  <div class="card-header">
+    <h3 class="card-title">Overdue PTPs (Promise Date Passed)</h3>
+    <span class="badge badge-danger">{{ overdue_ptps | length }}</span>
+  </div>
+  <div class="card-body" style="padding:0;">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead>
+        <tr><th>Member</th><th>Package</th><th>Promise Date</th><th class="text-right">Arrears</th><th class="text-right">Promised</th><th>Status</th><th>Contact</th></tr>
+      </thead>
+      <tbody>
+        {% for r in overdue_ptps %}
+        <tr>
+          <td><a href="{{ url_for('members.member_detail', mid=r['member_id']) }}">{{ r['first_name'] }} {{ r['last_name'] }}</a></td>
+          <td>{{ r['package'] or '—' }}</td>
+          <td style="color:#dc3545;">{{ r['promise_date'] }}</td>
+          <td class="text-right" style="color:#dc3545;">R {{ '{:,.2f}'.format(r['arrears_amount'] | float) }}</td>
+          <td class="text-right">R {{ '{:,.2f}'.format(r['promise_amount'] | float) }}</td>
+          <td><span class="badge badge-warning">{{ r['ptp_status'] | replace('_',' ') | title }}</span></td>
+          <td>{{ r['contact'] or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted">No overdue PTPs</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Broken PTPs -->
+<div class="card" style="margin-bottom:1rem;">
+  <div class="card-header">
+    <h3 class="card-title">Broken PTPs</h3>
+    <span class="badge badge-danger">{{ broken_ptps | length }}</span>
+  </div>
+  <div class="card-body" style="padding:0;">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead>
+        <tr><th>Member</th><th>Package</th><th>Promise Date</th><th class="text-right">Arrears</th><th class="text-right">Promised</th><th>Created By</th><th>Contact</th></tr>
+      </thead>
+      <tbody>
+        {% for r in broken_ptps %}
+        <tr>
+          <td><a href="{{ url_for('members.member_detail', mid=r['member_id']) }}">{{ r['first_name'] }} {{ r['last_name'] }}</a></td>
+          <td>{{ r['package'] or '—' }}</td>
+          <td>{{ r['promise_date'] }}</td>
+          <td class="text-right" style="color:#dc3545;">R {{ '{:,.2f}'.format(r['arrears_amount'] | float) }}</td>
+          <td class="text-right">R {{ '{:,.2f}'.format(r['promise_amount'] | float) }}</td>
+          <td>{{ r['created_by_name'] or '—' }}</td>
+          <td>{{ r['contact'] or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted">No broken PTPs</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Access Blocked -->
+{% if access_blocked %}
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Access Blocked Members</h3>
+    <span class="badge badge-danger">{{ access_blocked | length }}</span>
+  </div>
+  <div class="card-body" style="padding:0;">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead>
+        <tr><th>Name</th><th>Package</th><th>Access Status</th><th>Blocked Until</th><th>Contact</th></tr>
+      </thead>
+      <tbody>
+        {% for m in access_blocked %}
+        <tr>
+          <td><a href="{{ url_for('members.member_detail', mid=m['id']) }}">{{ m['first_name'] }} {{ m['last_name'] }}</a></td>
+          <td>{{ m['package'] or '—' }}</td>
+          <td><span class="badge badge-danger">{{ m['gym_access_status'] | replace('_',' ') | title }}</span></td>
+          <td>{{ m['access_blocked_until'] or '—' }}</td>
+          <td>{{ m['contact'] or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

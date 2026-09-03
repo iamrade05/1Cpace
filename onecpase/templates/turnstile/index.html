@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Turnstile | 1Cpase{% endblock %}
+{% block page_title %}USB Turnstile{% endblock %}
+
+{% block content %}
+<div class="kpi-grid" style="margin-bottom:18px;">
+  <div class="kpi-card {% if status.connected %}green{% else %}red{% endif %}"><div class="kpi-label">Device</div><div class="kpi-value" style="font-size:1.15rem;">{{ 'Connected' if status.connected else 'Disconnected' }}</div></div>
+  <div class="kpi-card blue"><div class="kpi-label">Reports Received</div><div class="kpi-value">{{ status.reports_received }}</div></div>
+  <div class="kpi-card orange"><div class="kpi-label">Linked Members</div><div class="kpi-value">{{ linked_members }}</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-bottom:18px;">
+  <div class="form-card">
+    <h3 style="margin-bottom:12px;">Hardware Status</h3>
+    <table style="width:100%;font-size:.83rem;">
+      <tr><td style="color:#6b7280;padding:4px;">Product</td><td><strong>{{ status.product or 'USB Turnstile Interface' }}</strong></td></tr>
+      <tr><td style="color:#6b7280;padding:4px;">Manufacturer</td><td>{{ status.manufacturer or 'Itencity' }}</td></tr>
+      <tr><td style="color:#6b7280;padding:4px;">VID / PID</td><td>{{ status.vendor_id }} / {{ status.product_id }}</td></tr>
+      <tr><td style="color:#6b7280;padding:4px;">Serial</td><td>{{ status.serial_number or '—' }}</td></tr>
+      <tr><td style="color:#6b7280;padding:4px;">Last event</td><td>{{ status.last_event_at or 'No report received yet' }}</td></tr>
+      <tr><td style="color:#6b7280;padding:4px;">Last error</td><td>{{ status.last_error or 'None' }}</td></tr>
+    </table>
+  </div>
+  <div class="form-card">
+    <h3 style="margin-bottom:10px;">Safety State</h3>
+    <div class="alert alert-info">Incoming HID reports are monitored and evaluated against member access status.</div>
+    <div class="alert alert-warning"><strong>Gate output disabled.</strong> The app will not send an unlock command until the controller protocol is confirmed from vendor documentation or a verified capture.</div>
+    <p style="font-size:.8rem;color:#6b7280;">Scan a card or credential. Its event will appear below and can be linked to a member ID.</p>
+  </div>
+</div>
+
+<div class="form-card" style="margin-bottom:18px;border-left:4px solid #2563eb;">
+  <h3 style="margin-bottom:8px;">Datalogic Barcode Scanner</h3>
+  <p style="font-size:.82rem;color:#6b7280;margin-bottom:10px;">The scanner operates as a USB keyboard. Keep this page open, click the field once, and scan a member barcode. Most scanners submit automatically with Enter.</p>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <input id="scannerCapture" class="form-control" style="max-width:420px;font-size:1.05rem;" autocomplete="off" autofocus placeholder="Scanner ready — scan barcode here">
+    <button type="button" id="scannerSubmit" class="btn btn-primary">Process Scan</button>
+    <span id="scannerState" class="badge badge-success">Ready</span>
+  </div>
+  <div id="scanResult" style="display:none;margin-top:12px;padding:12px;border-radius:7px;font-size:.86rem;"></div>
+</div>
+
+<div class="form-card" style="overflow-x:auto;">
+  <h3 style="margin-bottom:12px;">Recent Turnstile Events</h3>
+  <table style="width:100%;font-size:.8rem;white-space:nowrap;">
+    <thead><tr><th>Time</th><th>Credential</th><th>Member</th><th>Decision</th><th>Reason</th><th>Link Credential</th></tr></thead>
+    <tbody>
+      {% for event in events %}
+      <tr>
+        <td>{{ event.created_at }}</td>
+        <td><code>{{ event.credential or event.raw_report_hex }}</code></td>
+        <td>{% if event.member_id %}<a href="{{ url_for('members.member_detail', mid=event.member_id) }}">#{{ event.member_id }} {{ event.first_name }} {{ event.last_name }}</a>{% else %}Unmatched{% endif %}</td>
+        <td><span class="badge {% if event.decision == 'granted' %}badge-success{% elif event.decision == 'denied' %}badge-danger{% else %}badge-warning{% endif %}">{{ event.decision|title }}</span></td>
+        <td>{{ event.reason or '—' }}</td>
+        <td>{% if not event.member_id and event.credential and has_perm('add_member') %}<form method="POST" action="{{ url_for('turnstile.assign_credential', event_id=event.id) }}" style="display:flex;gap:6px;"><input type="number" min="1" name="member_id" class="form-control" style="width:95px;" placeholder="Member ID" required><button class="btn btn-primary btn-sm">Link</button></form>{% else %}—{% endif %}</td>
+      </tr>
+      {% else %}<tr><td colspan="6">No HID reports captured yet. Scan a credential at the turnstile.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+(function () {
+  const input = document.getElementById('scannerCapture');
+  const button = document.getElementById('scannerSubmit');
+  const state = document.getElementById('scannerState');
+  const result = document.getElementById('scanResult');
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
+  if (!input || !button) return;
+
+  async function processScan() {
+    const credential = input.value.trim();
+    if (!credential) {
+      state.textContent = 'Waiting for barcode';
+      input.focus();
+      return;
+    }
+    state.textContent = 'Checking…';
+    try {
+      const response = await fetch('{{ url_for("turnstile.scan_credential") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+        body: JSON.stringify({credential})
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Scan failed');
+      const granted = data.decision === 'granted';
+      result.style.display = 'block';
+      result.style.background = granted ? '#dcfce7' : (data.decision === 'denied' ? '#fee2e2' : '#fef3c7');
+      result.style.color = granted ? '#166534' : (data.decision === 'denied' ? '#991b1b' : '#92400e');
+      result.textContent = `${data.decision.toUpperCase()}: ${data.member ? data.member.name : credential} — ${data.reason}`;
+      state.textContent = 'Ready';
+      input.value = '';
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (error) {
+      result.style.display = 'block';
+      result.style.background = '#fee2e2';
+      result.style.color = '#991b1b';
+      result.textContent = error.message;
+      state.textContent = 'Error';
+    } finally {
+      input.focus();
+    }
+  }
+
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      processScan();
+    }
+  });
+  button.addEventListener('click', processScan);
+  window.addEventListener('load', () => input.focus());
+})();
+</script>
+{% endblock %}

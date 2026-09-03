@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if template else 'Create' }} Contract Template | 1Cpase{% endblock %}
+{% block page_title %}{{ 'Edit' if template else 'Create' }} Contract Template{% endblock %}
+
+{% block content %}
+<style>
+.tab-nav {
+  display:flex; gap:0; background:#fff; border-radius:12px;
+  border:1px solid #e5e7eb; box-shadow:0 2px 8px rgba(0,0,0,.06);
+  margin-bottom:20px; overflow-x:auto; padding:6px;
+}
+.tab-btn {
+  display:flex; align-items:center; gap:9px; flex:1; justify-content:center;
+  padding:10px 14px; border:none; background:none; cursor:pointer;
+  font-size:0.8rem; font-weight:600; color:#6b7280;
+  border-radius:8px; white-space:nowrap;
+  transition:background .15s,color .15s;
+}
+.tab-btn.active { background:#EEF4FA; color:#185FA5; }
+.tab-pane { display:none; }
+.tab-pane.active { display:block; }
+.tab-footer { display:flex; justify-content:space-between; align-items:center; padding:18px 0 4px; margin-top:12px; }
+.part-block { border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin-bottom:14px; background:#f9fafb; }
+</style>
+
+<form method="post" id="contractForm">
+  <div class="tab-nav" id="tabNav">
+    <button type="button" class="tab-btn active" data-tab="0">1. Letterhead</button>
+    <button type="button" class="tab-btn" data-tab="1">2. Sections &amp; Fields</button>
+    <button type="button" class="tab-btn" data-tab="2">3. Terms &amp; Conditions</button>
+    <button type="button" class="tab-btn" data-tab="3">4. Debit Order Mandate</button>
+  </div>
+
+  <!-- Tab 1: Letterhead -->
+  <div class="tab-pane active" id="pane-0">
+    <div class="form-card" style="max-width:900px;">
+      <div class="form-grid-2">
+        <div class="form-group"><label class="form-label">Internal Template Name *</label>
+          <input class="form-control" name="name" required value="{{ template.name if template else '' }}" placeholder="Standard Membership Agreement"></div>
+        <div class="form-group"><label class="form-label">Gym / Legal Name *</label>
+          <input class="form-control" name="gym_name" required
+                 value="{{ template.gym_name if template else (starter.gym_name if starter else 'Elev8 Health & Fitness') }}">
+          <span class="form-hint">This is the ONLY place the gym's name is set. Terms and clauses reference it automatically — never hardcode a gym name into clause wording.</span>
+        </div>
+      </div>
+      <div class="form-grid-2" style="margin-top:18px;">
+        <div class="form-group"><label class="form-label">Agreement Title *</label>
+          <input class="form-control" name="agreement_title" required value="{{ template.agreement_title if template else 'Membership Agreement' }}"></div>
+        <div class="form-group"><label class="form-label">Accent Colour</label>
+          <input type="color" class="form-control" name="accent_color" style="height:42px;padding:4px;"
+                 value="{{ template.accent_color if template and template.accent_color else '#185FA5' }}"></div>
+      </div>
+      <div class="form-grid-2" style="margin-top:18px;">
+        <div class="form-group"><label class="form-label">Registration No.</label>
+          <input class="form-control" name="reg_no" value="{{ template.reg_no if template and template.reg_no else '' }}"></div>
+        <div class="form-group"><label class="form-label">Address</label>
+          <input class="form-control" name="address" value="{{ template.address if template and template.address else '' }}"></div>
+      </div>
+      <div class="form-group" style="margin-top:18px;"><label class="form-label">Footer Note</label>
+        <textarea class="form-control" name="footer_text" rows="3">{{ template.footer_text if template and template.footer_text else '' }}</textarea></div>
+      <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:18px;">
+        <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="active" value="1" {% if not template or template.active %}checked{% endif %}> Active</label>
+        <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="is_default" value="1" {% if template and template.is_default %}checked{% endif %}> Use as default member contract</label>
+      </div>
+    </div>
+    <div class="tab-footer"><span></span><button type="button" class="btn btn-primary" onclick="goTab(1)">Next: Sections &amp; Fields &rarr;</button></div>
+  </div>
+
+  <!-- Tab 2: Sections & Fields -->
+  <div class="tab-pane" id="pane-1">
+    <span class="form-hint" style="display:block;margin-bottom:14px;">
+      Untick a section to leave it off the printed contract entirely. Fields marked off by default aren't
+      captured on every member yet — tick one on and add it to the member's profile under Contract Extras.
+    </span>
+    {% for section in sections %}
+    <div class="form-card" style="margin-bottom:14px;max-width:900px;">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700;">
+        <input type="checkbox" name="section_{{ section.key }}_enabled" value="1" {% if section.enabled %}checked{% endif %}>
+        {{ section.heading }}
+      </label>
+      {% if section.fields %}
+      <div class="form-grid-2" style="margin-top:10px;">
+        {% for field in section.fields %}
+        <label style="display:flex;align-items:center;gap:8px;font-weight:400;">
+          <input type="checkbox" name="field_{{ section.key }}__{{ field.key }}_enabled" value="1" {% if field.enabled %}checked{% endif %}>
+          {{ field.label }}
+        </label>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div class="tab-footer">
+      <button type="button" class="btn btn-secondary" onclick="goTab(0)">&larr; Back</button>
+      <button type="button" class="btn btn-primary" onclick="goTab(2)">Next: Terms &amp; Conditions &rarr;</button>
+    </div>
+  </div>
+
+  <!-- Tab 3: Terms & Conditions -->
+  <div class="tab-pane" id="pane-2">
+    <div class="form-group" style="max-width:900px;">
+      <label class="form-label">Legacy flat terms *</label>
+      <textarea class="form-control" name="terms_text" rows="8" required
+                style="line-height:1.6;">{{ template.terms_text if template else (starter.terms_text if starter else '') }}</textarea>
+      <span class="form-hint">Still used as a fallback for anywhere the old flat clause list is referenced. The structured Parts below are what actually print on the contract.</span>
+    </div>
+
+    <div id="partsContainer" style="max-width:900px;">
+      {% for part in terms_parts %}
+      <div class="part-block" data-index="{{ loop.index0 }}">
+        <input type="hidden" name="part_remove_{{ loop.index0 }}" value="0" class="part-remove-flag">
+        <div class="form-group"><label class="form-label">Part Title</label>
+          <input type="text" name="part_title_{{ loop.index0 }}" class="form-control" value="{{ part.title }}"></div>
+        <div class="form-group"><label class="form-label">Intro</label>
+          <textarea name="part_intro_{{ loop.index0 }}" class="form-control" rows="2">{{ part.intro }}</textarea></div>
+        <div class="form-group"><label class="form-label">Clauses — one per line. Use <code>{gym_name}</code> instead of typing the gym's name.</label>
+          <textarea name="part_clauses_{{ loop.index0 }}" class="form-control" rows="6">{{ part.clauses | join('\n') }}</textarea></div>
+        <div style="display:flex;gap:20px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="part_page_break_{{ loop.index0 }}" value="1" {% if part.page_break %}checked{% endif %}> Starts a new page</label>
+          <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="part_initials_{{ loop.index0 }}" value="1" {% if part.initials_required %}checked{% endif %}> Requires initials</label>
+        </div>
+        <button type="button" class="btn btn-ghost" style="margin-top:8px;" onclick="removePart(this)">Remove This Part</button>
+      </div>
+      {% endfor %}
+    </div>
+    <input type="hidden" name="parts_count" id="partsCount" value="{{ terms_parts|length }}">
+    <div style="max-width:900px;"><button type="button" class="btn btn-secondary" onclick="addPart()">+ Add Part</button></div>
+
+    <div class="tab-footer">
+      <button type="button" class="btn btn-secondary" onclick="goTab(1)">&larr; Back</button>
+      <button type="button" class="btn btn-primary" onclick="goTab(3)">Next: Debit Order Mandate &rarr;</button>
+    </div>
+  </div>
+
+  <!-- Tab 4: Debit Order Mandate -->
+  <div class="tab-pane" id="pane-3">
+    <div class="form-group" style="max-width:900px;">
+      <label class="form-label">Mandate Wording</label>
+      <textarea class="form-control" name="debit_mandate_text" rows="6">{{ template.debit_mandate_text if template and template.debit_mandate_text else '' }}</textarea>
+      <span class="form-hint">Placeholders filled in per member: <code>{gym_name}</code>, <code>{debit_day}</code> (e.g. "1st"), <code>{debit_start}</code>.</span>
+    </div>
+    <div class="tab-footer">
+      <button type="button" class="btn btn-secondary" onclick="goTab(2)">&larr; Back</button>
+      <span></span>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;margin-top:26px;">
+    <button class="btn btn-primary" type="submit">{{ 'Save Contract Template' if template else 'Create Contract Template' }}</button>
+    {% if template %}<a href="{{ url_for('admin.contract_template_preview', template_id=template.id) }}" target="_blank" class="btn btn-secondary">Preview With Sample Data</a>{% endif %}
+    <a href="{{ url_for('admin.contract_templates_index') }}" class="btn btn-ghost">Cancel</a>
+  </div>
+</form>
+
+<script>
+const TABS = 4;
+function goTab(n) {
+  for (let i = 0; i < TABS; i++) {
+    document.getElementById('pane-' + i).classList.toggle('active', i === n);
+    document.querySelector(`.tab-btn[data-tab="${i}"]`).classList.toggle('active', i === n);
+  }
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+document.getElementById('tabNav').addEventListener('click', e => {
+  const btn = e.target.closest('.tab-btn');
+  if (btn) goTab(parseInt(btn.dataset.tab));
+});
+
+function removePart(btn) {
+  const block = btn.closest('.part-block');
+  block.querySelector('.part-remove-flag').value = '1';
+  block.style.display = 'none';
+}
+function addPart() {
+  const countInput = document.getElementById('partsCount');
+  const i = parseInt(countInput.value, 10);
+  const container = document.getElementById('partsContainer');
+  const div = document.createElement('div');
+  div.className = 'part-block';
+  div.innerHTML = `
+    <input type="hidden" name="part_remove_${i}" value="0" class="part-remove-flag">
+    <div class="form-group"><label class="form-label">Part Title</label>
+      <input type="text" name="part_title_${i}" class="form-control" placeholder="Part ${i + 1}"></div>
+    <div class="form-group"><label class="form-label">Intro</label>
+      <textarea name="part_intro_${i}" class="form-control" rows="2"></textarea></div>
+    <div class="form-group"><label class="form-label">Clauses — one per line. Use {gym_name} instead of typing the gym's name.</label>
+      <textarea name="part_clauses_${i}" class="form-control" rows="6"></textarea></div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;">
+      <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="part_page_break_${i}" value="1"> Starts a new page</label>
+      <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" name="part_initials_${i}" value="1"> Requires initials</label>
+    </div>
+    <button type="button" class="btn btn-ghost" style="margin-top:8px;" onclick="removePart(this)">Remove This Part</button>`;
+  container.appendChild(div);
+  countInput.value = i + 1;
+}
+</script>
+{% endblock %}

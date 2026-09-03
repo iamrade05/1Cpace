@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Sales CRM | 1Cpase{% endblock %}
+{% block page_title %}Prospect Sales CRM{% endblock %}
+
+{% block content %}
+{% if available_consultants %}
+<div class="alert alert-success" style="margin-bottom:16px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+  <strong>Automatic lead rotation is active</strong>
+  <span>{% for consultant in available_consultants %}#{{ consultant.sales_rotation_order }} {{ consultant.full_name }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+</div>
+{% else %}
+<div class="alert alert-warning" style="margin-bottom:16px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+  <span><strong>Lead allocation needs setup:</strong> no sales consultants are marked Available.</span>
+  {% if session.get('role') == 'admin' %}<a href="{{ url_for('admin.users_index') }}" class="btn btn-ghost btn-sm">Configure Sales Rotation</a>{% endif %}
+</div>
+{% endif %}
+{% if expiring_soon %}
+<div class="alert alert-warning" style="margin-bottom:16px;">
+  <strong>{{ expiring_soon|length }} decision period{{ 's' if expiring_soon|length != 1 }} due within 24 hours:</strong>
+  {% for prospect in expiring_soon %}<a href="{{ url_for('leads.lead_detail', lid=prospect.id) }}" style="font-weight:700;margin-left:8px;">{{ prospect.full_name }}</a>{% endfor %}
+</div>
+{% endif %}
+
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+  <span style="font-size:.85rem;color:#6b7280;">One card per person. Every contact and decision stays on that prospect record.</span>
+  <div style="display:flex;gap:8px;">
+    <a href="{{ url_for('leads.funnel_report') }}" class="btn btn-secondary">Funnel Report</a>
+    {% if has_perm('capture_leads') %}<a href="{{ url_for('leads.leads_add') }}" class="btn btn-primary">+ Capture Prospect</a>{% endif %}
+  </div>
+</div>
+
+{% if has_perm('capture_leads') %}
+<details class="form-card" style="margin-bottom:16px;">
+  <summary style="cursor:pointer;font-weight:700;">Social Media &amp; Website Join Links</summary>
+  <p style="color:var(--text-sub);margin:10px 0;">Use the matching link in each channel. New enquiries are captured and allocated to the next available consultant.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;">
+    {% for channel, link in join_links.items() %}
+    <label style="display:block;"><span style="display:block;font-size:.72rem;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">{{ channel|title }}</span><input value="{{ request.url_root.rstrip('/') }}{{ link }}" readonly onclick="this.select()" style="width:100%;"></label>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+
+<div style="overflow-x:auto;padding-bottom:16px;">
+  <div style="display:flex;gap:12px;min-width:max-content;align-items:flex-start;">
+    {% for status_key, status_label in kanban_columns %}
+    {% set col = leads_by_status.get(status_key, []) %}
+    {% set color = status_colors[status_key] %}
+    <div style="width:225px;flex-shrink:0;">
+      <div style="background:{{ color }};color:#fff;border-radius:8px 8px 0 0;padding:10px 12px;display:flex;justify-content:space-between;">
+        <strong style="font-size:.72rem;text-transform:uppercase;letter-spacing:.6px;">{{ status_label }}</strong>
+        <span style="background:#ffffff33;border-radius:20px;padding:1px 8px;font-size:.72rem;">{{ col|length }}</span>
+      </div>
+      <div style="background:#e8eaf0;border-radius:0 0 8px 8px;padding:8px;min-height:110px;">
+        {% for prospect in col %}
+        <article style="background:#fff;border-radius:6px;padding:11px;margin-bottom:8px;border-left:3px solid {{ color }};box-shadow:0 1px 3px #00000012;">
+          <div style="font-weight:700;font-size:.83rem;">{{ prospect.full_name }}</div>
+          <div style="font-size:.73rem;color:#6b7280;margin-top:2px;">{{ prospect.phone or prospect.email or '—' }} {% if prospect.phone %}<button type="button" class="btn btn-primary btn-sm" onclick="startPbxCall('{{ prospect.phone|e }}')">Call</button>{% endif %}</div>
+          <div style="font-size:.7rem;color:#9ca3af;margin-top:3px;">{{ prospect.salesperson_name or 'Unassigned' }} · {{ prospect.original_source or prospect.source }}</div>
+          {% if prospect.next_action %}<div style="font-size:.72rem;color:#92400e;background:#fffbeb;padding:5px 7px;border-radius:4px;margin-top:7px;"><strong>Next:</strong> {{ prospect.next_action }}<br>{{ prospect.next_action_at or 'Date required' }}</div>{% endif %}
+          {% if status_key == 'hot_prospect_7day' %}<div style="font-size:.7rem;color:#047857;margin-top:5px;font-weight:700;">Decision due {{ prospect.decision_date }}</div>{% endif %}
+          <a href="{{ url_for('leads.lead_detail', lid=prospect.id) }}" style="display:inline-block;margin-top:8px;font-size:.72rem;color:#e94560;font-weight:700;text-decoration:none;">Open record →</a>
+        </article>
+        {% else %}<div style="text-align:center;padding:24px 0;color:#b4bac5;font-size:.75rem;">Empty</div>{% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<details class="form-card" style="margin-top:10px;">
+  <summary style="cursor:pointer;font-weight:700;">Closed prospects ({{ closed }})</summary>
+  <p style="margin:12px 0;color:var(--t2);font-size:.8rem;line-height:1.5;"><strong>Recycle</strong> prospects automatically return to Recall Queue on the date shown. <strong>Do Not Contact</strong> prospects remain closed until the client gives permission to contact them again. Invalid numbers, duplicates and existing members do not return automatically.</p>
+  <div style="overflow-x:auto;margin-top:14px;">
+    <table style="width:100%;font-size:.82rem;">
+      <thead><tr><th>Prospect</th><th>Outcome</th><th>Reason</th><th>Returns to Recall</th><th>Consultant</th><th>Updated</th></tr></thead>
+      <tbody>{% for prospect in closed_prospects %}<tr><td><a href="{{ url_for('leads.lead_detail', lid=prospect.id) }}">{{ prospect.full_name }}</a></td><td>{{ prospect.lead_status|replace('_',' ')|title }}</td><td>{{ recycle_reason_labels.get(prospect.recycle_reason, prospect.objection_reason or prospect.closure_reason or '—') }}</td><td>{% if prospect.recycle_due_at %}<strong style="color:var(--warn);">{{ prospect.recycle_due_at|string|truncate(16, true, '') }}</strong>{% elif prospect.lead_status == 'do_not_contact' %}Only after new consent{% else %}Does not auto-return{% endif %}</td><td>{{ prospect.salesperson_name or 'Unassigned' }}</td><td>{{ prospect.updated_at|string|truncate(16, true, '') }}</td></tr>{% else %}<tr><td colspan="6">No closed prospects.</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</details>
+{% endblock %}
+
+<script>
+async function startPbxCall(phone) {
+  const token = document.querySelector('input[name="csrf_token"]')?.value || '';
+  try {
+    const r = await fetch('{{ url_for("pbx.dial") }}', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken':token},
+      body:JSON.stringify({phone:phone})
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'PBX call failed');
+    alert('Call started.');
+  } catch (e) { alert(e.message); }
+}
+</script>

@@ -1,0 +1,570 @@
+{% extends "base.html" %}
+{% block title %}Reports – {{ tab | title }}{% endblock %}
+{% block content %}
+
+<style>
+.section-chip {
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: #f3f4f6;
+  color: #6b7280;
+  border: none;
+  display: inline-block;
+  user-select: none;
+  white-space: nowrap;
+}
+.section-chip.active { background: #e94560; color: #fff; }
+.report-section { display: none; }
+.report-section.active { display: block; }
+.chip-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:20px; }
+</style>
+
+{% macro chip_bar(sections) %}
+<div class="chip-bar">
+  {% for sid, slabel in sections %}
+  <span class="section-chip {% if loop.first %}active{% endif %}"
+        data-section="{{ sid }}" onclick="showSection('{{ sid }}', this)">
+    {{ slabel }}
+  </span>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{# ── OVERVIEW ──────────────────────────────────────────────────────────────── #}
+{% if tab == 'overview' %}
+<div class="page-header"><h1>📊 Overview</h1></div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-bottom:20px;">
+  <div class="kpi-card" style="border-left-color:#28a745;"><div class="kpi-label">Active Members</div><div class="kpi-value" style="color:#28a745;">{{ stats.active_members }}</div></div>
+  <div class="kpi-card" style="border-left-color:#17a2b8;"><div class="kpi-label">Frozen</div><div class="kpi-value" style="color:#17a2b8;">{{ stats.frozen_members }}</div></div>
+  <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Cancelled</div><div class="kpi-value" style="color:#dc3545;">{{ stats.cancelled_members }}</div></div>
+  <div class="kpi-card" style="border-left-color:#007bff;"><div class="kpi-label">Total Members</div><div class="kpi-value">{{ stats.total_members }}</div></div>
+  <div class="kpi-card" style="border-left-color:#17a2b8;"><div class="kpi-label">New This Month</div><div class="kpi-value" style="color:#17a2b8;">{{ stats.new_this_month }}</div></div>
+  <div class="kpi-card" style="border-left-color:#28a745;"><div class="kpi-label">Collected (Month)</div><div class="kpi-value" style="color:#28a745;">R {{ '{:,.2f}'.format(stats.collected_this_month|float) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Outstanding</div><div class="kpi-value" style="color:#dc3545;">R {{ '{:,.2f}'.format(stats.total_outstanding|float) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#ffc107;"><div class="kpi-label">Open Queries</div><div class="kpi-value" style="color:#ffc107;">{{ stats.open_queries }}</div></div>
+  <div class="kpi-card" style="border-left-color:#007bff;"><div class="kpi-label">Active PTPs</div><div class="kpi-value" style="color:#007bff;">{{ stats.active_ptps }}</div></div>
+  <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Broken PTPs</div><div class="kpi-value" style="color:#dc3545;">{{ stats.broken_ptps }}</div></div>
+</div>
+
+{{ chip_bar([
+  ('ov-collections', 'Collections — Last 6 Months'),
+  ('ov-joins',       'New Joins — Last 6 Months'),
+  ('ov-packages',    'Top Packages (Active Members)'),
+  ('ov-queries',     'Queries This Month by Category'),
+]) }}
+
+<div id="ov-collections" class="report-section active">
+  <div class="card"><div class="card-header"><h3 class="card-title">Collections — Last 6 Months</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Month</th><th class="text-right">Collected</th><th class="text-right">Outstanding</th><th class="text-right">Records</th></tr></thead>
+    <tbody>{% for r in monthly %}<tr><td>{{ r['month'] }}</td><td class="text-right" style="color:#28a745;">R {{ '{:,.2f}'.format(r['collected']|float) }}</td><td class="text-right" style="color:#dc3545;">R {{ '{:,.2f}'.format(r['outstanding']|float) }}</td><td class="text-right">{{ r['cnt'] }}</td></tr>{% else %}<tr><td colspan="4" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="ov-joins" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">New Joins — Last 6 Months</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Month</th><th class="text-right">New Members</th></tr></thead>
+    <tbody>{% for r in joins_monthly %}<tr><td>{{ r['month'] }}</td><td class="text-right"><strong>{{ r['cnt'] }}</strong></td></tr>{% else %}<tr><td colspan="2" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="ov-packages" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Top Packages (Active Members)</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Package</th><th class="text-right">Count</th></tr></thead>
+    <tbody>{% for r in top_packages %}<tr><td>{{ r['package'] }}</td><td class="text-right"><strong>{{ r['cnt'] }}</strong></td></tr>{% else %}<tr><td colspan="2" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="ov-queries" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Queries This Month by Category</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Category</th><th class="text-right">Count</th></tr></thead>
+    <tbody>{% for r in query_cats %}<tr><td>{{ r['category']|replace('_',' ')|title }}</td><td class="text-right"><strong>{{ r['cnt'] }}</strong></td></tr>{% else %}<tr><td colspan="2" class="text-center text-muted">No queries this month</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+{% endif %}
+
+{# ── MEMBERSHIP ────────────────────────────────────────────────────────────── #}
+{% if tab == 'membership' %}
+<div class="page-header">
+  <h1>👥 Membership</h1>
+  <div>{% include 'reports/_period_inline.html' %}</div>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:20px;">
+  <div class="kpi-card" style="border-left-color:#007bff;"><div class="kpi-label">Total</div><div class="kpi-value">{{ total_members }}</div></div>
+  {% for r in status_breakdown %}
+  <div class="kpi-card" style="border-left-color:{% if r['member_status']=='Active' %}#28a745{% elif r['member_status']=='Frozen' %}#17a2b8{% else %}#dc3545{% endif %};">
+    <div class="kpi-label">{{ r['member_status'] }}</div><div class="kpi-value">{{ r['cnt'] }}</div>
+    {% if total_members>0 %}<div style="font-size:.75rem;color:#6c757d;">{{ '{:.1f}'.format(r['cnt']/total_members*100) }}%</div>{% endif %}
+  </div>{% endfor %}
+</div>
+
+{{ chip_bar([
+  ('mb-new',       'New Members by Month'),
+  ('mb-packages',  'Members by Package'),
+  ('mb-gender',    'Gender'),
+  ('mb-paytype',   'Payment Type'),
+  ('mb-consultant','Members by Consultant'),
+  ('mb-recent',    'Recently Joined'),
+]) }}
+
+<div id="mb-new" class="report-section active">
+  <div class="card"><div class="card-header"><h3 class="card-title">New Members by Month</h3><span style="font-size:.78rem;color:#6b7280;">{{ period_label }}</span></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Month</th><th class="text-right">New Joins</th></tr></thead>
+    <tbody>{% for r in new_by_month %}<tr><td>{{ r['month'] }}</td><td class="text-right"><strong>{{ r['cnt'] }}</strong></td></tr>{% else %}<tr><td colspan="2" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="mb-packages" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Members by Package</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Package</th><th>Status</th><th class="text-right">Count</th></tr></thead>
+    <tbody>{% for r in package_breakdown %}<tr><td>{{ r['package'] }}</td><td><span class="badge {% if r['member_status']=='Active' %}badge-success{% elif r['member_status']=='Frozen' %}badge-info{% else %}badge-danger{% endif %}">{{ r['member_status'] }}</span></td><td class="text-right">{{ r['cnt'] }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="mb-gender" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Gender</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Gender</th><th class="text-right">Count</th></tr></thead>
+    <tbody>{% for r in gender_breakdown %}<tr><td>{{ r['gender']|title }}</td><td class="text-right">{{ r['cnt'] }}</td></tr>{% else %}<tr><td colspan="2" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="mb-paytype" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Payment Type</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Type</th><th class="text-right">Count</th></tr></thead>
+    <tbody>{% for r in payment_type_breakdown %}<tr><td>{{ r['payment_type']|title }}</td><td class="text-right">{{ r['cnt'] }}</td></tr>{% else %}<tr><td colspan="2" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="mb-consultant" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Members by Consultant</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Consultant</th><th class="text-right">Total</th><th class="text-right">Active</th></tr></thead>
+    <tbody>{% for r in consultant_breakdown %}<tr><td>{{ r['consultant'] or 'Unassigned' }}</td><td class="text-right">{{ r['cnt'] }}</td><td class="text-right" style="color:#28a745;">{{ r['active_cnt'] }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="mb-recent" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Recently Joined</h3><span style="font-size:.78rem;color:#6b7280;">{{ period_label }}</span><span class="badge badge-info">{{ recently_joined|length }}</span></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.82rem;">
+    <thead><tr><th>Name</th><th>Package</th><th>Status</th><th>Contact</th><th>Join Date</th><th>Consultant</th></tr></thead>
+    <tbody>{% for m in recently_joined %}<tr>
+      <td><a href="{{ url_for('members.member_detail', mid=m['id']) }}">{{ m['first_name'] }} {{ m['last_name'] }}</a></td>
+      <td>{{ m['package'] or '—' }}</td>
+      <td><span class="badge {% if m['member_status']=='Active' %}badge-success{% elif m['member_status']=='Frozen' %}badge-info{% else %}badge-danger{% endif %}">{{ m['member_status'] }}</span></td>
+      <td>{{ m['contact'] or '—' }}</td><td>{{ m['join_date'] or '—' }}</td><td>{{ m['consultant'] or '—' }}</td>
+    </tr>{% else %}<tr><td colspan="6" class="text-center text-muted">No new members</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+{% endif %}
+
+{# ── FINANCE ───────────────────────────────────────────────────────────────── #}
+{% if tab == 'finance' %}
+<div class="page-header">
+  <h1>💰 Finance</h1>
+  <div>{% include 'reports/_period_inline.html' %}</div>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(175px,1fr));margin-bottom:20px;">
+  <div class="kpi-card" style="border-left-color:#28a745;"><div class="kpi-label">Total Collected</div><div class="kpi-value" style="color:#28a745;">R {{ '{:,.2f}'.format(totals['total_collected']|float) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#007bff;"><div class="kpi-label">Total Billed</div><div class="kpi-value">R {{ '{:,.2f}'.format(totals['total_billed']|float) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Outstanding</div><div class="kpi-value" style="color:#dc3545;">R {{ '{:,.2f}'.format((totals['total_billed']|float)-(totals['total_collected']|float)) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#6c757d;"><div class="kpi-label">Collection Rate</div>{% if totals['total_billed'] and totals['total_billed']>0 %}<div class="kpi-value">{{ '{:.1f}'.format(totals['total_collected']/totals['total_billed']*100) }}%</div>{% else %}<div class="kpi-value">—</div>{% endif %}</div>
+  <div class="kpi-card" style="border-left-color:#17a2b8;"><div class="kpi-label">Records</div><div class="kpi-value">{{ totals['total_records'] }}</div></div>
+</div>
+
+{{ chip_bar([
+  ('fi-monthly',    'Monthly Collections'),
+  ('fi-methods',    'Payment Methods'),
+  ('fi-status',     'By Status'),
+  ('fi-packages',   'Revenue by Package'),
+  ('fi-outstanding','Top 25 Outstanding Balances'),
+]) }}
+
+<div id="fi-monthly" class="report-section active">
+  <div class="card"><div class="card-header"><h3 class="card-title">Monthly Collections</h3><span style="font-size:.78rem;color:#6b7280;">{{ period_label }}</span></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Month</th><th class="text-right">Collected</th><th class="text-right">Outstanding</th><th class="text-right">Records</th><th class="text-right">Paid</th><th class="text-right">Partial</th><th class="text-right">Failed</th></tr></thead>
+    <tbody>{% for r in monthly_collections %}<tr><td>{{ r['month'] }}</td><td class="text-right" style="color:#28a745;"><strong>R {{ '{:,.2f}'.format(r['collected']|float) }}</strong></td><td class="text-right" style="color:#dc3545;">R {{ '{:,.2f}'.format(r['outstanding']|float) }}</td><td class="text-right">{{ r['cnt'] }}</td><td class="text-right">{{ r['paid_cnt'] }}</td><td class="text-right">{{ r['partial_cnt'] }}</td><td class="text-right" style="color:#dc3545;">{{ r['failed_cnt'] }}</td></tr>{% else %}<tr><td colspan="7" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="fi-methods" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Payment Methods</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Method</th><th class="text-right">Count</th><th class="text-right">Total</th></tr></thead>
+    <tbody>{% for r in payment_methods %}<tr><td>{{ r['method'] or 'Unknown' }}</td><td class="text-right">{{ r['cnt'] }}</td><td class="text-right">R {{ '{:,.2f}'.format(r['total']|float) }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="fi-status" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">By Status</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Status</th><th class="text-right">Count</th><th class="text-right">Total</th></tr></thead>
+    <tbody>{% for r in fin_status_breakdown %}<tr><td><span class="badge {% if r['status']=='paid' %}badge-success{% elif r['status']=='partial' %}badge-warning{% else %}badge-danger{% endif %}">{{ r['status']|title }}</span></td><td class="text-right">{{ r['cnt'] }}</td><td class="text-right">R {{ '{:,.2f}'.format(r['total']|float) }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="fi-packages" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Revenue by Package</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Package</th><th class="text-right">Members Billed</th><th class="text-right">Collected</th></tr></thead>
+    <tbody>{% for r in revenue_by_package %}<tr><td>{{ r['package'] }}</td><td class="text-right">{{ r['members'] }}</td><td class="text-right" style="color:#28a745;"><strong>R {{ '{:,.2f}'.format(r['collected']|float) }}</strong></td></tr>{% else %}<tr><td colspan="3" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="fi-outstanding" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Top 25 Outstanding Balances</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.82rem;">
+    <thead><tr><th>#</th><th>Name</th><th>Package</th><th>Status</th><th class="text-right">Outstanding</th><th>Contact</th></tr></thead>
+    <tbody>{% for r in top_outstanding %}<tr>
+      <td style="color:#6c757d;">{{ loop.index }}</td>
+      <td><a href="{{ url_for('members.member_detail', mid=r['id']) }}">{{ r['first_name'] }} {{ r['last_name'] }}</a></td>
+      <td>{{ r['package'] or '—' }}</td>
+      <td><span class="badge {% if r['member_status']=='Active' %}badge-success{% elif r['member_status']=='Frozen' %}badge-info{% else %}badge-danger{% endif %}">{{ r['member_status'] }}</span></td>
+      <td class="text-right" style="color:#dc3545;font-weight:700;">R {{ '{:,.2f}'.format(r['net_owed']|float) }}</td>
+      <td>{{ r['contact'] or '—' }}</td>
+    </tr>{% else %}<tr><td colspan="6" class="text-center text-muted">No outstanding balances</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+{% endif %}
+
+{# ── ARREARS ───────────────────────────────────────────────────────────────── #}
+{% if tab == 'arrears' %}
+<div class="page-header"><h1>📋 Arrears &amp; PTP</h1></div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(165px,1fr));margin-bottom:20px;">
+  <div class="kpi-card" style="border-left-color:#6c757d;"><div class="kpi-label">Total PTPs</div><div class="kpi-value">{{ ptp_totals['total']|default(0) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#28a745;"><div class="kpi-label">Paid</div><div class="kpi-value" style="color:#28a745;">{{ ptp_totals['paid']|default(0) }}</div>{% if ptp_totals['total']>0 %}<div style="font-size:.75rem;color:#6c757d;">{{ '{:.1f}'.format(ptp_totals['paid']/ptp_totals['total']*100) }}% success</div>{% endif %}</div>
+  <div class="kpi-card" style="border-left-color:#007bff;"><div class="kpi-label">Active PTPs</div><div class="kpi-value" style="color:#007bff;">{{ ptp_totals['active']|default(0) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Broken</div><div class="kpi-value" style="color:#dc3545;">{{ ptp_totals['broken']|default(0) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Total Arrears</div><div class="kpi-value" style="color:#dc3545;font-size:1.1rem;">R {{ '{:,.2f}'.format(ptp_totals['total_arrears']|float) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#28a745;"><div class="kpi-label">Total Promised</div><div class="kpi-value" style="color:#28a745;font-size:1.1rem;">R {{ '{:,.2f}'.format(ptp_totals['total_promised']|float) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#ffc107;"><div class="kpi-label">Overdue PTPs</div><div class="kpi-value" style="color:#ffc107;">{{ overdue_ptps|length }}</div></div>
+  <div class="kpi-card" style="border-left-color:#6c757d;"><div class="kpi-label">Access Blocked</div><div class="kpi-value">{{ access_blocked|length }}</div></div>
+</div>
+
+{{ chip_bar([
+  ('ar-status',    'PTP Status Breakdown'),
+  ('ar-arrange',   'Arrangement Type'),
+  ('ar-trend',     'PTP Trend — Last 6 Months'),
+  ('ar-debtors',   'Top 25 Members by Arrears'),
+  ('ar-overdue',   'Overdue PTPs'),
+  ('ar-broken',    'Broken PTPs'),
+]) }}
+
+<div id="ar-status" class="report-section active">
+  <div class="card"><div class="card-header"><h3 class="card-title">PTP Status Breakdown</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Status</th><th class="text-right">Count</th><th class="text-right">Promised</th></tr></thead>
+    <tbody>{% for r in ptp_status_breakdown %}<tr><td><span class="badge {% if r['ptp_status']=='paid' %}badge-success{% elif r['ptp_status']=='broken' %}badge-danger{% elif r['ptp_status'] in ['pending','partially_paid'] %}badge-warning{% else %}badge-info{% endif %}">{{ r['ptp_status']|replace('_',' ')|title }}</span></td><td class="text-right">{{ r['cnt'] }}</td><td class="text-right">R {{ '{:,.2f}'.format(r['total_promised']|float) }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="ar-arrange" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Arrangement Type</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Type</th><th class="text-right">Total</th><th class="text-right">Paid</th></tr></thead>
+    <tbody>{% for r in ptp_by_arrangement %}<tr><td>{{ r['arrangement_type'] or 'Unknown' }}</td><td class="text-right">{{ r['cnt'] }}</td><td class="text-right" style="color:#28a745;">{{ r['paid_cnt'] }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="ar-trend" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">PTP Trend — Last 6 Months</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Month</th><th class="text-right">Created</th><th class="text-right">Paid</th><th class="text-right">Broken</th></tr></thead>
+    <tbody>{% for r in ptp_monthly %}<tr><td>{{ r['month'] }}</td><td class="text-right">{{ r['created'] }}</td><td class="text-right" style="color:#28a745;">{{ r['paid'] }}</td><td class="text-right" style="color:#dc3545;">{{ r['broken'] }}</td></tr>{% else %}<tr><td colspan="4" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="ar-debtors" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Top 25 Members by Arrears</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.82rem;">
+    <thead><tr><th>#</th><th>Name</th><th>Package</th><th>Status</th><th>Access</th><th class="text-right">Arrears</th><th class="text-right">PTPs</th><th class="text-right">Broken</th><th>Contact</th></tr></thead>
+    <tbody>{% for r in top_arrears %}<tr>
+      <td style="color:#6c757d;">{{ loop.index }}</td>
+      <td><a href="{{ url_for('members.member_detail', mid=r['member_id']) }}">{{ r['first_name'] }} {{ r['last_name'] }}</a></td>
+      <td>{{ r['package'] or '—' }}</td>
+      <td><span class="badge {% if r['member_status']=='Active' %}badge-success{% elif r['member_status']=='Frozen' %}badge-info{% else %}badge-danger{% endif %}">{{ r['member_status'] }}</span></td>
+      <td>{% if r['gym_access_status']=='blocked' %}<span class="badge badge-danger">Blocked</span>{% elif r['gym_access_status']=='temp_unblocked' %}<span class="badge badge-warning">Temp</span>{% else %}<span class="badge badge-success">OK</span>{% endif %}</td>
+      <td class="text-right" style="color:#dc3545;font-weight:700;">R {{ '{:,.2f}'.format(r['arrears']|float) }}</td>
+      <td class="text-right">{{ r['ptp_count'] }}</td>
+      <td class="text-right" style="color:#dc3545;">{{ r['broken_count'] }}</td>
+      <td>{{ r['contact'] or '—' }}</td>
+    </tr>{% else %}<tr><td colspan="9" class="text-center text-muted">No arrears data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="ar-overdue" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Overdue PTPs</h3><span class="badge badge-danger">{{ overdue_ptps|length }}</span></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.82rem;">
+    <thead><tr><th>Member</th><th>Promise Date</th><th class="text-right">Arrears</th><th class="text-right">Promised</th><th>Contact</th></tr></thead>
+    <tbody>{% for r in overdue_ptps %}<tr><td><a href="{{ url_for('members.member_detail', mid=r['member_id']) }}">{{ r['first_name'] }} {{ r['last_name'] }}</a></td><td style="color:#dc3545;">{{ r['promise_date'] }}</td><td class="text-right" style="color:#dc3545;">R {{ '{:,.2f}'.format(r['arrears_amount']|float) }}</td><td class="text-right">R {{ '{:,.2f}'.format(r['promise_amount']|float) }}</td><td>{{ r['contact'] or '—' }}</td></tr>{% else %}<tr><td colspan="5" class="text-center text-muted">No overdue PTPs</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="ar-broken" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Broken PTPs</h3><span class="badge badge-danger">{{ broken_ptps|length }}</span></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.82rem;">
+    <thead><tr><th>Member</th><th>Promise Date</th><th class="text-right">Arrears</th><th class="text-right">Promised</th><th>Contact</th></tr></thead>
+    <tbody>{% for r in broken_ptps %}<tr><td><a href="{{ url_for('members.member_detail', mid=r['member_id']) }}">{{ r['first_name'] }} {{ r['last_name'] }}</a></td><td>{{ r['promise_date'] }}</td><td class="text-right" style="color:#dc3545;">R {{ '{:,.2f}'.format(r['arrears_amount']|float) }}</td><td class="text-right">R {{ '{:,.2f}'.format(r['promise_amount']|float) }}</td><td>{{ r['contact'] or '—' }}</td></tr>{% else %}<tr><td colspan="5" class="text-center text-muted">No broken PTPs</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+{% endif %}
+
+{# ── QUERIES ───────────────────────────────────────────────────────────────── #}
+{% if tab == 'queries' %}
+<div class="page-header">
+  <h1>🎫 Queries &amp; Tickets</h1>
+  <div>{% include 'reports/_period_inline.html' %}</div>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:20px;">
+  <div class="kpi-card" style="border-left-color:#007bff;"><div class="kpi-label">Total</div><div class="kpi-value">{{ q_totals['total']|default(0) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#ffc107;"><div class="kpi-label">Open</div><div class="kpi-value" style="color:#ffc107;">{{ q_totals['open_cnt']|default(0) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Escalated</div><div class="kpi-value" style="color:#dc3545;">{{ q_totals['escalated_cnt']|default(0) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Urgent</div><div class="kpi-value" style="color:#dc3545;">{{ q_totals['urgent_cnt']|default(0) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#28a745;"><div class="kpi-label">Resolved</div><div class="kpi-value" style="color:#28a745;">{{ q_totals['resolved_cnt']|default(0) }}</div>{% if q_totals['total'] and q_totals['total']>0 %}<div style="font-size:.75rem;color:#6c757d;">{{ '{:.1f}'.format(q_totals['resolved_cnt']/q_totals['total']*100) }}%</div>{% endif %}</div>
+  <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Overdue</div><div class="kpi-value" style="color:#dc3545;">{{ q_overdue|length }}</div></div>
+</div>
+
+{{ chip_bar([
+  ('qu-status',   'By Status'),
+  ('qu-priority', 'By Priority'),
+  ('qu-category', 'By Category'),
+  ('qu-staff',    'By Assigned Staff'),
+  ('qu-overdue',  'Overdue Queries'),
+  ('qu-recent',   'Recent Queries'),
+]) }}
+
+<div id="qu-status" class="report-section active">
+  <div class="card"><div class="card-header"><h3 class="card-title">By Status</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Status</th><th class="text-right">Count</th></tr></thead>
+    <tbody>{% for r in q_status_breakdown %}<tr><td><span class="badge {% if r['status']=='open' %}badge-warning{% elif r['status']=='resolved' %}badge-success{% elif r['status']=='closed' %}badge-gray{% elif r['status']=='escalated' %}badge-danger{% else %}badge-info{% endif %}">{{ r['status']|replace('_',' ')|title }}</span></td><td class="text-right"><strong>{{ r['cnt'] }}</strong></td></tr>{% else %}<tr><td colspan="2" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="qu-priority" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">By Priority</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Priority</th><th class="text-right">Count</th></tr></thead>
+    <tbody>{% for r in priority_breakdown %}<tr><td><span class="badge {% if r['priority']=='urgent' %}badge-danger{% elif r['priority']=='high' %}badge-warning{% elif r['priority']=='medium' %}badge-info{% else %}badge-gray{% endif %}">{{ r['priority']|title }}</span></td><td class="text-right"><strong>{{ r['cnt'] }}</strong></td></tr>{% else %}<tr><td colspan="2" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="qu-category" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">By Category</h3><span style="font-size:.78rem;color:#6b7280;">{{ period_label }}</span></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Category</th><th class="text-right">Total</th><th class="text-right">Open</th><th class="text-right">Urgent</th></tr></thead>
+    <tbody>{% for r in category_breakdown %}<tr><td>{{ r['category']|replace('_',' ')|title }}</td><td class="text-right">{{ r['cnt'] }}</td><td class="text-right" style="{% if r['open_cnt']>0 %}color:#ffc107;{% endif %}">{{ r['open_cnt'] }}</td><td class="text-right" style="{% if r['urgent_cnt']>0 %}color:#dc3545;{% endif %}">{{ r['urgent_cnt'] }}</td></tr>{% else %}<tr><td colspan="4" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="qu-staff" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">By Assigned Staff</h3></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.83rem;">
+    <thead><tr><th>Staff</th><th class="text-right">Assigned</th><th class="text-right">Resolved</th></tr></thead>
+    <tbody>{% for r in assigned_breakdown %}<tr><td>{{ r['staff'] or 'Unassigned' }}</td><td class="text-right">{{ r['cnt'] }}</td><td class="text-right" style="color:#28a745;">{{ r['resolved_cnt'] }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="qu-overdue" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Overdue Queries</h3><span class="badge badge-danger">{{ q_overdue|length }}</span></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.82rem;">
+    <thead><tr><th>Ref</th><th>Member</th><th>Category</th><th>Priority</th><th>Follow-up</th><th>Assigned</th><th></th></tr></thead>
+    <tbody>{% for r in q_overdue %}<tr><td style="font-family:monospace;font-size:.78rem;">{{ r['reference'] }}</td><td>{{ r['member_name'] or r['name'] or '—' }}</td><td>{{ r['category']|replace('_',' ')|title }}</td><td><span class="badge {% if r['priority']=='urgent' %}badge-danger{% elif r['priority']=='high' %}badge-warning{% else %}badge-info{% endif %}">{{ r['priority']|title }}</span></td><td style="color:#dc3545;">{{ r['follow_up_date'] }}</td><td>{{ r['assigned_to_name'] or '—' }}</td><td><a href="{{ url_for('queries.detail', query_id=r['id']) }}" class="btn btn-xs btn-outline">View</a></td></tr>{% else %}<tr><td colspan="7" class="text-center text-muted">No overdue queries</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div id="qu-recent" class="report-section">
+  <div class="card"><div class="card-header"><h3 class="card-title">Recent Queries</h3><div style="display:flex;gap:.5rem;align-items:center;"><span style="font-size:.78rem;color:#6b7280;">{{ period_label }}</span><span class="badge badge-info">{{ q_recent|length }}</span><a href="{{ url_for('queries.index') }}" class="btn btn-xs btn-outline">Manage →</a></div></div>
+  <div class="card-body" style="padding:0;"><table class="data-table" style="font-size:.82rem;">
+    <thead><tr><th>Ref</th><th>Member</th><th>Category</th><th>Priority</th><th>Status</th><th>Assigned</th><th>Created</th><th></th></tr></thead>
+    <tbody>{% for r in q_recent %}<tr>
+      <td style="font-family:monospace;font-size:.78rem;">{{ r['reference'] }}</td>
+      <td>{{ r['member_name'] or r['name'] or '—' }}</td>
+      <td>{{ r['category']|replace('_',' ')|title }}</td>
+      <td><span class="badge {% if r['priority']=='urgent' %}badge-danger{% elif r['priority']=='high' %}badge-warning{% elif r['priority']=='medium' %}badge-info{% else %}badge-gray{% endif %}">{{ r['priority']|title }}</span></td>
+      <td><span class="badge {% if r['status']=='open' %}badge-warning{% elif r['status'] in ['resolved','closed'] %}badge-success{% elif r['status']=='escalated' %}badge-danger{% else %}badge-info{% endif %}">{{ r['status']|replace('_',' ')|title }}</span></td>
+      <td>{{ r['assigned_to_name'] or '—' }}</td>
+      <td style="color:#6c757d;">{{ r['created_at'][:10] if r['created_at'] else '—' }}</td>
+      <td><a href="{{ url_for('queries.detail', query_id=r['id']) }}" class="btn btn-xs btn-outline">View</a></td>
+    </tr>{% else %}<tr><td colspan="8" class="text-center text-muted">No queries</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+{% endif %}
+
+{# ── CUSTOM ────────────────────────────────────────────────────────────────── #}
+{% if tab == 'custom' %}
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+  <div><h1>⚙ Custom Report</h1>{% if saved_report %}<p style="color:var(--t2);margin-top:5px;">Loaded: <strong>{{ saved_report.name }}</strong>{% if saved_report.description %} — {{ saved_report.description }}{% endif %}</p>{% endif %}</div>
+  {% if session.get('role') == 'admin' %}<a href="{{ url_for('admin.report_definitions_index') }}" class="btn btn-outline">Manage Saved Reports</a>{% endif %}
+</div>
+{% if saved_reports %}
+<div class="card" style="margin-bottom:1rem;"><div class="card-header"><h3 class="card-title">Saved Reports</h3></div><div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap;">{% for saved in saved_reports %}<a href="{{ url_for('reports.index') }}?tab=custom&amp;saved_report={{ saved.id }}" class="btn btn-sm {{ 'btn-primary' if saved_report and saved_report.id == saved.id else 'btn-outline' }}">{{ saved.name }}</a>{% endfor %}</div></div>
+{% endif %}
+<form method="POST" action="{{ url_for('reports.run_custom') }}">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">1. Data Source</h3></div>
+      <div class="card-body">
+        <div style="margin-bottom:1rem;">
+          <label style="font-size:.82rem;font-weight:600;color:#374151;display:block;margin-bottom:.5rem;">Table</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            {% for tkey, tdef in report_tables.items() %}
+            <label style="cursor:pointer;">
+              <input type="radio" name="table" value="{{ tkey }}" {% if (form_data and form_data.get('table')==tkey) or (not form_data and tkey=='members') %}checked{% endif %} style="display:none;" onchange="updateTableCols(this)">
+              <span class="table-chip" data-table="{{ tkey }}" style="display:inline-block;padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;cursor:pointer;transition:all .15s;{% if (form_data and form_data.get('table')==tkey) or (not form_data and tkey=='members') %}background:#e94560;color:#fff;{% else %}background:#f3f4f6;color:#6b7280;{% endif %}">{{ tdef.label }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;font-size:.85rem;">
+          <input type="checkbox" name="join_members" value="1" {% if form_data and form_data.get('join_members')=='1' %}checked{% endif %}>
+          <span>Include Member Name &amp; Contact</span>
+        </label>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3 class="card-title">2. Columns</h3><button type="button" onclick="toggleAllCols()" class="btn btn-xs btn-outline">Toggle All</button></div>
+      <div class="card-body" id="col-checkboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:.35rem;">
+        {% set active_table = (form_data.get('table') if form_data else 'members') %}
+        {% for tkey, tdef in report_tables.items() %}
+        <div class="col-group" data-table="{{ tkey }}" style="display:{% if tkey==active_table %}contents{% else %}none{% endif %};">
+          {% for col_key, col_label in tdef.cols %}
+          <label style="display:flex;align-items:center;gap:.35rem;font-size:.82rem;cursor:pointer;">
+            <input type="checkbox" name="cols" value="{{ col_key }}" {% if form_data and col_key in form_data.getlist('cols') %}checked{% elif not form_data %}checked{% endif %}>{{ col_label }}
+          </label>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:1rem;">
+    <div class="card-header"><h3 class="card-title">3. Filters <span style="font-size:.78rem;color:#6b7280;font-weight:400;">(optional)</span></h3></div>
+    <div class="card-body">
+      {% set active_table = (form_data.get('table') if form_data else 'members') %}
+      {% for i in range(1, 5) %}
+      <div style="display:grid;grid-template-columns:2fr 1.5fr 2fr;gap:.5rem;margin-bottom:.5rem;">
+        <select name="f{{ i }}_field" style="padding:.4rem .6rem;border:1px solid #e5e7eb;border-radius:6px;font-size:.83rem;" class="filter-field-select">
+          <option value="">— Field —</option>
+          {% for tkey, tdef in report_tables.items() %}
+          <optgroup label="{{ tdef.label }}" class="fopt-group" data-table="{{ tkey }}" style="display:{% if tkey==active_table %}block{% else %}none{% endif %};">
+            {% for col_key, col_label in tdef.cols %}<option value="{{ col_key }}" {% if form_data and form_data.get('f%d_field'|format(i))==col_key %}selected{% endif %}>{{ col_label }}</option>{% endfor %}
+          </optgroup>
+          {% endfor %}
+        </select>
+        <select name="f{{ i }}_op" style="padding:.4rem .6rem;border:1px solid #e5e7eb;border-radius:6px;font-size:.83rem;">
+          <option value="">— Operator —</option>
+          {% for op_key, op_label in filter_ops.items() %}<option value="{{ op_key }}" {% if form_data and form_data.get('f%d_op'|format(i))==op_key %}selected{% endif %}>{{ op_label }}</option>{% endfor %}
+        </select>
+        <input type="text" name="f{{ i }}_val" placeholder="Value" value="{{ form_data.get('f%d_val'|format(i), '') if form_data else '' }}" style="padding:.4rem .6rem;border:1px solid #e5e7eb;border-radius:6px;font-size:.83rem;">
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:1rem;">
+    <div class="card-header"><h3 class="card-title">4. Group, Sort &amp; Limit</h3></div>
+    <div class="card-body" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:1rem;">
+      <div>
+        <label style="font-size:.82rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Group By</label>
+        <select name="group_by" style="width:100%;padding:.4rem .6rem;border:1px solid #e5e7eb;border-radius:6px;font-size:.83rem;" class="groupby-select">
+          <option value="">— None —</option>
+          {% set active_table = (form_data.get('table') if form_data else 'members') %}
+          {% for tkey, tdef in report_tables.items() %}{% if tkey==active_table %}{% for col_key, col_label in tdef.cols %}<option value="{{ col_key }}" {% if form_data and form_data.get('group_by')==col_key %}selected{% endif %}>{{ col_label }}</option>{% endfor %}{% endif %}{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:.82rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Aggregate</label>
+        <select name="agg_func" style="width:100%;padding:.4rem .6rem;border:1px solid #e5e7eb;border-radius:6px;font-size:.83rem;">
+          {% for f in agg_funcs %}<option value="{{ f }}" {% if form_data and form_data.get('agg_func')==f %}selected{% endif %}>{{ f }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:.82rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Sort By</label>
+        <div style="display:grid;grid-template-columns:3fr 1fr;gap:.3rem;">
+          <select name="sort_by" style="padding:.4rem .6rem;border:1px solid #e5e7eb;border-radius:6px;font-size:.83rem;" class="sortby-select">
+            <option value="">— None —</option>
+            {% set active_table = (form_data.get('table') if form_data else 'members') %}
+            {% for tkey, tdef in report_tables.items() %}{% if tkey==active_table %}{% for col_key, col_label in tdef.cols %}<option value="{{ col_key }}" {% if form_data and form_data.get('sort_by')==col_key %}selected{% endif %}>{{ col_label }}</option>{% endfor %}{% endif %}{% endfor %}
+          </select>
+          <select name="sort_dir" style="padding:.4rem .6rem;border:1px solid #e5e7eb;border-radius:6px;font-size:.83rem;">
+            <option value="asc" {% if not form_data or form_data.get('sort_dir','asc')=='asc' %}selected{% endif %}>↑</option>
+            <option value="desc" {% if form_data and form_data.get('sort_dir')=='desc' %}selected{% endif %}>↓</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:.82rem;font-weight:600;color:#374151;display:block;margin-bottom:.3rem;">Row Limit</label>
+        <select name="limit" style="width:100%;padding:.4rem .6rem;border:1px solid #e5e7eb;border-radius:6px;font-size:.83rem;">
+          {% for lim in [50,100,200,500,1000] %}<option value="{{ lim }}" {% if form_data and form_data.get('limit')==lim|string %}selected{% elif not form_data and lim==200 %}selected{% endif %}>{{ lim }} rows</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+  <button type="submit" style="width:100%;padding:12px;background:#e94560;color:#fff;border:none;border-radius:8px;font-size:.95rem;font-weight:700;cursor:pointer;">▶ Run Report</button>
+</form>
+
+{% if custom_error %}
+<div style="margin-top:1rem;padding:1rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#dc2626;font-size:.85rem;">
+  <strong>Error:</strong> {{ custom_error }}
+</div>
+{% endif %}
+
+{% if custom_results is not none and custom_cols %}
+<div class="card" style="margin-top:1.25rem;">
+  <div class="card-header"><h3 class="card-title">Results</h3><span class="badge badge-info">{{ custom_results|length }} rows</span></div>
+  {% if custom_results %}
+  <div class="card-body" style="padding:0;overflow-x:auto;">
+    <table class="data-table" style="font-size:.82rem;">
+      <thead><tr>{% for col in custom_cols %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for row in custom_results %}<tr>{% for val in row %}<td>{{ val if val is not none else '—' }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body"><p class="text-muted">No rows matched your filters.</p></div>
+  {% endif %}
+</div>
+{% endif %}
+
+<script>
+const TABLE_COLS = {{ report_tables_json | tojson }};
+function updateTableCols(radio) {
+  const table = radio.value;
+  document.querySelectorAll('.table-chip').forEach(c => { c.style.background = c.dataset.table===table?'#e94560':'#f3f4f6'; c.style.color = c.dataset.table===table?'#fff':'#6b7280'; });
+  document.querySelectorAll('.col-group').forEach(g => { g.style.display = g.dataset.table===table?'contents':'none'; });
+  document.querySelectorAll('.filter-field-select').forEach(sel => { sel.querySelectorAll('optgroup').forEach(og => { og.style.display = og.dataset.table===table?'block':'none'; }); sel.value=''; });
+  const cols = TABLE_COLS[table]?TABLE_COLS[table].cols:[];
+  ['.groupby-select','.sortby-select'].forEach(cls => { document.querySelectorAll(cls).forEach(sel => { const cur=sel.value; sel.innerHTML='<option value="">— None —</option>'; cols.forEach(([k,l])=>{ const o=document.createElement('option'); o.value=k; o.textContent=l; sel.appendChild(o); }); sel.value=cur; }); });
+}
+function toggleAllCols() {
+  const boxes = document.querySelectorAll('#col-checkboxes input[type=checkbox]');
+  const allChecked = [...boxes].every(b=>b.checked);
+  boxes.forEach(b=>b.checked=!allChecked);
+}
+</script>
+{% endif %}
+
+<script>
+function showSection(id, chip) {
+  document.querySelectorAll('.report-section').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.section-chip').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+}
+</script>
+{% endblock %}

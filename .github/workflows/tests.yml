@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    env:
+      FLASK_ENV: testing
+      SECRET_KEY: ci-test-secret-not-for-production
+      ENCRYPTION_KEY: hn9GprM7ngbOnOGbcKgcZAvWg7REAcIv68-F_3VAo3I=
+      PBX_WEBHOOK_SECRET: ci-test-pbx-secret
+      WA_VERIFY_TOKEN: ci-test-wa-token
+      FB_VERIFY_TOKEN: ci-test-fb-token
+      RATELIMIT_STORAGE_URL: memory://
+      RATELIMIT_TRUSTED_PROXY_COUNT: "0"
+      SCHEDULER_ENABLED: "0"
+      TESSERACT_CMD: "tesseract"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Compile Python
+        run: python -m compileall -q onecpase
+      - name: Run tests
+        run: python -m pytest -q

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Equipment | 1Cpase{% endblock %}
+{% block page_title %}Equipment & Operations{% endblock %}
+
+{% block content %}
+
+<!-- Summary badges -->
+{% if summary %}
+<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
+  {% for s in summary %}
+  <div style="background:#fff; border-radius:8px; padding:10px 16px; box-shadow:0 1px 3px rgba(0,0,0,0.07);
+              border-left:4px solid
+              {% if s.condition == 'excellent' %}#10b981
+              {% elif s.condition == 'good' %}#3b82f6
+              {% elif s.condition == 'fair' %}#f59e0b
+              {% elif s.condition == 'needs repair' %}#ef4444
+              {% else %}#6b7280{% endif %};">
+    <div style="font-size:0.7rem;text-transform:uppercase;color:#6b7280;">{{ s.condition | capitalize }}</div>
+    <div style="font-size:1.4rem;font-weight:700;">{{ s.cnt }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+  <form method="get" style="display:flex; gap:8px; flex-wrap:wrap;">
+    <input name="q" value="{{ search }}" placeholder="Search name, location, serial…"
+           style="padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:0.875rem; width:240px;">
+    <select name="condition" onchange="this.form.submit()"
+            style="padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:0.875rem;">
+      <option value="">All conditions</option>
+      {% for c in conditions %}
+      <option value="{{ c }}" {% if condition_filter == c %}selected{% endif %}>{{ c | capitalize }}</option>
+      {% endfor %}
+    </select>
+    <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;color:#6b7280;">
+      <input type="checkbox" name="inactive" value="1" {% if show_inactive %}checked{% endif %}
+             onchange="this.form.submit()"> Show inactive
+    </label>
+    <button type="submit" class="btn btn-ghost btn-sm">Search</button>
+    {% if search or condition_filter %}
+    <a href="{{ url_for('operations.equipment_index') }}" class="btn btn-ghost btn-sm">Clear</a>
+    {% endif %}
+  </form>
+  <a href="{{ url_for('operations.equipment_add') }}" class="btn btn-primary">+ Add Equipment</a>
+</div>
+
+{% if items %}
+<div class="card">
+  <div class="card-body">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Condition</th>
+          <th>Location</th>
+          <th>Serial #</th>
+          <th>Purchased</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in items %}
+        <tr>
+          <td style="font-weight:600;">{{ e.name }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ e.equipment_type | capitalize }}</td>
+          <td>
+            {% if e.condition == 'excellent' %}<span class="badge badge-success">{{ e.condition }}</span>
+            {% elif e.condition == 'good' %}<span class="badge badge-info">{{ e.condition }}</span>
+            {% elif e.condition == 'fair' %}<span class="badge badge-warning">{{ e.condition }}</span>
+            {% elif e.condition in ('needs repair', 'out of service') %}<span class="badge badge-danger">{{ e.condition }}</span>
+            {% else %}<span class="badge badge-gray">{{ e.condition }}</span>{% endif %}
+          </td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ e.location or '—' }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ e.serial_number or '—' }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ e.purchase_date or '—' }}</td>
+          <td>
+            {% if e.active %}<span class="badge badge-success">Active</span>
+            {% else %}<span class="badge badge-gray">Inactive</span>{% endif %}
+          </td>
+          <td style="white-space:nowrap;">
+            <a href="{{ url_for('operations.maintenance_log', eid=e.id) }}" class="btn btn-ghost btn-sm">Maintenance</a>
+            <a href="{{ url_for('operations.equipment_edit', eid=e.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">🏗️</div>
+  <p>No equipment found.</p>
+  <a href="{{ url_for('operations.equipment_add') }}" class="btn btn-primary">Add First Item</a>
+</div>
+{% endif %}
+{% endblock %}

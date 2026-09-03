@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Link conversation | 1Cpase{% endblock %}
+{% block page_title %}Link conversation{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">
+  <a href="{{ url_for('comms.whatsapp_conversation', number=number, conv_id=conv.id) }}" class="btn btn-ghost btn-sm">← Back to chat</a>
+  <span style="font-weight:800;color:#172033;">{{ conv.contact_name or conv.contact_phone }}</span>
+</div>
+
+<div class="card" style="max-width:520px;">
+  <div class="card-header"><h2>Link to an existing lead or member</h2></div>
+  <div class="card-body">
+    <form method="POST">
+      <div class="form-group">
+        <label class="form-label">Lead</label>
+        <select name="lead_id" class="form-control">
+          <option value="">— None —</option>
+          {% for l in leads %}
+          <option value="{{ l.id }}" {% if conv.linked_lead_id==l.id %}selected{% endif %}>
+            {{ l.full_name }}{% if l.phone %} ({{ l.phone }}){% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Member</label>
+        <select name="member_id" class="form-control member-picker" data-placeholder="Search members…">
+          <option value="">— None —</option>
+          {% for m in members %}
+          <option value="{{ m.id }}" {% if conv.linked_member_id==m.id %}selected{% endif %}>
+            {{ m.first_name }} {{ m.last_name }}{% if m.contact %} ({{ m.contact }}){% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Save Link</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

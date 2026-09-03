@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Body Matrix | 1Cpase{% endblock %}
+{% block page_title %}Body Matrix Tracking{% endblock %}
+
+{% block content %}
+<div class="card" style="margin-bottom:16px;">
+  <div style="padding:12px 20px;">
+    <form method="get" style="display:flex;gap:8px;align-items:center;max-width:420px;">
+      <input type="text" name="q" value="{{ search }}" placeholder="Search members…"
+             autofocus
+             style="flex:1;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:0.85rem;outline:none;">
+      <button type="submit" class="btn btn-primary btn-sm">Search</button>
+      {% if search %}<a href="{{ url_for('fitness.body_matrix_index') }}" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
+    </form>
+  </div>
+</div>
+{% if members %}
+<div class="card">
+  <div class="card-body">
+    <table>
+      <thead>
+        <tr><th>Member</th><th>Entries</th><th>Last Entry</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for m in members %}
+        <tr>
+          <td style="font-weight:600;">{{ m.first_name }} {{ m.last_name }}</td>
+          <td>{{ m.entry_count }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ m.last_entry or '—' }}</td>
+          <td>
+            <a href="{{ url_for('fitness.body_matrix_member', mid=m.id) }}" class="btn btn-ghost btn-sm">
+              {% if m.entry_count %}View Trend{% else %}Add Entry{% endif %}
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">📊</div>
+  <p>{% if search %}No members match "{{ search }}".{% else %}No active members found.{% endif %}</p>
+</div>
+{% endif %}
+{% endblock %}

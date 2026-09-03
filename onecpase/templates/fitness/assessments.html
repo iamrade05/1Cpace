@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Assessments | 1Cpase{% endblock %}
+{% block page_title %}Fitness Assessments{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+  <p style="color:#6b7280; font-size:0.875rem; margin:0;">Most recent 50 assessments.</p>
+  <a href="{{ url_for('fitness.assessment_add') }}" class="btn btn-primary">+ New Assessment</a>
+</div>
+
+{% if assessments %}
+<div class="card">
+  <div class="card-body">
+    <table>
+      <thead>
+        <tr>
+          <th>Member</th>
+          <th>Date</th>
+          <th>Weight (kg)</th>
+          <th>Body Fat %</th>
+          <th>Muscle Mass (kg)</th>
+          <th>BMI</th>
+          <th>Fitness Level</th>
+          <th>Assessed By</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in assessments %}
+        <tr>
+          <td style="font-weight:600;">{{ a.member_name }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ a.date or a.created_at[:10] }}</td>
+          <td>{{ a.weight_kg or '—' }}</td>
+          <td>{{ a.body_fat_pct or '—' }}</td>
+          <td>{{ a.muscle_mass_kg or '—' }}</td>
+          <td>{{ a.bmi or '—' }}</td>
+          <td>{{ a.fitness_level or '—' }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ a.trainer_name or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">📏</div>
+  <p>No assessments recorded yet.</p>
+  <a href="{{ url_for('fitness.assessment_add') }}" class="btn btn-primary">Record First Assessment</a>
+</div>
+{% endif %}
+{% endblock %}

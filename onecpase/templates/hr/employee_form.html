@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{% if employee %}Edit Employee{% else %}New Employee{% endif %} | 1Cpase{% endblock %}
+{% block page_title %}{% if employee %}Edit Employee{% else %}New Employee{% endif %}{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <form method="post">
+    <div class="form-row">
+      <div class="form-group">
+        <label>First Name *</label>
+        <input name="first_name" required value="{{ employee.first_name if employee else '' }}">
+      </div>
+      <div class="form-group">
+        <label>Last Name *</label>
+        <input name="last_name" required value="{{ employee.last_name if employee else '' }}">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>ID Number</label>
+        <input name="id_number" value="{{ employee.id_number if employee else '' }}">
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <select name="role">
+          <option value="">— Select —</option>
+          {% for r in roles %}
+          <option value="{{ r }}" {% if employee and employee.role == r %}selected{% endif %}>{{ r }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Department</label>
+        <select name="department">
+          {% for d in departments %}
+          <option value="{{ d }}" {% if employee and employee.department == d %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Salary (R)</label>
+        <input type="number" step="0.01" name="salary" value="{{ employee.salary if employee else '' }}">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Contact</label>
+        <input name="contact" value="{{ employee.contact if employee else '' }}">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" name="email" value="{{ employee.email if employee else '' }}">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Start Date</label>
+        <input type="date" name="start_date" value="{{ employee.start_date if employee else '' }}">
+      </div>
+      <div class="form-group">
+        <label>Contract End</label>
+        <input type="date" name="contract_end" value="{{ employee.contract_end if employee else '' }}">
+      </div>
+    </div>
+
+    {% if employee %}
+    <div class="form-group">
+      <label>Status</label>
+      <select name="status">
+        <option value="active" {% if employee.status == 'active' %}selected{% endif %}>Active</option>
+        <option value="on_leave" {% if employee.status == 'on_leave' %}selected{% endif %}>On Leave</option>
+        <option value="terminated" {% if employee.status == 'terminated' %}selected{% endif %}>Terminated</option>
+      </select>
+    </div>
+    {% endif %}
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">{% if employee %}Save Changes{% else %}Add Employee{% endif %}</button>
+      <a href="{{ url_for('hr.employee_index') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

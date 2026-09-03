@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Approval Queue | 1Cpase{% endblock %}
+{% block page_title %}Manager Approval Queue{% endblock %}
+
+{% block content %}
+
+{% if not pending %}
+<div style="text-align:center; padding:60px 0;">
+  <div style="font-size:2.5rem; margin-bottom:12px;">✓</div>
+  <div style="font-size:1rem; font-weight:600; color:#1a1a2e;">All clear — no pending approvals.</div>
+  <a href="{{ url_for('applications.applications_index') }}"
+     style="display:inline-block; margin-top:16px; font-size:0.85rem; color:#e94560;">
+    ← Back to Applications
+  </a>
+</div>
+{% else %}
+
+<p style="font-size:0.85rem; color:#6b7280; margin-bottom:20px;">
+  {{ pending | length }} application{{ 's' if pending | length != 1 }} awaiting your review.
+  Review each carefully before approving — bank statement analysis is shown where available.
+</p>
+
+{% for item in pending %}
+<div class="form-card" style="margin-bottom:20px; border-left:4px solid #f97316;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+
+    <!-- Summary -->
+    <div>
+      <div style="font-weight:700; font-size:0.95rem; color:#1a1a2e; margin-bottom:4px;">
+        {% if item.first_name %}{{ item.first_name }} {{ item.last_name }}
+        {% elif item.lead_name %}{{ item.lead_name }}
+        {% else %}Application #{{ item.application_id }}{% endif %}
+      </div>
+      <div style="font-size:0.8rem; color:#6b7280; margin-bottom:8px;">
+        Package: <strong>{{ item.package or '—' }}</strong>
+        · Age Category: <strong>{{ item.age_category | replace('_', ' ') | title if item.age_category else '—' }}</strong>
+        {% if item.guardian_required == 'required' %}
+        · <span style="color:#f97316;">Guardian Required</span>
+        {% endif %}
+      </div>
+      <div style="font-size:0.8rem; color:#4b5563;">
+        Requested by: <strong>{{ item.requested_by_name or 'System' }}</strong>
+      </div>
+      {% if item.reason %}
+      <div style="margin-top:6px; font-size:0.8rem; background:#fef3c7; padding:8px 12px;
+                  border-radius:6px; color:#78350f;">
+        ⚠️ {{ item.reason }}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Risk indicators -->
+    {% if item.risk_rating %}
+    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;
+                padding:12px 16px; min-width:180px;">
+      <div style="font-size:0.72rem; font-weight:700; color:#6b7280; text-transform:uppercase;
+                  letter-spacing:0.5px; margin-bottom:8px;">Risk Summary</div>
+      <div style="font-size:0.82rem; margin-bottom:4px;">
+        Risk:
+        <strong style="color:{% if item.risk_rating == 'high' %}#ef4444{% elif item.risk_rating == 'medium' %}#f59e0b{% else %}#10b981{% endif %};">
+          {{ item.risk_rating | title }}
+        </strong>
+      </div>
+      <div style="font-size:0.8rem; margin-bottom:4px; color:#4b5563;">
+        Income: <strong>{{ item.income_detected | title if item.income_detected else '—' }}</strong>
+      </div>
+      {% if item.estimated_monthly_income %}
+      <div style="font-size:0.8rem; color:#4b5563;">
+        Est. Income: <strong>R{{ "%.0f" | format(item.estimated_monthly_income) }}</strong>
+      </div>
+      {% endif %}
+      {% if item.returned_debits_count %}
+      <div style="font-size:0.8rem; margin-top:4px;
+                  color:{% if item.returned_debits_count > 0 %}#ef4444{% else %}#10b981{% endif %};">
+        Returned debits: <strong>{{ item.returned_debits_count }}</strong>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Compliance snapshot -->
+  <div style="display:flex; gap:16px; margin-top:12px; flex-wrap:wrap; font-size:0.78rem;
+              border-top:1px solid #f3f4f6; padding-top:12px;">
+    <div>Contract:
+      <strong style="color:{% if item.contract_status == 'signed' %}#10b981{% else %}#f59e0b{% endif %};">
+        {{ item.contract_status | title if item.contract_status else '—' }}
+      </strong>
+    </div>
+    <div>DebiCheck:
+      <strong style="color:{% if item.debit_check_status == 'approved' %}#10b981{% else %}#f59e0b{% endif %};">
+        {{ item.debit_check_status | title if item.debit_check_status else '—' }}
+      </strong>
+    </div>
+    <div>Bank Stmt:
+      <strong style="color:{% if item.bank_statement_status in ('uploaded','analysed') %}#10b981{% else %}#f59e0b{% endif %};">
+        {{ item.bank_statement_status | replace('_',' ') | title if item.bank_statement_status else '—' }}
+      </strong>
+    </div>
+    <div style="margin-left:auto;">
+      <a href="{{ url_for('applications.application_detail', aid=item.application_id) }}"
+         style="font-size:0.78rem; color:#3b82f6; text-decoration:none; font-weight:600;">
+        Full Application →
+      </a>
+    </div>
+  </div>
+
+  <!-- Approve / Decline forms -->
+  <div style="display:flex; gap:12px; margin-top:14px; flex-wrap:wrap;">
+    <form method="POST"
+          action="{{ url_for('applications.approve_application', aid=item.application_id) }}"
+          style="flex:1; min-width:200px;">
+      <input type="text" name="comment" class="form-control"
+             style="font-size:0.8rem; margin-bottom:6px;" placeholder="Approval comment (optional)">
+      <button type="submit" class="btn btn-primary"
+              style="font-size:0.8rem; background:#059669; border-color:#059669; width:100%;">
+        ✓ Approve
+      </button>
+    </form>
+    <form method="POST"
+          action="{{ url_for('applications.decline_application', aid=item.application_id) }}"
+          style="flex:1; min-width:200px;">
+      <input type="text" name="comment" class="form-control"
+             style="font-size:0.8rem; margin-bottom:6px;" placeholder="Reason for declining *">
+      <button type="submit" class="btn btn-secondary"
+              style="font-size:0.8rem; border-color:#ef4444; color:#ef4444; width:100%;">
+        ✗ Decline
+      </button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+{% endif %}
+{% endblock %}

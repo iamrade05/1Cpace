@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Call List Uploads | 1Cpase{% endblock %}
+{% block page_title %}Call List Uploads{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+  <div>
+    <h2 style="font-size:1.1rem;font-weight:800;color:#172033;margin:0;">Call List Uploads</h2>
+    <div style="font-size:.78rem;color:#667085;margin-top:2px;">Photograph or scan a paper call list instead of typing it in by hand.</div>
+  </div>
+  <a href="{{ url_for('call_list.upload') }}" class="btn btn-primary btn-sm">+ Upload Call List</a>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding:0;">
+    {% if uploads %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Uploaded By</th>
+            <th>Rows</th>
+            <th>Imported</th>
+            <th>Status</th>
+            <th>When</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in uploads %}
+          <tr>
+            <td style="font-weight:600;color:#172033;">{{ u.original_filename }}</td>
+            <td style="font-size:.85rem;color:#374151;">{{ u.uploaded_by_name or '—' }}</td>
+            <td>{{ u.row_count }}</td>
+            <td>{{ u.imported_count }}</td>
+            <td>
+              {% if u.status == 'imported' %}
+              <span class="pbadge" style="background:#dcfce7;color:#166534;">Imported</span>
+              {% elif u.status == 'failed' %}
+              <span class="pbadge" style="background:#fee2e2;color:#991b1b;">Failed</span>
+              {% elif u.status == 'reviewing' %}
+              <span class="pbadge" style="background:#fef3c7;color:#92400e;">Reviewing</span>
+              {% else %}
+              <span class="pbadge" style="background:#f1f5f9;color:#94a3b8;">Processing</span>
+              {% endif %}
+            </td>
+            <td style="font-size:.75rem;color:#9ca3af;white-space:nowrap;">{{ (u.created_at or '')[:16] }}</td>
+            <td>
+              {% if u.status != 'failed' %}
+              <a href="{{ url_for('call_list.review', upload_id=u.id) }}" class="btn btn-ghost btn-sm">Review →</a>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding:48px 24px;">
+      <div class="empty-icon">📋</div>
+      <p>No call lists uploaded yet.</p>
+      <a href="{{ url_for('call_list.upload') }}" class="btn btn-primary">Upload the first one</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

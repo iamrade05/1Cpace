@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}{{ s.name }} | 1Cpase{% endblock %}
+{% block page_title %}{{ s.name }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+  <span style="color:{{ risk_colors[s.risk_level] }}; background:{{ risk_bg[s.risk_level] }};
+               padding:4px 12px; border-radius:8px; font-size:0.85rem; font-weight:600;">
+    {{ risk_labels[s.risk_level] }} Risk
+  </span>
+  <a href="{{ url_for('fitness.supplements_index') }}" class="btn btn-ghost btn-sm">All Supplements</a>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 340px; gap:20px;">
+  <div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-body">
+        <table>
+          <tbody>
+            <tr><td style="color:#6b7280; width:140px;">Brand</td><td>{{ s.brand or '—' }}</td></tr>
+            <tr><td style="color:#6b7280;">Type</td><td>{{ s.supp_type | replace('_',' ') | capitalize }}</td></tr>
+            <tr><td style="color:#6b7280;">Goal</td><td>{{ s.goal | replace('_',' ') | capitalize }}</td></tr>
+            <tr><td style="color:#6b7280;">Dosage</td><td>{{ s.dosage or '—' }}</td></tr>
+            <tr><td style="color:#6b7280; vertical-align:top;">Description</td><td>{{ s.description or '—' }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2>Assigned Members</h2></div>
+      <div class="card-body">
+        {% if assignments %}
+        <table>
+          <thead><tr><th>Member</th><th>Start</th><th>End</th><th>Dosage</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for a in assignments %}
+            <tr>
+              <td style="font-weight:500;">{{ a.member_name }}</td>
+              <td style="color:#6b7280; font-size:0.82rem;">{{ a.start_date or '—' }}</td>
+              <td style="color:#6b7280; font-size:0.82rem;">{{ a.end_date or '—' }}</td>
+              <td>{{ a.dosage or '—' }}</td>
+              <td>
+                {% if a.active %}<span class="badge badge-success">Active</span>
+                {% else %}<span class="badge badge-gray">Ended</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state" style="padding:32px;">
+          <div class="empty-icon">👥</div>
+          <p>No members assigned yet.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="align-self:start;">
+    <div class="card-header"><h2>Assign to Member</h2></div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('fitness.supplement_assign', sid=s.id) }}">
+        <div class="form-group">
+          <label>Member *</label>
+          <select name="member_id" class="member-picker" required>
+            <option value="">— Choose member —</option>
+            {% for m in members %}
+            <option value="{{ m.id }}">{{ m.first_name }} {{ m.last_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Start Date</label>
+            <input type="date" name="start_date">
+          </div>
+          <div class="form-group">
+            <label>End Date</label>
+            <input type="date" name="end_date">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Dosage</label>
+          <input name="dosage">
+        </div>
+        <div class="form-group">
+          <label>Goal</label>
+          <input name="goal">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes" rows="2"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Assign</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

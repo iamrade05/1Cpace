@@ -1,0 +1,740 @@
+{
+    "title": "Training",
+    "steps": [
+        {
+            "type": "setViewport",
+            "width": 1702,
+            "height": 364,
+            "deviceScaleFactor": 1,
+            "isMobile": false,
+            "hasTouch": false,
+            "isLandscape": false
+        },
+        {
+            "type": "navigate",
+            "url": "https://1cpace.co.za/tutorial#debicheck-topic-1-1",
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://1cpace.co.za/tutorial#debicheck-topic-1-1",
+                    "title": "Daily-Use Training Academy — 1Cpace"
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(5) a:nth-of-type(1) > span.nav-label"
+                ],
+                [
+                    "xpath///*[@id=\"sidebar\"]/nav/div[5]/div[2]/a[1]/span[2]"
+                ],
+                [
+                    "pierce/div:nth-of-type(5) a:nth-of-type(1) > span.nav-label"
+                ],
+                [
+                    "text/All Mandates"
+                ]
+            ],
+            "offsetY": 14,
+            "offsetX": 41.333335876464844,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://1cpace.co.za/debicheck",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Search by name, reference, account…"
+                ],
+                [
+                    "#dcSearch"
+                ],
+                [
+                    "xpath///*[@id=\"dcSearch\"]"
+                ],
+                [
+                    "pierce/#dcSearch"
+                ]
+            ],
+            "offsetY": 5.5555572509765625,
+            "offsetX": 211
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Search by name, reference, account…"
+                ],
+                [
+                    "#dcSearch"
+                ],
+                [
+                    "xpath///*[@id=\"dcSearch\"]"
+                ],
+                [
+                    "pierce/#dcSearch"
+                ]
+            ],
+            "offsetY": 23.555557250976562,
+            "offsetX": 187
+        },
+        {
+            "type": "change",
+            "value": "fikile",
+            "selectors": [
+                [
+                    "aria/Search by name, reference, account…"
+                ],
+                [
+                    "#dcSearch"
+                ],
+                [
+                    "xpath///*[@id=\"dcSearch\"]"
+                ],
+                [
+                    "pierce/#dcSearch"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "tr:nth-of-type(4) a"
+                ],
+                [
+                    "xpath///*[@id=\"dcTable\"]/tbody/tr[4]/td[9]/a"
+                ],
+                [
+                    "pierce/tr:nth-of-type(4) a"
+                ]
+            ],
+            "offsetY": 21.333343505859375,
+            "offsetX": 26.1666259765625,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://1cpace.co.za/debicheck/1541",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(2) > div.nav-group-toggle > span.nav-label"
+                ],
+                [
+                    "xpath///*[@id=\"sidebar\"]/nav/div[2]/div[1]/span[2]"
+                ],
+                [
+                    "pierce/div:nth-of-type(2) > div.nav-group-toggle > span.nav-label"
+                ]
+            ],
+            "offsetY": 5.2222137451171875,
+            "offsetX": 47
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "nav > div:nth-of-type(2) a:nth-of-type(1) > span.nav-label"
+                ],
+                [
+                    "xpath///*[@id=\"sidebar\"]/nav/div[2]/div[2]/a[1]/span[2]"
+                ],
+                [
+                    "pierce/nav > div:nth-of-type(2) a:nth-of-type(1) > span.nav-label"
+                ],
+                [
+                    "text/All Members"
+                ]
+            ],
+            "offsetY": 11.666671752929688,
+            "offsetX": 17.333335876464844,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://1cpace.co.za/members",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Search by name, ID, ref number, package..."
+                ],
+                [
+                    "#memberSearch"
+                ],
+                [
+                    "xpath///*[@id=\"memberSearch\"]"
+                ],
+                [
+                    "pierce/#memberSearch"
+                ]
+            ],
+            "offsetY": 16,
+            "offsetX": 144
+        },
+        {
+            "type": "change",
+            "value": "fikile",
+            "selectors": [
+                [
+                    "aria/Search by name, ID, ref number, package..."
+                ],
+                [
+                    "#memberSearch"
+                ],
+                [
+                    "xpath///*[@id=\"memberSearch\"]"
+                ],
+                [
+                    "pierce/#memberSearch"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "tr:nth-of-type(200) a"
+                ],
+                [
+                    "xpath///*[@id=\"membersTable\"]/tbody/tr[200]/td[10]/a"
+                ],
+                [
+                    "pierce/tr:nth-of-type(200) a"
+                ]
+            ],
+            "offsetY": 17.888885498046875,
+            "offsetX": 14.361083984375,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://1cpace.co.za/members/1733",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/DebiCheck"
+                ],
+                [
+                    "main a:nth-of-type(4)"
+                ],
+                [
+                    "xpath//html/body/div[1]/main/div[1]/div[2]/a[4]"
+                ],
+                [
+                    "pierce/main a:nth-of-type(4)"
+                ]
+            ],
+            "offsetY": 17.444442749023438,
+            "offsetX": 56.75,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://1cpace.co.za/debicheck/add?member_id=1733",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "#submitDate"
+                ],
+                [
+                    "xpath///*[@id=\"submitDate\"]"
+                ],
+                [
+                    "pierce/#submitDate"
+                ],
+                [
+                    "text/2026-08-21"
+                ]
+            ],
+            "offsetY": 16.666656494140625,
+            "offsetX": 197.986083984375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "#submitDate"
+                ],
+                [
+                    "xpath///*[@id=\"submitDate\"]"
+                ],
+                [
+                    "pierce/#submitDate"
+                ],
+                [
+                    "text/2026-08-21"
+                ]
+            ],
+            "offsetY": 26.666656494140625,
+            "offsetX": 353.986083984375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "#submitDate"
+                ],
+                [
+                    "xpath///*[@id=\"submitDate\"]"
+                ],
+                [
+                    "pierce/#submitDate"
+                ],
+                [
+                    "text/2026-08-21"
+                ]
+            ],
+            "offsetY": 17.666656494140625,
+            "offsetX": 345.986083984375
+        },
+        {
+            "type": "change",
+            "value": "2026-09-01",
+            "selectors": [
+                [
+                    "#submitDate"
+                ],
+                [
+                    "xpath///*[@id=\"submitDate\"]"
+                ],
+                [
+                    "pierce/#submitDate"
+                ],
+                [
+                    "text/2026-08-21"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "doubleClick",
+            "target": "main",
+            "selectors": [
+                [
+                    "div > div:nth-of-type(1) div:nth-of-type(5) input"
+                ],
+                [
+                    "xpath///*[@id=\"dcForm\"]/div/div[1]/div[2]/div[5]/div[2]/input"
+                ],
+                [
+                    "pierce/div > div:nth-of-type(1) div:nth-of-type(5) input"
+                ]
+            ],
+            "offsetY": 26.666656494140625,
+            "offsetX": 131.986083984375
+        },
+        {
+            "type": "change",
+            "value": "99",
+            "selectors": [
+                [
+                    "div > div:nth-of-type(1) div:nth-of-type(5) input"
+                ],
+                [
+                    "xpath///*[@id=\"dcForm\"]/div/div[1]/div[2]/div[5]/div[2]/input"
+                ],
+                [
+                    "pierce/div > div:nth-of-type(1) div:nth-of-type(5) input"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "#dcForm > div > div:nth-of-type(1) div:nth-of-type(4)"
+                ],
+                [
+                    "xpath///*[@id=\"dcForm\"]/div/div[1]/div[2]/div[4]"
+                ],
+                [
+                    "pierce/#dcForm > div > div:nth-of-type(1) div:nth-of-type(4)"
+                ]
+            ],
+            "offsetY": 34.888885498046875,
+            "offsetX": 309.1111145019531,
+            "duration": 552.1000000089407
+        },
+        {
+            "type": "change",
+            "value": "5252",
+            "selectors": [
+                [
+                    "aria/ID / phone (max 14)"
+                ],
+                [
+                    "#clientRef2"
+                ],
+                [
+                    "xpath///*[@id=\"clientRef2\"]"
+                ],
+                [
+                    "pierce/#clientRef2"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Max 11 digits"
+                ],
+                [
+                    "div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > input"
+                ],
+                [
+                    "xpath///*[@id=\"dcForm\"]/div/div[2]/div[1]/div[3]/div[1]/input"
+                ],
+                [
+                    "pierce/div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > input"
+                ]
+            ],
+            "offsetY": 18.555557250976562,
+            "offsetX": 105.0833740234375
+        },
+        {
+            "type": "change",
+            "value": "10207199971",
+            "selectors": [
+                [
+                    "aria/Max 11 digits"
+                ],
+                [
+                    "div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > input"
+                ],
+                [
+                    "xpath///*[@id=\"dcForm\"]/div/div[2]/div[1]/div[3]/div[1]/input"
+                ],
+                [
+                    "pierce/div:nth-of-type(1) > div:nth-of-type(3) > div:nth-of-type(1) > input"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/Standard Bank 051001"
+                ],
+                [
+                    "button:nth-of-type(4)"
+                ],
+                [
+                    "xpath///*[@id=\"dcForm\"]/div/div[2]/div[1]/div[4]/button[4]"
+                ],
+                [
+                    "pierce/button:nth-of-type(4)"
+                ],
+                [
+                    "text/Standard Bank"
+                ]
+            ],
+            "offsetY": 6.333343505859375,
+            "offsetX": 33.5416259765625
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(2) > div:nth-of-type(1) select"
+                ],
+                [
+                    "xpath///*[@id=\"dcForm\"]/div/div[2]/div[1]/div[2]/div[2]/select"
+                ],
+                [
+                    "pierce/div:nth-of-type(2) > div:nth-of-type(1) select"
+                ]
+            ],
+            "offsetY": 25.333335876464844,
+            "offsetX": 94.875
+        },
+        {
+            "type": "change",
+            "value": "2",
+            "selectors": [
+                [
+                    "div:nth-of-type(2) > div:nth-of-type(1) select"
+                ],
+                [
+                    "xpath///*[@id=\"dcForm\"]/div/div[2]/div[1]/div[2]/div[2]/select"
+                ],
+                [
+                    "pierce/div:nth-of-type(2) > div:nth-of-type(1) select"
+                ]
+            ],
+            "target": "main"
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/💾 Save Mandate"
+                ],
+                [
+                    "div.form-actions > button"
+                ],
+                [
+                    "xpath///*[@id=\"dcForm\"]/div/div[2]/div[5]/button"
+                ],
+                [
+                    "pierce/div.form-actions > button"
+                ],
+                [
+                    "text/💾 Save Mandate"
+                ]
+            ],
+            "offsetY": 13,
+            "offsetX": 93.9166259765625,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://1cpace.co.za/debicheck/1545",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/⬆ Send to NuPay"
+                ],
+                [
+                    "form:nth-of-type(1) > button"
+                ],
+                [
+                    "xpath//html/body/div[1]/main/div[1]/div[2]/form[1]/button"
+                ],
+                [
+                    "pierce/form:nth-of-type(1) > button"
+                ],
+                [
+                    "text/⬆ Send to NuPay"
+                ]
+            ],
+            "offsetY": 23.444442749023438,
+            "offsetX": 55.638916015625,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://1cpace.co.za/debicheck/1545",
+                    "title": ""
+                }
+            ]
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(4) div:nth-of-type(3)"
+                ],
+                [
+                    "xpath//html/body/div[1]/main/div[2]/div[2]/div[4]/div[2]/div[3]"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) div:nth-of-type(3)"
+                ]
+            ],
+            "offsetY": 42.111114501953125,
+            "offsetX": 251.0833740234375,
+            "duration": 783.7000000029802
+        },
+        {
+            "type": "doubleClick",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ],
+                [
+                    "xpath//html/body/div[1]/main/div[2]/div[2]/div[4]/div[2]/div[3]/span[2]"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ]
+            ],
+            "offsetY": 29.111114501953125,
+            "offsetX": 186.0277099609375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ],
+                [
+                    "xpath//html/body/div[1]/main/div[2]/div[2]/div[4]/div[2]/div[3]/span[2]"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ]
+            ],
+            "offsetY": 29.111114501953125,
+            "offsetX": 186.0277099609375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ],
+                [
+                    "xpath//html/body/div[1]/main/div[2]/div[2]/div[4]/div[2]/div[3]/span[2]"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ]
+            ],
+            "offsetY": 28.111114501953125,
+            "offsetX": 184.0277099609375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ],
+                [
+                    "xpath//html/body/div[1]/main/div[2]/div[2]/div[4]/div[2]/div[3]/span[2]"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ]
+            ],
+            "offsetY": 28.111114501953125,
+            "offsetX": 184.0277099609375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ],
+                [
+                    "xpath//html/body/div[1]/main/div[2]/div[2]/div[4]/div[2]/div[3]/span[2]"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ]
+            ],
+            "offsetY": 28.111114501953125,
+            "offsetX": 184.0277099609375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ],
+                [
+                    "xpath//html/body/div[1]/main/div[2]/div[2]/div[4]/div[2]/div[3]/span[2]"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ]
+            ],
+            "offsetY": 28.111114501953125,
+            "offsetX": 184.0277099609375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ],
+                [
+                    "xpath//html/body/div[1]/main/div[2]/div[2]/div[4]/div[2]/div[3]/span[2]"
+                ],
+                [
+                    "pierce/div:nth-of-type(4) div:nth-of-type(3) > span.detail-val"
+                ]
+            ],
+            "offsetY": 28.111114501953125,
+            "offsetX": 184.0277099609375
+        },
+        {
+            "type": "click",
+            "target": "main",
+            "selectors": [
+                [
+                    "aria/🔄 Check NuPay Status"
+                ],
+                [
+                    "#refreshBtn"
+                ],
+                [
+                    "xpath///*[@id=\"refreshBtn\"]"
+                ],
+                [
+                    "pierce/#refreshBtn"
+                ],
+                [
+                    "text/🔄 Check NuPay"
+                ]
+            ],
+            "offsetY": 18.444442749023438,
+            "offsetX": 114.3333740234375,
+            "assertedEvents": [
+                {
+                    "type": "navigation",
+                    "url": "https://1cpace.co.za/debicheck/1545",
+                    "title": ""
+                }
+            ]
+        }
+    ]
+}

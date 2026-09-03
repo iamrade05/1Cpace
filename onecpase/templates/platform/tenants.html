@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>1Cpase Platform — Gyms</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f3f4f6; color: #002e45; min-height: 100vh;
+    }
+    .topbar {
+      background: #002e45; color: #fff;
+      padding: 16px 32px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .topbar h1 { font-size: 1.15rem; font-weight: 800; }
+    .topbar-user { display: flex; align-items: center; gap: 16px; font-size: 0.82rem; }
+    .topbar a { color: #EEF4FA; font-size: 0.85rem; text-decoration: none; }
+    .topbar a:hover { text-decoration: underline; }
+
+    .wrap { max-width: 1000px; margin: 32px auto; padding: 0 24px; }
+    .page-head {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px;
+    }
+    .page-head h2 { font-size: 1.3rem; font-weight: 800; }
+    .btn-primary {
+      background: #002e45; color: #fff; border: none; border-radius: 8px;
+      padding: 10px 18px; font-size: 0.85rem; font-weight: 700;
+      text-decoration: none; cursor: pointer;
+    }
+    .btn-primary:hover { background: #001f30; }
+
+    .alert-success, .alert-error {
+      padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; margin-bottom: 16px;
+    }
+    .alert-success { background: #d1fae5; color: #065f46; border-left: 4px solid #10b981; }
+    .alert-error { background: #fee2e2; color: #991b1b; border-left: 4px solid #ef4444; }
+
+    .card {
+      background: #fff; border-radius: 12px; border: 1px solid #e5e7eb;
+      box-shadow: 0 4px 16px rgba(0,46,69,0.06); overflow: hidden;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      text-align: left; padding: 12px 16px; font-size: 0.85rem;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    th { color: #6b7280; font-weight: 700; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.5px; }
+    tr:last-child td { border-bottom: none; }
+    .logo-thumb {
+      width: 32px; height: 32px; object-fit: contain; border-radius: 6px;
+      border: 1px solid #e5e7eb; background: #f9fafb;
+    }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 999px;
+      font-size: 0.72rem; font-weight: 700;
+    }
+    .badge-active { background: #d1fae5; color: #065f46; }
+    .badge-inactive { background: #f3f4f6; color: #6b7280; }
+    .row-actions a, .row-actions button {
+      font-size: 0.78rem; font-weight: 700; text-decoration: none;
+      background: none; border: none; cursor: pointer; margin-right: 12px; padding: 0;
+    }
+    .row-actions a { color: #185FA5; }
+    .row-actions button { color: #991b1b; }
+    .row-actions .btn-enter {
+      display: inline-block; background: #185FA5; color: #fff; padding: 7px 11px;
+      border-radius: 7px; margin-right: 12px;
+    }
+    .row-actions .btn-enter:hover { background: #114f7d; }
+    .empty { padding: 40px; text-align: center; color: #6b7280; font-size: 0.9rem; }
+  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+</head>
+<body>
+<div class="topbar">
+  <h1>1Cpase Platform</h1>
+  <div class="topbar-user">
+    <span>Power User: {{ session.platform_admin_username }}</span>
+    <a href="{{ url_for('platform.logout') }}">Sign out</a>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="page-head">
+    <h2>Gyms</h2>
+    <a class="btn-primary" href="{{ url_for('platform.tenants_add') }}">+ Add Gym</a>
+  </div>
+
+  {% for category, msg in get_flashed_messages(with_categories=true) %}
+  <div class="alert-{{ category }}">{{ msg }}</div>
+  {% endfor %}
+
+  <div class="card">
+    {% if tenants %}
+    <table>
+      <thead>
+        <tr>
+          <th>Logo</th>
+          <th>Gym</th>
+          <th>Slug</th>
+          <th>Status</th>
+          <th>Added</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tenants %}
+        <tr>
+          <td>
+            {% if t.logo_filename %}
+            <img class="logo-thumb" src="{{ url_for('static', filename='tenant_logos/' + t.logo_filename) }}" alt="">
+            {% else %}
+            <span class="logo-thumb"></span>
+            {% endif %}
+          </td>
+          <td>{{ t.name }}</td>
+          <td>{{ t.slug }}</td>
+          <td>
+            {% if t.active %}
+            <span class="badge badge-active">Active</span>
+            {% else %}
+            <span class="badge badge-inactive">Inactive</span>
+            {% endif %}
+          </td>
+          <td>{{ t.created_at }}</td>
+          <td class="row-actions">
+            {% if t.active %}
+            <form method="POST" action="{{ url_for('platform.tenant_enter', tenant_id=t.id) }}" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn-enter" type="submit">Open gym</button>
+            </form>
+            {% endif %}
+            <a href="{{ url_for('platform.tenants_edit', tenant_id=t.id) }}">Edit</a>
+            <form method="POST" action="{{ url_for('platform.tenants_toggle', tenant_id=t.id) }}" style="display:inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit">{{ 'Deactivate' if t.active else 'Activate' }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No gyms yet — add the first one to get started.</div>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

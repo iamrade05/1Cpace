@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Bookings: {{ fc.name }} | 1Cpase{% endblock %}
+{% block page_title %}{{ fc.name }} — Bookings{% endblock %}
+
+{% block content %}
+
+<!-- Class info bar -->
+<div style="background:#fff; border-radius:10px; padding:16px 20px; margin-bottom:20px;
+            box-shadow:0 1px 3px rgba(0,0,0,0.07); display:flex; gap:32px; align-items:center;">
+  <div>
+    <div style="font-size:0.7rem;text-transform:uppercase;color:#6b7280;letter-spacing:0.5px;">Instructor</div>
+    <div style="font-weight:600;">{{ fc.instructor_name or '—' }}</div>
+  </div>
+  <div>
+    <div style="font-size:0.7rem;text-transform:uppercase;color:#6b7280;letter-spacing:0.5px;">Schedule</div>
+    <div style="font-weight:600;">
+      {{ fc.schedule_day or '—' }}{% if fc.schedule_time %} @ {{ fc.schedule_time }}{% endif %}
+    </div>
+  </div>
+  <div>
+    <div style="font-size:0.7rem;text-transform:uppercase;color:#6b7280;letter-spacing:0.5px;">Capacity</div>
+    <div style="font-weight:600;">
+      {{ bookings | selectattr('status','eq','booked') | list | length }} / {{ fc.capacity }}
+    </div>
+  </div>
+  <div style="margin-left:auto;">
+    <a href="{{ url_for('fitness.fitness_edit', fid=fc.id) }}" class="btn btn-ghost btn-sm">Edit Class</a>
+    <a href="{{ url_for('fitness.fitness_index') }}" class="btn btn-ghost btn-sm">All Classes</a>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 340px; gap:20px;">
+
+  <!-- Current bookings -->
+  <div class="card">
+    <div class="card-header">
+      <h2>Current Bookings</h2>
+    </div>
+    <div class="card-body">
+      {% set active_bookings = bookings | selectattr('status','eq','booked') | list %}
+      {% if active_bookings %}
+      <table>
+        <thead>
+          <tr><th>Member</th><th>Package</th><th>Date Booked</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for b in bookings %}
+          <tr>
+            <td style="font-weight:500;">{{ b.first_name }} {{ b.last_name }}</td>
+            <td style="color:#6b7280; font-size:0.82rem;">{{ b.package or '—' }}</td>
+            <td style="color:#6b7280; font-size:0.82rem;">{{ b.booking_date }}</td>
+            <td>
+              {% if b.status == 'booked' %}<span class="badge badge-success">Booked</span>
+              {% else %}<span class="badge badge-gray">{{ b.status | capitalize }}</span>{% endif %}
+            </td>
+            <td>
+              {% if b.status == 'booked' %}
+              <form method="post" action="{{ url_for('fitness.booking_cancel', bid=b.id) }}"
+                    onsubmit="return confirm('Cancel this booking?')">
+                <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-state" style="padding:32px;">
+        <div class="empty-icon">📋</div>
+        <p>No active bookings yet.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Book a member -->
+  <div class="card" style="align-self:start;">
+    <div class="card-header"><h2>Book a Member</h2></div>
+    <div class="card-body" style="padding:16px;">
+      {% set booked_count = bookings | selectattr('status','eq','booked') | list | length %}
+      {% if booked_count >= fc.capacity %}
+      <div class="alert alert-warning">Class is at full capacity ({{ fc.capacity }}).</div>
+      {% elif available %}
+      <form method="post" action="{{ url_for('fitness.fitness_book', fid=fc.id) }}">
+        <div class="form-group" style="margin-bottom:12px;">
+          <label>Select Member</label>
+          <select name="member_id" class="member-picker" required>
+            <option value="">— Choose member —</option>
+            {% for m in available %}
+            <option value="{{ m.id }}">{{ m.first_name }} {{ m.last_name }}{% if m.package %} ({{ m.package }}){% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Book</button>
+      </form>
+      {% else %}
+      <p style="color:#6b7280; font-size:0.875rem; padding:8px 0;">All active members are already booked into this class.</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+{% block title %}Access Report | 1Cpase{% endblock %}
+{% block page_title %}Gym Access Report{% endblock %}
+
+{% block content %}
+<style>
+.ar-kpi { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px; }
+.ar-kpi-card {
+  background:#fff; border:1px solid #e4e8f0; border-radius:8px;
+  padding:16px 18px; position:relative; overflow:hidden;
+  box-shadow:0 4px 14px rgba(16,24,40,.05);
+}
+.ar-kpi-card::before {
+  content:""; position:absolute; left:0; top:0; bottom:0;
+  width:4px; background:var(--fp-primary);
+}
+.ar-kpi-card.red::before    { background:#e11d48; }
+.ar-kpi-card.amber::before  { background:#d97706; }
+.ar-kpi-card.green::before  { background:#059669; }
+.ar-kpi-card.blue::before   { background:#1769aa; }
+.ar-kpi-card.purple::before { background:#7c3aed; }
+.ar-kpi-label { font-size:0.65rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#9ca3af; margin-bottom:4px; }
+.ar-kpi-value { font-size:1.5rem; font-weight:800; color:#172033; line-height:1.1; }
+.ar-kpi-sub   { font-size:0.72rem; color:#9ca3af; margin-top:4px; }
+
+.call-badge-not    { background:#fee2e2; color:#991b1b; }
+.call-badge-no     { background:#fef3c7; color:#92400e; }
+.call-badge-ans    { background:#dcfce7; color:#166534; }
+.call-badge-none   { background:#f3f4f6; color:#6b7280; }
+
+.mandate-auth { background:#dcfce7; color:#166534; }
+.mandate-rej  { background:#fee2e2; color:#991b1b; }
+.mandate-none { background:#f3f4f6; color:#6b7280; }
+
+.shift-morning   { background:#fef3c7; color:#92400e; }
+.shift-afternoon { background:#dbeafe; color:#1e40af; }
+.shift-other     { background:#f3f4f6; color:#6b7280; }
+
+.ptp-paid   { background:#dcfce7; color:#166534; }
+.ptp-unpaid { background:#fee2e2; color:#991b1b; }
+.ptp-none   { background:#f3f4f6; color:#6b7280; }
+
+.filter-chip {
+  display:inline-flex; align-items:center; gap:5px; padding:5px 12px;
+  border:1px solid #e4e8f0; border-radius:20px; background:#fff;
+  font-size:0.78rem; font-weight:600; cursor:pointer; color:#374151;
+  text-decoration:none; transition:all .12s;
+}
+.filter-chip:hover, .filter-chip.active { background:#1769aa; color:#fff; border-color:#1769aa; }
+.filter-chip.red.active   { background:#e11d48; border-color:#e11d48; }
+.filter-chip.amber.active { background:#d97706; border-color:#d97706; }
+.filter-chip.green.active { background:#059669; border-color:#059669; }
+
+@media (max-width:900px) { .ar-kpi { grid-template-columns:repeat(2,1fr); } }
+@media (max-width:520px) { .ar-kpi { grid-template-columns:1fr; } }
+</style>
+
+<!-- Tab Navigation -->
+<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #e4e8f0;">
+  <a href="{{ url_for('collections.collections_index') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid transparent;color:#6b7280;">
+    💳 Payment Records
+  </a>
+  <a href="{{ url_for('ptp.ptp_dashboard') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid transparent;color:#6b7280;">
+    🔴 PTP / Collection
+  </a>
+  <a href="{{ url_for('ptp.legal_referrals') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid transparent;color:#6b7280;">
+    ⚖ Legal Referrals
+  </a>
+  <a href="{{ url_for('access_report.index') }}"
+     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
+            border-bottom:2px solid #1769aa;margin-bottom:-2px;color:#1769aa;">
+    📋 Access Report
+  </a>
+</div>
+
+<!-- Header row -->
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
+  <div>
+    <h2 style="font-size:1.1rem;font-weight:800;color:#172033;margin:0;">Gym Access Report</h2>
+    <div style="font-size:0.78rem;color:#667085;margin-top:2px;">
+      {{ today }} &bull; Live data from Itensity (ELEV8_ database)
+    </div>
+  </div>
+  <!-- Days range picker -->
+  <div style="display:flex;gap:6px;align-items:center;">
+    <span style="font-size:0.78rem;color:#667085;font-weight:600;">Date range:</span>
+    {% for d in [1, 3, 7, 14, 30] %}
+    <a href="{{ url_for('access_report.index', view=view, q=search, days=d) }}"
+       style="padding:4px 10px;border-radius:6px;font-size:0.78rem;font-weight:700;text-decoration:none;
+              {% if days == d %}background:#1769aa;color:#fff;{% else %}background:#f3f4f6;color:#374151;{% endif %}">
+      {{ d }}d
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Sub-view toggle -->
+<div style="display:flex;gap:8px;margin-bottom:20px;">
+  <a href="{{ url_for('access_report.index', view='owing', days=days, q=search) }}"
+     style="padding:8px 18px;border-radius:6px;font-size:0.82rem;font-weight:700;text-decoration:none;
+            {% if view=='owing' %}background:#e11d48;color:#fff;{% else %}background:#f3f4f6;color:#374151;border:1px solid #e4e8f0;{% endif %}">
+    ⚠ Owing Visitors ({{ stats.total if view=='owing' else '…' }})
+  </a>
+  <a href="{{ url_for('access_report.index', view='visits', days=days, q=search) }}"
+     style="padding:8px 18px;border-radius:6px;font-size:0.82rem;font-weight:700;text-decoration:none;
+            {% if view=='visits' %}background:#1769aa;color:#fff;{% else %}background:#f3f4f6;color:#374151;border:1px solid #e4e8f0;{% endif %}">
+    📋 All Visits ({{ stats.total if view=='visits' else '…' }})
+  </a>
+</div>
+
+<!-- Error state -->
+{% if error %}
+<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px 20px;margin-bottom:20px;
+            color:#991b1b;font-size:0.85rem;">
+  <strong>Could not connect to ELEV8_ database.</strong><br>
+  <span style="font-size:0.78rem;color:#b91c1c;">{{ error }}</span>
+</div>
+{% endif %}
+
+<!-- ── KPI Cards ── -->
+{% if not error %}
+{% if view == 'owing' %}
+<div class="ar-kpi">
+  <div class="ar-kpi-card red">
+    <div class="ar-kpi-label">Owing Visitors</div>
+    <div class="ar-kpi-value">{{ stats.total }}</div>
+    <div class="ar-kpi-sub">Visited + have arrears</div>
+  </div>
+  <div class="ar-kpi-card amber">
+    <div class="ar-kpi-label">Not Called</div>
+    <div class="ar-kpi-value">{{ stats.not_called }}</div>
+    <div class="ar-kpi-sub">Action required</div>
+  </div>
+  <div class="ar-kpi-card red">
+    <div class="ar-kpi-label">Total Outstanding</div>
+    <div class="ar-kpi-value">R{{ "%.0f"|format(stats.balance) }}</div>
+    <div class="ar-kpi-sub">Combined arrears</div>
+  </div>
+  <div class="ar-kpi-card blue">
+    <div class="ar-kpi-label">Active PTPs</div>
+    <div class="ar-kpi-value">{{ stats.has_ptp }}</div>
+    <div class="ar-kpi-sub">Have a PTP on record</div>
+  </div>
+</div>
+{% else %}
+<div class="ar-kpi">
+  <div class="ar-kpi-card blue">
+    <div class="ar-kpi-label">Total Visits</div>
+    <div class="ar-kpi-value">{{ stats.total }}</div>
+    <div class="ar-kpi-sub">Last {{ days }} day{{ 's' if days != 1 }}</div>
+  </div>
+  <div class="ar-kpi-card green">
+    <div class="ar-kpi-label">Today</div>
+    <div class="ar-kpi-value">{{ stats.today }}</div>
+    <div class="ar-kpi-sub">Scanned in today</div>
+  </div>
+  <div class="ar-kpi-card amber">
+    <div class="ar-kpi-label">Morning Shift</div>
+    <div class="ar-kpi-value">{{ stats.morning }}</div>
+    <div class="ar-kpi-sub">05:00 – 13:00</div>
+  </div>
+  <div class="ar-kpi-card purple">
+    <div class="ar-kpi-label">Afternoon Shift</div>
+    <div class="ar-kpi-value">{{ stats.afternoon }}</div>
+    <div class="ar-kpi-sub">13:00 – 21:00</div>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+<!-- ── Filter / Search ── -->
+<div class="card" style="margin-bottom:0;">
+  <div class="card-header" style="flex-wrap:wrap;gap:10px;">
+    <h2>
+      {% if view == 'owing' %}Owing Members Who Visited{% else %}All Recent Visits{% endif %}
+    </h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <form method="get" style="display:flex;gap:6px;align-items:center;">
+        <input type="hidden" name="view" value="{{ view }}">
+        <input type="hidden" name="days" value="{{ days }}">
+        <input type="hidden" name="call" value="{{ call_filter }}">
+        <input type="text" name="q" value="{{ search }}"
+               placeholder="Search name / number…"
+               style="padding:6px 11px;border:1px solid #d1d5db;border-radius:6px;font-size:0.82rem;min-width:210px;">
+        <button type="submit" class="btn btn-ghost btn-sm">Search</button>
+        {% if search or call_filter %}
+        <a href="{{ url_for('access_report.index', view=view, days=days) }}"
+           class="btn btn-ghost btn-sm">Clear</a>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  {% if view == 'owing' %}
+  <!-- Call status filter chips -->
+  <div style="padding:10px 20px;background:#f9fafb;border-bottom:1px solid #e5e7eb;
+              display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="{{ url_for('access_report.index', view='owing', days=days, q=search) }}"
+       class="filter-chip {% if not call_filter %}active{% endif %}">
+       All ({{ stats.total }})
+    </a>
+    <a href="{{ url_for('access_report.index', view='owing', days=days, q=search, call='not_called') }}"
+       class="filter-chip red {% if call_filter=='not_called' %}active{% endif %}">
+       Not Called ({{ stats.not_called }})
+    </a>
+    <a href="{{ url_for('access_report.index', view='owing', days=days, q=search, call='no_answer') }}"
+       class="filter-chip amber {% if call_filter=='no_answer' %}active{% endif %}">
+       No Answer ({{ stats.no_answer }})
+    </a>
+    <a href="{{ url_for('access_report.index', view='owing', days=days, q=search, call='answered') }}"
+       class="filter-chip green {% if call_filter=='answered' %}active{% endif %}">
+       Answered ({{ stats.answered }})
+    </a>
+  </div>
+  {% endif %}
+
+  <!-- ── Table ── -->
+  <div class="card-body">
+    {% if rows %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          {% if view == 'owing' %}
+          <tr>
+            <th>Member</th>
+            <th>Contact</th>
+            <th>Package</th>
+            <th>Outstanding</th>
+            <th>Last Visit</th>
+            <th>Shift</th>
+            <th>Visits</th>
+            <th>Mandate</th>
+            <th>Calls</th>
+            <th>Call Status</th>
+            <th>PTP</th>
+            <th>PTP Paid</th>
+          </tr>
+          {% else %}
+          <tr>
+            <th>Name</th>
+            <th>Contact</th>
+            <th>Last Visit</th>
+            <th>Days Ago</th>
+            <th>Shift</th>
+          </tr>
+          {% endif %}
+        </thead>
+        <tbody>
+          {% if view == 'owing' %}
+          {% for r in rows %}
+          <tr>
+            <td>
+              <div style="font-weight:700;color:#172033;font-size:0.88rem;">{{ r.Member_Name }}</div>
+              <div style="font-size:0.7rem;color:#9ca3af;">{{ r.Unique_Ref }}</div>
+              <div style="font-size:0.7rem;color:
+                {% if r.Member_Status == 'Active' %}#059669{% else %}#e11d48{% endif %};">
+                {{ r.Member_Status }}
+              </div>
+            </td>
+            <td style="font-size:0.82rem;color:#374151;white-space:nowrap;">{{ r.Cellphone or '—' }}</td>
+            <td style="font-size:0.78rem;color:#6b7280;white-space:nowrap;">{{ r.Package or '—' }}</td>
+            <td style="font-weight:800;color:#e11d48;white-space:nowrap;">
+              R{{ "%.2f"|format(r.Outstanding_Balance or 0) }}
+            </td>
+            <td style="font-size:0.78rem;white-space:nowrap;">
+              {% if r.Last_Visited %}
+                {{ r.Last_Visited.strftime('%d %b %H:%M') if r.Last_Visited else '—' }}
+                <div style="font-size:0.68rem;color:#9ca3af;">{{ r.Days_Since }} day{{ 's' if r.Days_Since != 1 }} ago</div>
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              <span class="badge {% if r.Shift == 'Morning' %}shift-morning{% elif r.Shift == 'Afternoon' %}shift-afternoon{% else %}shift-other{% endif %}"
+                    style="font-size:0.68rem;">{{ r.Shift }}</span>
+            </td>
+            <td style="text-align:center;font-size:0.82rem;color:#374151;">{{ r.Total_Visits }}</td>
+            <td>
+              <span class="badge {% if r.Mandate_Status == 'Authorised' %}mandate-auth{% elif r.Mandate_Status == 'Rejected' %}mandate-rej{% else %}mandate-none{% endif %}"
+                    style="font-size:0.68rem;">{{ r.Mandate_Status }}</span>
+            </td>
+            <td style="text-align:center;font-size:0.82rem;">
+              {{ r.Calls }}<span style="color:#9ca3af;font-size:0.7rem;">/{{ r.Answered }} ans</span>
+            </td>
+            <td>
+              <span class="badge {% if r.Call_Status == 'Not Called' %}call-badge-not{% elif r.Call_Status == 'No Answer' %}call-badge-no{% elif r.Call_Status == 'Answered' %}call-badge-ans{% else %}call-badge-none{% endif %}"
+                    style="font-size:0.68rem;white-space:nowrap;">{{ r.Call_Status }}</span>
+            </td>
+            <td style="font-size:0.78rem;white-space:nowrap;">
+              {% if r.Has_PTP == 'Yes' %}
+                <div style="font-weight:700;color:#1769aa;">{{ r.PTP_Date }}</div>
+                <div style="font-size:0.68rem;color:#6b7280;">R{{ "%.2f"|format(r.PTP_Amount or 0) }}</div>
+              {% else %}
+                <span style="color:#9ca3af;">No PTP</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge {% if r.PTP_Paid == 'Paid' %}ptp-paid{% elif r.PTP_Paid == 'Unpaid' %}ptp-unpaid{% else %}ptp-none{% endif %}"
+                    style="font-size:0.68rem;">{{ r.PTP_Paid }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+
+          {% else %}
+          {% for r in rows %}
+          <tr>
+            <td style="font-weight:600;color:#172033;">{{ r.name_surname }}</td>
+            <td style="font-size:0.82rem;color:#374151;">{{ r.cell }}</td>
+            <td style="font-size:0.78rem;color:#374151;white-space:nowrap;">
+              {% if r.last_visited %}
+                {{ r.last_visited.strftime('%d %b %Y %H:%M') if r.last_visited else '—' }}
+              {% else %}—{% endif %}
+            </td>
+            <td style="text-align:center;">
+              {% if (r.days_ago or 0) == 0 %}
+                <span class="badge" style="background:#dcfce7;color:#166534;font-size:0.72rem;">Today</span>
+              {% else %}
+                <span style="font-size:0.82rem;color:#374151;">{{ r.days_ago }}d ago</span>
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge {% if r.shift == 'Morning' %}shift-morning{% elif r.shift == 'Afternoon' %}shift-afternoon{% else %}shift-other{% endif %}"
+                    style="font-size:0.68rem;">{{ r.shift }}</span>
+            </td>
+          </tr>
+          {% endfor %}
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <div style="padding:10px 0 0;font-size:0.75rem;color:#9ca3af;">
+      {{ rows|length }} record{{ 's' if rows|length != 1 }}
+      &bull; Last {{ days }} day{{ 's' if days != 1 }}
+      &bull; Live from ELEV8_ SQL Server
+    </div>
+
+    {% elif not error %}
+    <div class="empty-state" style="padding:48px 24px;">
+      <div class="empty-icon">{% if view == 'owing' %}✅{% else %}🏃{% endif %}</div>
+      <p>
+        {% if search or call_filter %}No records match your filters.
+        {% elif view == 'owing' %}No members with arrears visited in the last {{ days }} day{{ 's' if days != 1 }}.
+        {% else %}No visits recorded in the last {{ days }} day{{ 's' if days != 1 }}.
+        {% endif %}
+      </p>
+      {% if search or call_filter %}
+      <a href="{{ url_for('access_report.index', view=view, days=days) }}" class="btn btn-ghost btn-sm">Clear filters</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

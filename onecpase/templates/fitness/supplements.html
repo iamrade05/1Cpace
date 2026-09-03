@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Supplements | 1Cpase{% endblock %}
+{% block page_title %}Supplements Guide{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+  <form method="get" style="display:flex; gap:8px;">
+    <select name="type" onchange="this.form.submit()">
+      <option value="all" {% if supp_type == 'all' %}selected{% endif %}>All Types</option>
+      {% for t in ['herbal','mainstream','steroid','peptide'] %}
+      <option value="{{ t }}" {% if supp_type == t %}selected{% endif %}>{{ t | capitalize }}</option>
+      {% endfor %}
+    </select>
+    <select name="risk" onchange="this.form.submit()">
+      <option value="all" {% if risk == 'all' %}selected{% endif %}>All Risk Levels</option>
+      {% for lvl, label in risk_labels.items() %}
+      <option value="{{ lvl }}" {% if risk == lvl|string %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </form>
+  <a href="{{ url_for('fitness.supplement_add') }}" class="btn btn-primary">+ Add Supplement</a>
+</div>
+
+{% if supps %}
+<div class="card">
+  <div class="card-body">
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Brand</th><th>Type</th><th>Goal</th><th>Risk</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for s in supps %}
+        <tr>
+          <td style="font-weight:600;">{{ s.name }}</td>
+          <td style="color:#6b7280; font-size:0.82rem;">{{ s.brand or '—' }}</td>
+          <td>{{ s.supp_type | replace('_',' ') | capitalize }}</td>
+          <td>{{ s.goal | replace('_',' ') | capitalize }}</td>
+          <td>
+            <span style="color:{{ risk_colors[s.risk_level] }}; background:{{ risk_bg[s.risk_level] }};
+                         padding:2px 8px; border-radius:6px; font-size:0.78rem; font-weight:600;">
+              {{ risk_labels[s.risk_level] }}
+            </span>
+          </td>
+          <td><a href="{{ url_for('fitness.supplement_detail', sid=s.id) }}" class="btn btn-ghost btn-sm">View</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty-state">
+  <div class="empty-icon">💊</div>
+  <p>No supplements found.</p>
+  <a href="{{ url_for('fitness.supplement_add') }}" class="btn btn-primary">Add First Supplement</a>
+</div>
+{% endif %}
+{% endblock %}

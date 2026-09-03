@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Upload Call List | 1Cpase{% endblock %}
+{% block page_title %}Upload Call List{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+  <a href="{{ url_for('call_list.index') }}" class="btn btn-ghost btn-sm">← Back</a>
+  <h2 style="font-size:1rem;font-weight:800;color:#172033;margin:0;">Upload Call List</h2>
+</div>
+
+<div class="card" style="max-width:560px;">
+  <div class="card-body">
+    <p style="font-size:.88rem;color:#374151;line-height:1.5;margin-top:0;">
+      Take a clear, straight photo (or scan/PDF) of the paper call list. Every row
+      the OCR engine finds is staged for review — nothing is added to Sales CRM
+      until you confirm each row.
+    </p>
+    <form method="POST" enctype="multipart/form-data">
+      <div class="form-group">
+        <label class="form-label">Call List Photo / Scan / PDF *</label>
+        <input type="file" name="document" class="form-control" accept=".jpg,.jpeg,.png,.webp,.tif,.tiff,.pdf" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Upload &amp; Run OCR</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

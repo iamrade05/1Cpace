@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Add Payment | 1Cpase{% endblock %}
+{% block page_title %}Record Payment{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <form method="post">
+    <div class="form-group">
+      <label for="member_id">Member *</label>
+      <select id="member_id" name="member_id" class="member-picker" required>
+        <option value="">— Select member —</option>
+        {% for m in members %}
+        <option value="{{ m.id }}" {% if selected_member_id == m.id|string %}selected{% endif %}>
+          {{ m.first_name }} {{ m.last_name }} — {{ m.package or m.tariff or 'No package' }}{% if m.member_status != 'Active' %} ({{ m.member_status }}){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="outstanding_balance">Outstanding Balance (R)</label>
+        <input type="number" step="0.01" min="0" id="outstanding_balance" name="outstanding_balance"
+               value="{{ request.form.get('outstanding_balance', '0') }}">
+      </div>
+      <div class="form-group">
+        <label for="discount_pct">Discount (%)</label>
+        <input type="number" step="0.1" min="0" max="100" id="discount_pct" name="discount_pct"
+               value="{{ request.form.get('discount_pct', '0') }}">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="amount_paid">Amount Paid (R) *</label>
+        <input type="number" step="0.01" min="0" id="amount_paid" name="amount_paid"
+               value="{{ request.form.get('amount_paid', '') }}" required>
+      </div>
+      <div class="form-group">
+        <label for="collection_date">Date</label>
+        <input type="date" id="collection_date" name="collection_date"
+               value="{{ request.form.get('collection_date', '') }}">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="method">Payment Method</label>
+        <select id="method" name="method">
+          {% for m in methods %}
+          <option value="{{ m }}" {% if request.form.get('method', 'cash') == m %}selected{% endif %}>
+            {{ m|capitalize }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="status">Status</label>
+        <select id="status" name="status">
+          {% for s in statuses %}
+          <option value="{{ s }}" {% if request.form.get('status', 'paid') == s %}selected{% endif %}>
+            {{ s|capitalize }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="notes">Notes</label>
+      <textarea id="notes" name="notes" rows="3">{{ request.form.get('notes', '') }}</textarea>
+    </div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:500;">
+        <input type="checkbox" name="push_to_itensity" value="1"
+               {% if request.form.get('push_to_itensity') == '1' %}checked{% endif %}>
+        Also record this payment in Itensity POS
+      </label>
+      <div class="form-hint">Requires the member to already have an Itensity reference. Runs in the background after saving; failures don't affect this payment record.</div>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save Payment</button>
+      {% if selected_member_id %}
+      <a href="{{ url_for('members.member_detail', mid=selected_member_id|int) }}" class="btn btn-ghost">Cancel</a>
+      {% else %}
+      <a href="{{ url_for('collections.collections_index') }}" class="btn btn-ghost">Cancel</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

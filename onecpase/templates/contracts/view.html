@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Membership Contract — {{ m.first_name }} {{ m.last_name }}</title>
+  <style>
+    :root { --accent: {{ (contract_template.accent_color if contract_template and contract_template.accent_color else '#185FA5') }}; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #c1c1c1;
+      color: #1F2933;
+    }
+
+    /* ── Print/screen toolbar ── */
+    .toolbar {
+      background: #1F2933; padding: 12px 32px;
+      display: flex; justify-content: space-between; align-items: center;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .toolbar span { color: #9ca3af; font-size: 0.82rem; }
+    .toolbar-btns { display: flex; gap: 10px; }
+    .btn-print, .btn-back {
+      padding: 8px 18px; border: none; border-radius: 7px;
+      font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-print { background: var(--accent); color: #fff; }
+    .btn-back  { background: #374151; color: #9ca3af; text-decoration: none;
+                 display: inline-flex; align-items: center; }
+    .btn-print:hover { opacity: 0.88; }
+    .btn-back:hover  { color: #fff; }
+
+    /* ── Contract page ── */
+    .page {
+      max-width: 860px; margin: 28px auto; background: #fff;
+      border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,.18);
+      padding: 52px 60px;
+    }
+
+    /* ── Header ── */
+    .contract-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      border-bottom: 3px solid var(--accent); padding-bottom: 20px; margin-bottom: 28px;
+    }
+    .gym-name { font-size: 1.8rem; font-weight: 900; color: var(--accent); }
+    .gym-sub  { font-size: 0.75rem; color: #6b7280; letter-spacing: 1px;
+                text-transform: uppercase; margin-top: 3px; }
+    .gym-extra { font-size: 0.72rem; color: #9ca3af; margin-top: 4px; }
+    .contract-meta { text-align: right; font-size: 0.78rem; color: #6b7280; }
+    .contract-meta strong { display: block; font-size: 1rem; color: #1F2933;
+                            font-weight: 700; margin-bottom: 3px; }
+
+    /* ── Title bar ── */
+    .contract-title {
+      background: var(--accent); color: #fff; text-align: center;
+      padding: 12px; font-size: 1.05rem; font-weight: 800;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      border-radius: 4px; margin-bottom: 28px;
+    }
+
+    /* ── Section ── */
+    .section { margin-bottom: 28px; }
+    .section-title {
+      font-size: 0.72rem; font-weight: 800; color: var(--accent);
+      text-transform: uppercase; letter-spacing: 1px;
+      border-bottom: 1px solid #EEF4FA; padding-bottom: 6px;
+      margin-bottom: 14px;
+    }
+
+    /* ── Detail grid ── */
+    .detail-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+      border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;
+    }
+    .detail-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .detail-cell {
+      padding: 9px 14px; border-bottom: 1px solid #f3f4f6;
+      border-right: 1px solid #f3f4f6;
+    }
+    .detail-cell .lbl {
+      font-size: 0.68rem; color: #9ca3af; text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 2px;
+    }
+    .detail-cell .val {
+      font-size: 0.88rem; font-weight: 600; color: #1F2933;
+    }
+    .detail-cell .val.empty { color: #d1d5db; font-style: italic; font-weight: 400; }
+
+    /* ── Payment highlight ── */
+    .payment-highlight {
+      background: #EEF4FA; border: 2px solid var(--accent);
+      border-radius: 8px; padding: 16px 20px; margin-bottom: 12px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .payment-highlight .ph-label { font-size: 0.82rem; color: var(--accent); font-weight: 600; }
+    .payment-highlight .ph-amount {
+      font-size: 1.6rem; font-weight: 900; color: var(--accent);
+    }
+
+    /* ── PAR-Q ── */
+    .parq-row {
+      display: flex; justify-content: space-between;
+      padding: 7px 0; border-bottom: 1px solid #f3f4f6;
+      font-size: 0.8rem; gap: 12px;
+    }
+    .parq-row .q { flex: 1; color: #374151; }
+    .parq-yes { color: #ef4444; font-weight: 700; }
+    .parq-no  { color: #10b981; font-weight: 700; }
+
+    /* ── Terms ── */
+    .terms {
+      background: #f9fafb; border: 1px solid #e5e7eb;
+      border-radius: 6px; padding: 16px 18px;
+      font-size: 0.76rem; color: #6b7280; line-height: 1.7;
+    }
+    .terms ol { padding-left: 16px; }
+    .terms li { margin-bottom: 6px; }
+    .terms-part-intro { font-size: 0.8rem; color: #374151; font-weight: 600; margin-bottom: 8px; }
+    .terms-initials { margin-top: 12px; font-size: 0.74rem; color: #9ca3af; }
+    .terms-part + .terms-part { margin-top: 20px; }
+    .terms-part.page-break { page-break-before: always; }
+
+    /* ── Signatures ── */
+    .sig-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 40px;
+      margin-top: 36px;
+    }
+    .sig-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .sig-block { border-top: 2px solid #1F2933; padding-top: 8px; }
+    .sig-block .sig-line {
+      height: 52px; border-bottom: 1px dashed #d1d5db; margin-bottom: 8px;
+    }
+    .sig-block .sig-label { font-size: 0.75rem; color: #6b7280; }
+    .sig-block .sig-name  { font-size: 0.82rem; font-weight: 700; color: #1F2933; }
+
+    /* ── Footer ── */
+    .contract-footer {
+      margin-top: 36px; padding-top: 14px;
+      border-top: 1px solid #e5e7eb;
+      display: flex; justify-content: space-between;
+      font-size: 0.7rem; color: #9ca3af;
+    }
+
+    /* ── Print styles ── */
+    @media print {
+      body { background: #fff; }
+      .toolbar { display: none; }
+      .page { margin: 0; box-shadow: none; border-radius: 0; padding: 36px 48px; }
+      @page { margin: 1.5cm; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Toolbar (hidden on print) -->
+<div class="toolbar">
+  <span>{{ contract_template.agreement_title if contract_template else 'Membership Contract' }} — {{ m.first_name }} {{ m.last_name }} &nbsp;|&nbsp; Generated {{ generated_at }}</span>
+  <div class="toolbar-btns">
+    {% if m.id %}<a href="{{ url_for('members.member_detail', mid=m.id) }}" class="btn-back">← Back to Member</a>{% endif %}
+    <button class="btn-print" onclick="window.print()">🖨 Print / Save PDF</button>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- Header -->
+  <div class="contract-header">
+    <div>
+      <div class="gym-name">{{ contract_template.gym_name if contract_template else 'Elev8 Health & Fitness' }}</div>
+      <div class="gym-sub">1Cpase Gym Management System</div>
+      {% if contract_template and (contract_template.reg_no or contract_template.address) %}
+      <div class="gym-extra">
+        {% if contract_template.reg_no %}Reg. No: {{ contract_template.reg_no }}{% endif %}
+        {% if contract_template.reg_no and contract_template.address %} &nbsp;·&nbsp; {% endif %}
+        {{ contract_template.address or '' }}
+      </div>
+      {% endif %}
+    </div>
+    <div class="contract-meta">
+      <strong>Contract #{{ "%05d"|format(m.id) }}</strong>
+      Date: {{ today.strftime('%d %B %Y') }}<br>
+      {% if m.itensity_ref %}Itensity Ref: {{ m.itensity_ref }}{% endif %}
+    </div>
+  </div>
+
+  <div class="contract-title">{{ contract_template.agreement_title if contract_template else 'Membership Agreement' }}</div>
+
+  {% if request.endpoint == 'contracts.public_share' %}
+  <div class="share-response" style="margin:14px 0;padding:14px;border:1px solid #d1d5db;background:#f8fafc;">
+    <strong>Client response</strong>
+    <p>Please review this agreement. Approve only when all details are correct.</p>
+    <form method="post" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-primary" name="response" value="approved" type="submit">Approve Contract</button>
+      <button class="btn btn-secondary" name="response" value="declined" type="submit">Decline / Request Changes</button>
+      <input name="note" placeholder="Optional note" style="min-width:220px;">
+    </form>
+  </div>
+  {% endif %}
+
+  <!-- 1. Member Details -->
+  {% if section_enabled('member') %}
+  <div class="section">
+    <div class="section-title">1. Member Details</div>
+    <div class="detail-grid cols-3">
+      {% if field_enabled('member', 'full_name') %}
+      <div class="detail-cell"><div class="lbl">Full Name</div><div class="val">{{ m.first_name }} {{ m.last_name }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'id_number') %}
+      <div class="detail-cell"><div class="lbl">SA ID Number</div><div class="val">{{ m.id_number or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'date_of_birth') %}
+      <div class="detail-cell"><div class="lbl">Date of Birth</div><div class="val">{{ m.date_of_birth or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'gender') %}
+      <div class="detail-cell"><div class="lbl">Gender</div><div class="val">{{ m.gender or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'contact') %}
+      <div class="detail-cell"><div class="lbl">Cell Number</div><div class="val">{{ m.contact or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'alternative_number') %}
+      <div class="detail-cell"><div class="lbl">Alternative Number</div><div class="val">{{ m.alternative_number or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'email') %}
+      <div class="detail-cell"><div class="lbl">Email Address</div><div class="val">{{ m.email or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'occupation') %}
+      <div class="detail-cell"><div class="lbl">Occupation</div><div class="val">{{ m.occupation or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'employer') %}
+      <div class="detail-cell"><div class="lbl">Employer</div><div class="val">{{ m.employer or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'work_number') %}
+      <div class="detail-cell"><div class="lbl">Work Number</div><div class="val">{{ m.work_number or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'opt_in') %}
+      <div class="detail-cell"><div class="lbl">Marketing Opt-In</div><div class="val">{{ 'Yes' if m.opt_in else 'No' }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'join_date') %}
+      <div class="detail-cell"><div class="lbl">Join Date</div><div class="val">{{ m.join_date or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('member', 'member_ref') %}
+      <div class="detail-cell"><div class="lbl">Member No.</div><div class="val">{{ m.member_ref or '—' }}</div></div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 2. Address -->
+  {% if section_enabled('address') %}
+  <div class="section">
+    <div class="section-title">2. Residential Address</div>
+    <div class="detail-grid cols-3">
+      {% if field_enabled('address', 'street') %}
+      <div class="detail-cell"><div class="lbl">Street</div><div class="val">{{ m.street_number or '' }} {{ m.street_name or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('address', 'suburb') %}
+      <div class="detail-cell"><div class="lbl">Suburb</div><div class="val">{{ m.suburb or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('address', 'city') %}
+      <div class="detail-cell"><div class="lbl">City / Town</div><div class="val">{{ m.city or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('address', 'postal_code') %}
+      <div class="detail-cell"><div class="lbl">Postal Code</div><div class="val">{{ m.postal_code or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('address', 'country') %}
+      <div class="detail-cell"><div class="lbl">Country</div><div class="val">{{ m.country or 'South Africa' }}</div></div>
+      {% endif %}
+      {% if field_enabled('address', 'source') %}
+      <div class="detail-cell"><div class="lbl">Source</div><div class="val">{{ m.source or '—' }}</div></div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 3. Membership -->
+  {% if section_enabled('membership') %}
+  <div class="section">
+    <div class="section-title">3. Membership Details</div>
+    <div class="payment-highlight">
+      <div>
+        <div class="ph-label">Monthly Installment</div>
+        <div style="font-size:0.75rem;color:#378ADD;margin-top:2px;">
+          {{ m.tariff or 'See tariff below' }}
+          {% if m.contract_duration %}&nbsp;·&nbsp;{{ m.contract_duration }}{% endif %}
+        </div>
+      </div>
+      <div class="ph-amount">R {{ "%.2f"|format(m.monthly_installment or 0) }}</div>
+    </div>
+    <div class="detail-grid cols-3">
+      {% if field_enabled('membership', 'tariff') %}
+      <div class="detail-cell"><div class="lbl">Tariff</div><div class="val">{{ m.tariff or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('membership', 'contract_duration') %}
+      <div class="detail-cell"><div class="lbl">Contract Duration</div><div class="val">{{ m.contract_duration or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('membership', 'access_level') %}
+      <div class="detail-cell"><div class="lbl">Access Level</div><div class="val">{{ m.access_level or 'Local' }}</div></div>
+      {% endif %}
+      {% if field_enabled('membership', 'member_status') %}
+      <div class="detail-cell"><div class="lbl">Member Status</div><div class="val">{{ m.member_status or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('membership', 'promotion') %}
+      <div class="detail-cell"><div class="lbl">Promotion / Code</div><div class="val">{{ m.promotion or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('membership', 'consultant_name') %}
+      <div class="detail-cell"><div class="lbl">Consultant</div><div class="val">{{ m.consultant_name or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('membership', 'joining_fee') %}
+      <div class="detail-cell"><div class="lbl">Joining Fee</div><div class="val">R {{ "%.2f"|format(m.joining_fee or 0) }}</div></div>
+      {% endif %}
+      {% if field_enabled('membership', 'member_addons') %}
+      <div class="detail-cell"><div class="lbl">Add-Ons</div><div class="val">{{ m.member_addons or '—' }}</div></div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 4. Payment & Banking -->
+  {% if section_enabled('payment') %}
+  <div class="section">
+    <div class="section-title">4. Payment &amp; Banking</div>
+    <div class="detail-grid cols-3">
+      {% if field_enabled('payment', 'payment_type') %}
+      <div class="detail-cell"><div class="lbl">Payment Method</div><div class="val">{{ m.payment_type or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('payment', 'debit_order_date') %}
+      <div class="detail-cell"><div class="lbl">Debit Order Date</div><div class="val">{% if m.debit_order_date %}{{ m.debit_order_date }}th of each month{% else %}—{% endif %}</div></div>
+      {% endif %}
+      {% if field_enabled('payment', 'bank') %}
+      <div class="detail-cell"><div class="lbl">Bank</div><div class="val">{{ m.bank or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('payment', 'account_type') %}
+      <div class="detail-cell"><div class="lbl">Account Type</div><div class="val">{{ m.account_type or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('payment', 'account_number') %}
+      <div class="detail-cell"><div class="lbl">Account Number</div>
+        <div class="val">{% if m.account_number %}{{ m.account_number[:3] }}****{{ m.account_number[-3:] }}{% else %}—{% endif %}</div></div>
+      {% endif %}
+      {% if field_enabled('payment', 'branch_code') %}
+      <div class="detail-cell"><div class="lbl">Branch Code</div><div class="val">{{ m.branch_code or '—' }}</div></div>
+      {% endif %}
+      {% if m.payer_name %}
+      <div class="detail-cell"><div class="lbl">Third-Party Payer</div><div class="val">{{ m.payer_name }}</div></div>
+      <div class="detail-cell"><div class="lbl">Payer ID Number</div><div class="val">{{ m.payer_id_number or '—' }}</div></div>
+      <div class="detail-cell"></div>
+      {% endif %}
+    </div>
+    {% if debit_mandate %}
+    <div class="terms" style="margin-top:12px;"><strong style="color:#374151;">Debit Order Mandate: </strong>{{ debit_mandate }}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- 5. Emergency Contact -->
+  {% if section_enabled('emergency') %}
+  <div class="section">
+    <div class="section-title">5. Emergency Contact</div>
+    <div class="detail-grid cols-3">
+      {% if field_enabled('emergency', 'emergency_contact_name') %}
+      <div class="detail-cell"><div class="lbl">Contact Name</div><div class="val">{{ m.emergency_contact_name or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('emergency', 'emergency_contact_number') %}
+      <div class="detail-cell"><div class="lbl">Contact Number</div><div class="val">{{ m.emergency_contact_number or '—' }}</div></div>
+      {% endif %}
+      {% if field_enabled('emergency', 'emergency_contact_relation') %}
+      <div class="detail-cell"><div class="lbl">Relation</div><div class="val">{{ m.emergency_contact_relation or '—' }}</div></div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 6. PAR-Q -->
+  {% if section_enabled('parq') %}
+  <div class="section">
+    <div class="section-title">6. PAR-Q Health Screening</div>
+    {% set parq_questions = [
+      (m.parq_q1, 'Has a doctor ever told you that you have a heart condition?'),
+      (m.parq_q2, 'Do you feel pain in your chest when you do physical activity?'),
+      (m.parq_q3, 'In the past month, have you had chest pain when NOT doing physical activity?'),
+      (m.parq_q4, 'Do you lose balance due to dizziness or ever lose consciousness?'),
+      (m.parq_q5, 'Do you have a bone or joint problem that could be worsened by exercise?'),
+      (m.parq_q6, 'Is your doctor prescribing medication for blood pressure or heart condition?'),
+      (m.parq_q7, 'Do you know of any other reason why you should not do physical activity?'),
+      (m.parq_q8, 'Are you pregnant or have you given birth in the past 6 weeks?'),
+      (m.parq_q9, 'Are you 69+ and not accustomed to vigorous exercise?'),
+    ] %}
+    {% for answered_yes, question in parq_questions %}
+    <div class="parq-row">
+      <div class="q">{{ loop.index }}. {{ question }}</div>
+      <div class="{% if answered_yes %}parq-yes{% else %}parq-no{% endif %}">
+        {{ 'YES' if answered_yes else 'NO' }}
+      </div>
+    </div>
+    {% endfor %}
+    {% if m.parq_q1 or m.parq_q2 or m.parq_q3 or m.parq_q4 or m.parq_q5 or m.parq_q6 or m.parq_q7 or m.parq_q8 or m.parq_q9 %}
+    <div style="margin-top:10px;padding:8px 12px;background:#fef2f2;border-radius:6px;
+                font-size:0.78rem;color:#b91c1c;border:1px solid #fca5a5;">
+      ⚠️ Member answered YES to one or more PAR-Q questions. Doctor's clearance may be required.
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- 7. Terms & Conditions -->
+  <div class="section">
+    <div class="section-title">7. Terms &amp; Conditions</div>
+    <div class="terms">
+      {% for part in terms_parts %}
+      <div class="terms-part{% if part.page_break %} page-break{% endif %}">
+        {% if part.title %}<div class="terms-part-intro" style="font-weight:800;">{{ part.title }}</div>{% endif %}
+        {% if part.intro %}<div class="terms-part-intro">{{ part.intro }}</div>{% endif %}
+        {% if part.clauses %}
+        <ol>{% for clause in part.clauses %}<li>{{ clause }}</li>{% endfor %}</ol>
+        {% endif %}
+        {% if part.initials_required %}<div class="terms-initials">Member Initials: __________</div>{% endif %}
+      </div>
+      {% else %}
+      <ol><li>Please contact the gym for the current membership terms and conditions.</li></ol>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Signatures -->
+  <div class="sig-row {% if field_enabled('signatures', 'witness_name') and m.witness_name %}cols-3{% endif %}">
+    <div class="sig-block">
+      <div class="sig-line"></div>
+      <div class="sig-name">{{ m.first_name }} {{ m.last_name }}</div>
+      <div class="sig-label">Member Signature &amp; Date</div>
+    </div>
+    <div class="sig-block">
+      <div class="sig-line"></div>
+      <div class="sig-name">{{ m.consultant_name or 'Authorised Representative' }}</div>
+      <div class="sig-label">Gym Representative Signature &amp; Date</div>
+    </div>
+    {% if field_enabled('signatures', 'witness_name') and m.witness_name %}
+    <div class="sig-block">
+      <div class="sig-line"></div>
+      <div class="sig-name">{{ m.witness_name }}</div>
+      <div class="sig-label">Witness Signature &amp; Date</div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if contract_template and contract_template.footer_text %}
+  <div style="margin-top:20px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:.74rem;color:#6b7280;">{{ contract_template.footer_text }}</div>
+  {% endif %}
+
+  <!-- Footer -->
+  <div class="contract-footer">
+    <span>Contract #{{ "%05d"|format(m.id) }} &nbsp;·&nbsp; {{ m.first_name }} {{ m.last_name }} &nbsp;·&nbsp; {{ m.id_number or '' }}</span>
+    <span>Generated {{ generated_at }} &nbsp;·&nbsp; 1Cpase &copy; {{ today.year }}</span>
+  </div>
+
+</div>
+</body>
+</html>

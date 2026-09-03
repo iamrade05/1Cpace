@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Edit Class | 1Cpase{% endblock %}
+{% block page_title %}Edit: {{ fc.name }}{% endblock %}
+
+{% block content %}
+<div class="form-card">
+  <form method="post">
+    <div class="form-group">
+      <label>Class Name *</label>
+      <input name="name" required value="{{ fc.name }}">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Instructor</label>
+        <select name="instructor_id">
+          <option value="">— None —</option>
+          {% for i in instructors %}
+          <option value="{{ i.id }}" {% if fc.instructor_id == i.id %}selected{% endif %}>{{ i.full_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Capacity</label>
+        <input type="number" name="capacity" value="{{ fc.capacity }}" min="1" max="200">
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Day</label>
+        <select name="schedule_day">
+          <option value="">— Any —</option>
+          {% for d in days %}
+          <option value="{{ d }}" {% if fc.schedule_day == d %}selected{% endif %}>{{ d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Time</label>
+        <input type="time" name="schedule_time" value="{{ fc.schedule_time or '' }}">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:500;">
+        <input type="checkbox" name="active" {% if fc.active %}checked{% endif %}>
+        Active (visible and bookable)
+      </label>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+      <a href="{{ url_for('fitness.fitness_bookings', fid=fc.id) }}" class="btn btn-ghost">View Bookings</a>
+      <a href="{{ url_for('fitness.fitness_index') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel | 1Cpase{% endblock %}
+{% block page_title %}Admin Panel{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:28px;">
+  <div class="form-card" style="text-align:center;padding:28px;">
+    <div style="font-size:2.2rem;font-weight:900;color:#185FA5;">{{ stats.users }}</div>
+    <div style="font-size:0.8rem;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Staff Users</div>
+    <a href="{{ url_for('admin.users_index') }}" class="btn btn-primary btn-sm" style="margin-top:14px;display:inline-block;">Manage Users</a>
+  </div>
+  <div class="form-card" style="text-align:center;padding:28px;">
+    <div style="font-size:2.2rem;font-weight:900;color:#185FA5;">{{ stats.tariffs }}</div>
+    <div style="font-size:0.8rem;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Membership Plans</div>
+    <a href="{{ url_for('admin.tariffs_index') }}" class="btn btn-primary btn-sm" style="margin-top:14px;display:inline-block;">Manage Plans</a>
+  </div>
+  <div class="form-card" style="text-align:center;padding:28px;">
+    <div style="font-size:2.2rem;font-weight:900;color:#185FA5;">{{ stats.contracts }}</div>
+    <div style="font-size:0.8rem;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Contract Templates</div>
+    <a href="{{ url_for('admin.contract_templates_index') }}" class="btn btn-primary btn-sm" style="margin-top:14px;display:inline-block;">Manage Contracts</a>
+  </div>
+  <div class="form-card" style="text-align:center;padding:28px;">
+    <div style="font-size:2.2rem;font-weight:900;color:#185FA5;">{{ stats.reports }}</div>
+    <div style="font-size:0.8rem;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Saved Reports</div>
+    <a href="{{ url_for('admin.report_definitions_index') }}" class="btn btn-primary btn-sm" style="margin-top:14px;display:inline-block;">Manage Reports</a>
+  </div>
+  <div class="form-card" style="text-align:center;padding:28px;">
+    <div style="font-size:2.2rem;font-weight:900;color:#185FA5;">{{ stats.members }}</div>
+    <div style="font-size:0.8rem;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Total Members</div>
+    <a href="{{ url_for('members.members_index') }}" class="btn btn-ghost btn-sm" style="margin-top:14px;display:inline-block;">View Members</a>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+  <!-- Modules -->
+  <div class="form-card">
+    <h2 style="font-size:0.85rem;font-weight:700;color:#1F2933;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #EEF4FA;">
+      System Modules
+    </h2>
+    {% set modules = [
+      ('dashboard','Dashboard','📊'),
+      ('members','Members','👥'),
+      ('leads','Sales / Leads','🎯'),
+      ('applications','Applications','📋'),
+      ('collections','Collections','💳'),
+      ('hr','HR & Leave','🏢'),
+      ('fitness','Fitness Classes','🏋️'),
+      ('operations','Operations','⚙️'),
+      ('reports','Reports','📈'),
+      ('contracts','Contracts','📄'),
+    ] %}
+    {% for key, label, icon in modules %}
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:9px 0;border-bottom:1px solid #f3f4f6;">
+      <span style="font-size:0.85rem;">{{ icon }} {{ label }}</span>
+      <span style="font-size:0.72rem;background:#d1fae5;color:#065f46;
+                   padding:2px 8px;border-radius:10px;font-weight:600;">Active</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Quick links -->
+  <div class="form-card">
+    <h2 style="font-size:0.85rem;font-weight:700;color:#1F2933;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #EEF4FA;">
+      Quick Actions
+    </h2>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <a href="{{ url_for('admin.contract_template_add') }}" class="btn btn-primary" style="text-align:center;">+ Create Contract Template</a>
+      <a href="{{ url_for('admin.tariff_add') }}" class="btn btn-primary" style="text-align:center;">+ Create Membership Plan</a>
+      <a href="{{ url_for('admin.report_definition_add') }}" class="btn btn-primary" style="text-align:center;">+ Create Saved Report</a>
+      <a href="{{ url_for('admin.user_add') }}" class="btn btn-primary" style="text-align:center;">+ Add Staff User</a>
+      <a href="{{ url_for('members.members_add') }}" class="btn btn-ghost" style="text-align:center;">+ Add Member</a>
+      <a href="{{ url_for('leads.leads_add') }}" class="btn btn-ghost" style="text-align:center;">+ Capture Lead</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

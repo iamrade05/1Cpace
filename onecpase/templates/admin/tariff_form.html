@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if tariff else 'Create' }} Membership Plan | 1Cpase{% endblock %}
+{% block page_title %}{{ 'Edit' if tariff else 'Create' }} Membership Plan{% endblock %}
+
+{% block content %}
+<div style="max-width:520px;">
+<div class="form-card">
+  <form method="POST">
+    <div style="display:flex;flex-direction:column;gap:18px;">
+      <div class="form-group">
+        <label class="form-label">Membership Plan Name *</label>
+        <input type="text" name="name" class="form-control" required
+               placeholder="e.g. Premium 36 2026"
+               value="{{ tariff.name if tariff else '' }}">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="form-group">
+          <label class="form-label">Duration (months) *</label>
+          <select name="duration_months" class="form-control">
+            {% for m in [12, 24, 36] %}
+            <option value="{{ m }}" {{ 'selected' if tariff and tariff.duration_months==m }}>{{ m }} months</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Monthly Amount (R) *</label>
+          <input type="number" name="monthly_amount" class="form-control"
+                 step="0.01" min="0" required
+                 value="{{ '%.2f'|format(tariff.monthly_amount) if tariff else '0.00' }}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sort Order <span style="color:#9ca3af;font-weight:400;">(lower = first)</span></label>
+        <input type="number" name="sort_order" class="form-control"
+               min="1" value="{{ tariff.sort_order if tariff else 99 }}">
+      </div>
+      {% if tariff %}
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:0.85rem;font-weight:600;">
+          <input type="checkbox" name="active" value="1" style="accent-color:#185FA5;width:16px;height:16px;"
+                 {{ 'checked' if tariff.active }}>
+          Active (visible in member form)
+        </label>
+      </div>
+      {% endif %}
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:24px;">
+      <button type="submit" class="btn-submit-dark">{{ 'Save Changes' if tariff else 'Create Membership Plan' }}</button>
+      <a href="{{ url_for('admin.tariffs_index') }}" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+</div>
+</div>
+{% endblock %}
