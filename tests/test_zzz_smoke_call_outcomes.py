@@ -183,8 +183,10 @@ def test_ptp_discount_with_mandate_auto_approves(app):
         db = get_db()
         db.execute(
             """INSERT INTO debicheck_mandates (member_id, merchant_id, auth_type, client_ref1, client_ref2,
-                   account_name, account_type, account_number, branch_code, instalment_amount, status)
-               VALUES (?, 'm1', 'cell', 'ref1', 'ref2', 'Test MemberA', '1', '123456789', '123456', 500, 'submitted')""",
+                   account_name, account_type, account_number, branch_code, instalment_amount,
+                   submit_date, status)
+               VALUES (?, 'm1', 'cell', 'ref1', 'ref2', 'Test MemberA', '1', '123456789', '123456', 500,
+                       '2026-08-01', 'approved')""",
             (ctx["mid_a"],),
         )
         db.commit()

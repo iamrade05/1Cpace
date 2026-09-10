@@ -2,10 +2,10 @@ from datetime import datetime
 
 from onecpase.dashboard import (
     _build_trend_ranges,
-    _effective_member_counts,
     build_itensity_reconciliation,
 )
 from onecpase.database import get_db
+from onecpase.member_counts import get_member_counts
 
 
 def test_reconciliation_sync_route_uses_reconciliation_payload(app, monkeypatch):
@@ -100,16 +100,46 @@ def test_dashboard_trends_cover_hours_through_year():
     assert ranges["1y"]["revenue"]["total"] == 210
 
 
-def test_snapshot_overrides_local_member_totals():
-    active_members, total_members, inactive_members = _effective_member_counts(
-        120,
-        250,
-        {"active_count": 1020, "inactive_count": 559, "total_count": 1999},
-    )
+def test_member_counts_remain_local_when_itensity_differs(app, monkeypatch):
+    with app.app_context():
+        db = get_db()
+        for index, status in enumerate(("Active", "Active", "Inactive", "Blocked", "Unverified")):
+            db.execute(
+                "INSERT INTO members (first_name, last_name, id_number, member_status) VALUES (?, ?, ?, ?)",
+                (status, "Member", f"90010150090{index:02d}", status),
+            )
+        db.execute(
+            """INSERT INTO itensity_live_snapshot
+               (id, active_count, blocked_count, unverified_count, inactive_count, total_count)
+               VALUES (1, 20, 30, 40, 50, 140)"""
+        )
+        db.commit()
+        assert get_member_counts(db)["total"] == 5
 
-    assert active_members == 1020
-    assert total_members == 1999
-    assert inactive_members == 559
+    captured = {}
+
+    def capture(template_name, **context):
+        captured[template_name] = context
+        return "ok"
+
+    monkeypatch.setattr("onecpase.dashboard.render_template", capture)
+    monkeypatch.setattr("onecpase.members.render_template", capture)
+    monkeypatch.setattr("onecpase.reports.render_template", capture)
+
+    with app.test_client() as client:
+        with client.session_transaction() as session_data:
+            session_data.update({"user_id": 1, "role": "admin", "tenant_slug": None})
+
+        assert client.get("/dashboard").data == b"ok"
+        assert client.get("/members").data == b"ok"
+        assert client.get("/reports/?tab=overview").data == b"ok"
+
+    assert captured["dashboard.html"]["total_members"] == 5
+    assert captured["dashboard.html"]["active_members"] == 2
+    assert captured["dashboard.html"]["inactive_members"] == 1
+    assert captured["dashboard.html"]["itensity_reconciliation"]["drift_total"] == 135
+    assert captured["members/index.html"]["total_members"] == 5
+    assert captured["reports/index.html"]["stats"]["total_members"] == 5
 
 
 def test_itensity_reconciliation_detects_drift():

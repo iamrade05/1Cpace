@@ -194,6 +194,34 @@ def _monitor(config: dict[str, Any]) -> None:
                     pass
 
 
+def _monitor_database_path(app) -> str:
+    """The database this installation's turnstile writes its events to.
+
+    The controller is USB hardware physically wired to one gym, so the monitor
+    belongs to exactly one tenant. Writing to DATABASE_PATH is only correct
+    when that happens to be the tenant's own file; set TURNSTILE_TENANT_SLUG
+    to bind it to the registered tenant instead.
+    """
+    slug = str(app.config.get("TURNSTILE_TENANT_SLUG") or "").strip()
+    if slug:
+        registry = Path(app.config["PLATFORM_DATABASE_PATH"])
+        if registry.exists():
+            conn = sqlite3.connect(registry)
+            try:
+                row = conn.execute(
+                    "SELECT db_path FROM tenants WHERE slug = ? AND active = 1", (slug,)
+                ).fetchone()
+            finally:
+                conn.close()
+            if row and row[0]:
+                return str(Path(row[0]).resolve())
+        logger.warning(
+            "TURNSTILE_TENANT_SLUG=%r is not an active tenant; "
+            "turnstile events will fall back to DATABASE_PATH.", slug,
+        )
+    return str(Path(app.config["DATABASE_PATH"]).resolve())
+
+
 def start_turnstile_monitor(app) -> None:
     """Start one daemon monitor for the current application process."""
     global _monitor_thread
@@ -212,7 +240,7 @@ def start_turnstile_monitor(app) -> None:
         return
     if _monitor_thread and _monitor_thread.is_alive():
         return
-    database_path = str(Path(app.config["DATABASE_PATH"]).resolve())
+    database_path = _monitor_database_path(app)
     _monitor_thread = threading.Thread(
         target=_monitor,
         args=({

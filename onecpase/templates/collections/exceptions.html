@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Exception Queue · 1Cpase{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Management Exception Queue</h1>
+    <p class="page-sub">
+      Arrangements and overrides the rule engine will not auto-approve.
+      Reception cannot decide these; every decision here is recorded against the member.
+    </p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Payment Arrangements Awaiting Approval</h2>
+    <span class="badge {% if ptp_approvals %}badge-danger{% else %}badge-gray{% endif %}">{{ ptp_approvals|length }}</span>
+  </div>
+  <div class="card-body">
+    {% if ptp_approvals %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Member</th><th>Requested</th><th>Why it needs a manager</th>
+            <th class="num">Arrears</th><th class="num">Promise</th>
+            <th>Requested by</th><th>Decision</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ptp in ptp_approvals %}
+          <tr>
+            <td>
+              <a href="{{ url_for('members.member_detail', mid=ptp.member_id) }}">
+                {{ ptp.first_name }} {{ ptp.last_name }}</a>
+              <div style="color:#6b7280;font-size:.78rem;">{{ ptp.member_ref }}</div>
+            </td>
+            <td>
+              {{ ptp.arrangement_type|title }} &middot; {{ ptp.payment_method|replace('_',' ')|title }}
+              <div style="color:#6b7280;font-size:.78rem;">Promised {{ ptp.promise_date }}</div>
+            </td>
+            <td style="max-width:280px;">{{ ptp.escalation_reason }}</td>
+            <td class="num">R{{ '%.2f'|format(ptp.arrears_amount or 0) }}</td>
+            <td class="num">R{{ '%.2f'|format(ptp.promise_amount or 0) }}</td>
+            <td>{{ ptp.requested_by_name or '—' }}
+              <div style="color:#6b7280;font-size:.78rem;">{{ ptp.created_at }}</div>
+            </td>
+            <td style="min-width:230px;">
+              <form method="POST"
+                    action="{{ url_for('ptp.ptp_approve', mid=ptp.member_id, ptp_id=ptp.id) }}">
+                <input type="hidden" name="return_to" value="exception_queue">
+                <input type="text" name="approval_notes" class="form-control"
+                       style="font-size:.8rem;margin-bottom:6px;"
+                       placeholder="Condition or reason (required to decline)">
+                <button type="submit" name="decision" value="approved" class="btn btn-primary btn-sm">Approve</button>
+                <button type="submit" name="decision" value="declined" class="btn btn-danger btn-sm">Decline</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding:22px;color:#6b7280;">No arrangements are waiting for a manager decision.</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2>Collections Exceptions</h2>
+    <span class="badge {% if engine_exceptions %}badge-danger{% else %}badge-gray{% endif %}">{{ engine_exceptions|length }}</span>
+  </div>
+  <div class="card-body">
+    {% if engine_exceptions %}
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Member</th><th>Reason</th><th>Requested override</th>
+            <th>Raised by</th><th>Decision</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in engine_exceptions %}
+          <tr>
+            <td>
+              <a href="{{ url_for('members.member_detail', mid=item.member_id) }}">
+                {{ item.first_name }} {{ item.last_name }}</a>
+              <div style="color:#6b7280;font-size:.78rem;">{{ item.member_ref }}</div>
+            </td>
+            <td style="max-width:280px;">{{ item.reason }}</td>
+            <td style="max-width:240px;">{{ item.requested_action or '—' }}</td>
+            <td>{{ item.raised_by_name or 'System' }}
+              <div style="color:#6b7280;font-size:.78rem;">{{ item.created_at }}</div>
+            </td>
+            <td style="min-width:230px;">
+              <form method="POST"
+                    action="{{ url_for('collections.exception_decide', exception_id=item.id) }}">
+                <input type="text" name="notes" class="form-control"
+                       style="font-size:.8rem;margin-bottom:6px;"
+                       placeholder="Condition or reason (required to decline)">
+                <button type="submit" name="decision" value="approved" class="btn btn-primary btn-sm">Approve</button>
+                <button type="submit" name="decision" value="declined" class="btn btn-danger btn-sm">Decline</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="padding:22px;color:#6b7280;">No open collections exceptions.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

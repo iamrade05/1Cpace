@@ -139,6 +139,29 @@
     <div class="ptp-kpi-value">{{ legal_referral_count }}</div>
     <div class="ptp-kpi-sub">{{ legal_candidate_count }} clients ready for review</div>
   </div>
+  {% if session.get('role') in ('admin', 'manager') %}
+  <a class="ptp-kpi-card amber" style="text-decoration:none;display:block;"
+     href="{{ url_for('collections.exception_queue') }}">
+    <div class="ptp-kpi-label">Awaiting Manager</div>
+    <div class="ptp-kpi-value">{{ manager_queue.total }}</div>
+    <div class="ptp-kpi-sub">
+      {{ manager_queue.ptp_approvals }} arrangement(s), {{ manager_queue.engine_exceptions }} exception(s)
+    </div>
+  </a>
+  {% endif %}
+  <div class="ptp-kpi-card green">
+    <div class="ptp-kpi-label">Calls Today</div>
+    <div class="ptp-kpi-value">{{ call_progress.calls }}<span style="font-size:.9rem;color:#9ca3af;">/{{ call_progress.daily_target }}</span></div>
+    <div class="ptp-kpi-sub">
+      {{ call_progress.target_progress_pct }}% of target &middot;
+      {{ call_progress.caller_count }} caller(s) &times; {{ call_progress.target_per_caller }}
+    </div>
+  </div>
+  <div class="ptp-kpi-card purple">
+    <div class="ptp-kpi-label">Contact Rate</div>
+    <div class="ptp-kpi-value">{{ call_progress.contact_rate_pct }}%</div>
+    <div class="ptp-kpi-sub">{{ call_progress.contacts }} reached of {{ call_progress.calls }} called</div>
+  </div>
 </div>
 
 <!-- ── KPI Row 2: Categories ── -->

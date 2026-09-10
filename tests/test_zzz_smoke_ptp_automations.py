@@ -24,7 +24,7 @@ def _seed(app):
         db.execute(
             """INSERT INTO collections (member_id, outstanding_balance, amount_paid,
                    collection_date, status, notes)
-               VALUES (?, 500, 0, ?, 'failed', 'Recurring Fee')""",
+               VALUES (?, 500, 0, ?, 'failed', 'type=Recurring Fee')""",
             (mid_a, f"{month}-01"),
         )
 
@@ -42,7 +42,7 @@ def _seed(app):
         db.execute(
             """INSERT INTO collections (member_id, outstanding_balance, amount_paid,
                    collection_date, status, notes)
-               VALUES (?, 500, 0, ?, 'failed', 'Recurring Fee')""",
+               VALUES (?, 500, 0, ?, 'failed', 'type=Recurring Fee')""",
             (mid_b, f"{month}-01"),
         )
 

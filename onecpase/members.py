@@ -7,6 +7,7 @@ from flask import Blueprint, abort, current_app, flash, redirect, render_templat
 from werkzeug.utils import secure_filename
 from .auth import permission_required
 from .database import current_tenant_name, get_db, member_activity, next_member_ref
+from .member_counts import get_member_counts
 from .communication import collection_care_message
 from .encryption import decrypt_member, encrypt_member, hash_for_lookup, encryption_enabled
 from .debicheck import (
@@ -323,6 +324,7 @@ def members_index():
 
     base_sql = """
         SELECT m.id, m.member_ref, m.first_name, m.last_name, m.contact, m.email, m.id_number,
+               m.created_at,
                m.join_date, m.member_status, m.tariff, m.payment_type,
                m.itensity_ref, u.full_name AS consultant_name
         FROM members m
@@ -363,24 +365,18 @@ def members_index():
 
     rows = db.execute(base_sql, params).fetchall()
 
-    # status counts for filter chips
-    counts = {r["member_status"]: 0 for r in rows}
-    count_sql = "SELECT member_status, COUNT(*) AS cnt FROM members"
-    count_params = []
-    if restrict_to_own:
-        count_sql += " WHERE uploaded_by_id = ?"
-        count_params.append(session["user_id"])
-    count_sql += " GROUP BY member_status"
-    all_statuses = db.execute(count_sql, count_params).fetchall()
-    status_counts = {r["member_status"]: r["cnt"] for r in all_statuses}
+    member_counts = get_member_counts(
+        db,
+        uploaded_by_id=session["user_id"] if restrict_to_own else None,
+    )
 
     return render_template(
         "members/index.html",
         members=rows,
         search=q,
         status_filter=status_filter,
-        status_counts=status_counts,
-        total_members=sum(status_counts.values()),
+        status_counts=member_counts["by_status"],
+        total_members=member_counts["total"],
     )
 
 

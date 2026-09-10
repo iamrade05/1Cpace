@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -5,6 +6,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 
 from .auth import login_required
 from .database import get_db
+from .member_counts import get_member_counts
 
 
 dashboard_bp = Blueprint("dashboard", __name__)
@@ -39,7 +41,13 @@ def _percent_change(current: float, previous: float):
     return None
 
 
-def build_itensity_reconciliation(local_status_counts: dict, live_status_counts: dict):
+def build_itensity_reconciliation(
+    local_status_counts: dict,
+    live_status_counts: dict,
+    *,
+    local_total: int | None = None,
+    live_total: int | None = None,
+):
     """Compare app and live Itensity status totals and return a drift summary."""
     ordered_statuses = ["Active", "Blocked", "Unverified", "Inactive"]
     local = {
@@ -50,8 +58,8 @@ def build_itensity_reconciliation(local_status_counts: dict, live_status_counts:
         status: int((live_status_counts or {}).get(status, 0) or (live_status_counts or {}).get(status.lower(), 0) or 0)
         for status in ordered_statuses
     }
-    live_total = sum(live.values())
-    local_total = sum(local.values())
+    live_total = sum(live.values()) if live_total is None else int(live_total)
+    local_total = sum(local.values()) if local_total is None else int(local_total)
     status_rows = []
     for status in ordered_statuses:
         local_value = local[status]
@@ -72,20 +80,6 @@ def build_itensity_reconciliation(local_status_counts: dict, live_status_counts:
         "status_rows": status_rows,
         "is_matched": local_total == live_total and all(row["matches"] for row in status_rows),
     }
-
-
-def _effective_member_counts(local_active: int, local_total: int, snapshot):
-    """Prefer the live Itensity snapshot when available; fall back to local DB values."""
-    if snapshot:
-        active = int(snapshot["active_count"] or local_active)
-        total = int(snapshot["total_count"] or local_total)
-        inactive = int(
-            snapshot["inactive_count"] or max(total - active, 0)
-        )
-        return active, total, inactive
-
-    inactive = max(local_total - local_active, 0)
-    return local_active, local_total, inactive
 
 
 def _norm_member_key(value):
@@ -187,16 +181,33 @@ def build_member_reconciliation(local_members, live_members):
     }
 
 
+class ItensityScriptsUnavailable(RuntimeError):
+    """The Itensity helper scripts are not installed on this host."""
+
+
 def sync_itensity_members_to_local(db):
     """Pull the latest live Itensity export and reconcile it into the local DB."""
-    from scripts.import_itensity_members import import_members, read_members
-    from scripts.pull_itensity_export import pull_dashboard_snapshot, pull_export
+    try:
+        from scripts.import_itensity_members import import_members, read_roster
+        from scripts.pull_itensity_roster import pull_roster
+    except ImportError as error:
+        # The scripts package is not part of this repository; say so plainly
+        # rather than surfacing an ImportError traceback to the operator.
+        raise ItensityScriptsUnavailable(
+            "The Itensity import scripts are not installed on this host, so a "
+            "live sync cannot run. Install the scripts package and retry."
+        ) from error
 
     root = Path(__file__).resolve().parent.parent
-    out_path = root / "data" / f"itensity_sync_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
-    snapshot = pull_dashboard_snapshot(headless=True)
-    export_path = pull_export(out_path, headless=True)
-    live_members, skipped = read_members(export_path)
+    out_path = root / "data" / f"itensity_sync_{datetime.now():%Y%m%d_%H%M%S}.json"
+    payload = pull_roster(headless=True)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    snapshot = payload["snapshot"]["chips"]
+    export_path = out_path
+    # read_roster raises RosterMismatch if the pull is short of Itensity's own
+    # counts; the caller surfaces that instead of importing a partial roster.
+    live_members, skipped, synthetic = read_roster(out_path)
 
     local_members = db.execute(
         "SELECT id, first_name, last_name, id_number, contact, email, member_status, date_of_birth FROM members"
@@ -220,6 +231,7 @@ def sync_itensity_members_to_local(db):
         "import_result": dict(import_result),
         "reconciliation": reconciliation,
         "skipped": dict(skipped),
+        "synthetic_ids": synthetic,
     }
 
 
@@ -365,16 +377,13 @@ def dashboard():
         selected_range = "30d"
 
     # ── KPI totals ──────────────────────────────────────────────────────────
-    local_active_members = db.execute(
-        "SELECT COUNT(*) FROM members WHERE member_status = 'Active'"
-    ).fetchone()[0]
-    local_total_members = db.execute("SELECT COUNT(*) FROM members").fetchone()[0]
+    member_counts = get_member_counts(db)
+    active_members = member_counts["active"]
+    total_members = member_counts["total"]
+    inactive_members = member_counts["inactive"]
     itensity_snapshot = db.execute(
         "SELECT * FROM itensity_live_snapshot WHERE id = 1"
     ).fetchone()
-    active_members, total_members, inactive_members = _effective_member_counts(
-        local_active_members, local_total_members, itensity_snapshot
-    )
 
     pending_collections = db.execute(
         "SELECT COUNT(*) FROM collections WHERE status = 'pending'"
@@ -448,10 +457,10 @@ def dashboard():
 
     reconciliation = build_itensity_reconciliation(
         {
-            "Active": local_active_members,
-            "Blocked": db.execute("SELECT COUNT(*) FROM members WHERE member_status = 'Blocked'").fetchone()[0],
-            "Unverified": db.execute("SELECT COUNT(*) FROM members WHERE member_status = 'Unverified'").fetchone()[0],
-            "Inactive": db.execute("SELECT COUNT(*) FROM members WHERE member_status = 'Inactive'").fetchone()[0],
+            "Active": member_counts["active"],
+            "Blocked": member_counts["blocked"],
+            "Unverified": member_counts["unverified"],
+            "Inactive": member_counts["inactive"],
         },
         {
             "Active": itensity_snapshot["active_count"] if itensity_snapshot else 0,
@@ -459,6 +468,8 @@ def dashboard():
             "Unverified": itensity_snapshot["unverified_count"] if itensity_snapshot else 0,
             "Inactive": itensity_snapshot["inactive_count"] if itensity_snapshot else 0,
         },
+        local_total=member_counts["total"],
+        live_total=itensity_snapshot["total_count"] if itensity_snapshot else 0,
     )
 
     return render_template(
@@ -519,11 +530,12 @@ def sales_dashboard():
 def dashboard_reconciliation():
     db = get_db()
     itensity_snapshot = db.execute("SELECT * FROM itensity_live_snapshot WHERE id = 1").fetchone()
+    member_counts = get_member_counts(db)
     local_status_counts = {
-        "Active": db.execute("SELECT COUNT(*) FROM members WHERE member_status = 'Active'").fetchone()[0],
-        "Blocked": db.execute("SELECT COUNT(*) FROM members WHERE member_status = 'Blocked'").fetchone()[0],
-        "Unverified": db.execute("SELECT COUNT(*) FROM members WHERE member_status = 'Unverified'").fetchone()[0],
-        "Inactive": db.execute("SELECT COUNT(*) FROM members WHERE member_status = 'Inactive'").fetchone()[0],
+        "Active": member_counts["active"],
+        "Blocked": member_counts["blocked"],
+        "Unverified": member_counts["unverified"],
+        "Inactive": member_counts["inactive"],
     }
     live_status_counts = {
         "Active": itensity_snapshot["active_count"] if itensity_snapshot else 0,
@@ -531,7 +543,12 @@ def dashboard_reconciliation():
         "Unverified": itensity_snapshot["unverified_count"] if itensity_snapshot else 0,
         "Inactive": itensity_snapshot["inactive_count"] if itensity_snapshot else 0,
     }
-    reconciliation = build_itensity_reconciliation(local_status_counts, live_status_counts)
+    reconciliation = build_itensity_reconciliation(
+        local_status_counts,
+        live_status_counts,
+        local_total=member_counts["total"],
+        live_total=itensity_snapshot["total_count"] if itensity_snapshot else 0,
+    )
     return render_template(
         "dashboard_reconciliation.html",
         reconciliation=reconciliation,

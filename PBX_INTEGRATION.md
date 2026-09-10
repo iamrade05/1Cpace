@@ -26,9 +26,22 @@ Set in `.env`:
 ## Current endpoints
 
 - `POST /pbx/dial` — authenticated click-to-call.
-- `POST /pbx/webhook` — PBX event receiver.
+- `POST /pbx/webhook` — PBX event receiver for the primary tenant (`DATABASE_PATH`).
+- `POST /pbx/webhook/<tenant_slug>` — tenant-scoped PBX event receiver.
 - `GET /pbx/calls` — authenticated call log.
 - `GET /pbx/health` — authenticated API connectivity check.
+
+### Multi-tenant webhooks
+
+A PBX posts with no session and no tenant cookie, so the endpoint itself has to
+say which gym the events belong to. On a multi-tenant install, point each
+tenant's Yeastar at `/pbx/webhook/<tenant_slug>`; the events are written to that
+tenant's own database. The bare `/pbx/webhook` path remains for the existing
+single-tenant install and resolves to `DATABASE_PATH`.
+
+`PBX_WEBHOOK_SECRET` is still a single shared secret for the whole install, so
+it authenticates *a* trusted PBX rather than *one specific tenant's* PBX. Until
+per-tenant secrets exist, only point trusted PBXs at this endpoint.
 
 The webhook secret is optional in development but should be set in production. Never put the Yeastar Client Secret in browser JavaScript.
 

@@ -1,0 +1,5 @@
+# Development and CI only. Production installs requirements.txt alone, which
+# deliberately carries no test tooling.
+-r requirements.txt
+
+pytest>=8.0  # the merge gate — see TESTING.md

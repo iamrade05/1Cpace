@@ -133,3 +133,74 @@ def test_mandate_from_member_builds_expected_shape(app):
     assert mandate["account_type"] == "2"  # Savings -> NuPay code
     assert mandate["account_name"] == "Ada Lovelace"
     assert mandate["id_number"] == "8001015009087"
+
+# -- NuPay's own status wording -> this app's vocabulary ---------------------
+#
+# Ported from the live 1Cpace app, which had already hit this in production.
+# The portal answers with "Active", "Pending Authorisation", "Rejected
+# Authorisation", "In Active" and "Suspended"; only the first coincides with
+# a word this app understands.
+
+import pytest
+
+
+@pytest.mark.parametrize(
+    ("portal_wording", "expected"),
+    [
+        ("Active", "active"),
+        ("Pending Authorisation", "pending"),
+        ("Rejected Authorisation", "rejected"),
+        ("In Active", "cancelled"),
+        ("Suspended", "cancelled"),
+    ],
+)
+def test_portal_wording_maps_onto_the_app_vocabulary(portal_wording, expected):
+    assert nupay_driver._normalize_mandate_status(portal_wording) == expected
+
+
+def test_in_active_is_not_mistaken_for_active():
+    """"In Active" contains "active". Reading it as a live mandate would tell
+    staff a dead debit order is still collecting."""
+    assert nupay_driver._normalize_mandate_status("In Active") == "cancelled"
+    assert nupay_driver._normalize_mandate_status("Rejected Authorisation") == "rejected"
+
+
+def test_unrecognised_wording_is_not_guessed():
+    assert nupay_driver._normalize_mandate_status("Wibble") is None
+    assert nupay_driver._normalize_mandate_status("") is None
+    assert nupay_driver._normalize_mandate_status(None) is None
+
+
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [
+        ("Rejected Authorisation", "failed"),
+        ("In Active", "failed"),
+        ("Suspended", "failed"),
+        ("in active", "failed"),
+        ("Pending Authorisation", "pending"),
+        ("Active", "approved"),
+    ],
+)
+def test_raw_portal_wording_still_reaches_the_compliance_gate(stored, expected):
+    """sync_debicheck_to_application() gates a member application on this
+    mapping. While these fell through to "unknown", a rejected or suspended
+    mandate never marked the DebiCheck gate failed, so the member read as
+    merely un-checked rather than un-collectable. Rows written before the
+    driver normalised still hold the raw wording."""
+    assert debicheck.normalise_debicheck_status(stored) == expected
+
+
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [
+        ("approved", "approved"), ("active", "approved"), ("accepted", "approved"),
+        ("failed", "failed"), ("rejected", "failed"), ("cancelled", "failed"),
+        ("pending", "pending"), ("submitted", "submitted"),
+        ("reviewing", "reviewing"), ("unknown", "unknown"),
+        ("Wibble", "unknown"), (None, "unknown"), ("", "unknown"),
+    ],
+)
+def test_existing_vocabulary_is_unchanged(stored, expected):
+    """The new fallback must not disturb the values already stored."""
+    assert debicheck.normalise_debicheck_status(stored) == expected

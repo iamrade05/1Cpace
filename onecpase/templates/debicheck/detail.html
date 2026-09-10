@@ -3,7 +3,7 @@
 {% block page_title %}DebiCheck #{{ mandate.id }}{% endblock %}
 {% block content %}
 <div class="card" style="max-width:900px;margin:auto;">
-  <div class="card-header"><div><h2>{{ mandate.first_name }} {{ mandate.last_name }}</h2><div style="font-size:.75rem;color:#6b7280;margin-top:3px;">NuPay mandate · Staff {{ mandate.client_ref2 }}</div></div><span class="badge {% if mandate.status == 'active' %}badge-success{% elif mandate.status in ('failed','rejected') %}badge-danger{% else %}badge-warning{% endif %}">{{ mandate.status }}{% if mandate.status == 'submitted' %} — not yet confirmed active{% elif mandate.status == 'reviewing' %} — waiting on the NuPay browser window{% endif %}</span></div>
+  <div class="card-header"><div><h2>{{ mandate.first_name }} {{ mandate.last_name }}</h2><div style="font-size:.75rem;color:#6b7280;margin-top:3px;">NuPay mandate · Staff {{ mandate.client_ref2 }}</div></div><span class="badge {% if mandate.status == 'active' %}badge-success{% elif mandate.status in ('failed','rejected','cancelled') %}badge-danger{% else %}badge-warning{% endif %}">{{ mandate.status }}{% if mandate.status == 'submitted' %} — not yet confirmed active{% elif mandate.status == 'reviewing' %} — waiting on the NuPay browser window{% elif mandate.status == 'cancelled' %} — suspended or inactive at NuPay, it will not collect{% endif %}</span></div>
   <div style="padding:20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;" class="mandate-detail-grid">
     {% for label,value in [('Account Holder',mandate.account_name),('Account Type',mandate.account_type),('Account Number',mandate.account_number),('Branch Code',mandate.branch_code),('Amount','R%.2f'|format(mandate.instalment_amount)),('Submit Date',mandate.submit_date),('Frequency',mandate.frequency),('Installments',mandate.no_installments),('Client Reference 1',mandate.client_ref1),('Staff Number',mandate.client_ref2)] %}
     <div><div style="font-size:.7rem;color:#9ca3af;text-transform:uppercase;font-weight:700;">{{ label }}</div><div style="margin-top:4px;font-weight:600;overflow-wrap:anywhere;">{{ value or '—' }}</div></div>
@@ -21,7 +21,7 @@
         <button class="btn btn-primary">Review &amp; Submit on NuPay</button>
       </form>
       <form method="post" action="{{ url_for('debicheck.push',mandate_id=mandate.id) }}">
-        <button class="btn btn-secondary">{% if mandate.status in ('submitted','pending','failed','rejected') %}Resend Automatically{% else %}Push Automatically{% endif %}</button>
+        <button class="btn btn-secondary">{% if mandate.status in ('submitted','pending','failed','rejected','cancelled') %}Resend Automatically{% else %}Push Automatically{% endif %}</button>
       </form>
     {% endif %}
   </div>

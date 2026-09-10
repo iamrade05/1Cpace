@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Screen Recordings · 1Cpase{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Screen Recordings</h1>
+    <p class="page-sub">Record approved test or support sessions from this browser.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>New Recording</h2></div>
+  <div class="card-body" style="padding:20px;">
+    <p style="margin-bottom:16px;color:#4b5563;font-size:.9rem;line-height:1.5;">
+      Starting a recording opens your browser's share picker. Select the 1Cpase tab or approved screen;
+      recording starts only after you approve that prompt.
+    </p>
+    <div class="form-group" style="max-width:520px;">
+      <label for="recordingTitle">Recording title</label>
+      <input id="recordingTitle" class="form-control" maxlength="120"
+             placeholder="Example: Sales-lead workflow test">
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <button id="startRecording" class="btn btn-primary" type="button">● Start recording</button>
+      <button id="stopRecording" class="btn btn-danger" type="button" disabled>■ Stop &amp; save</button>
+      <span id="recordingStatus" aria-live="polite" style="font-size:.85rem;color:#4b5563;">Ready to record.</span>
+    </div>
+    <p style="margin-top:14px;color:#6b7280;font-size:.78rem;">Maximum upload size: 15 MB. Record only authorised sessions and avoid member passwords or payment details.</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>Saved Recordings</h2></div>
+  <div class="card-body">
+    {% if recordings %}
+    <table>
+      <thead><tr><th>Title</th><th>Recorded by</th><th>Created</th><th>Duration</th><th>Size</th><th></th></tr></thead>
+      <tbody>
+        {% for recording in recordings %}
+        <tr>
+          <td>{{ recording.title }}</td>
+          <td>{{ recording.created_by_name }}</td>
+          <td>{{ recording.created_at }}</td>
+          <td>{% if recording.duration_seconds is not none %}{{ '%.0f'|format(recording.duration_seconds) }} sec{% else %}—{% endif %}</td>
+          <td>{{ '%.1f'|format(recording.file_size / 1048576) }} MB</td>
+          <td><a class="btn btn-ghost btn-sm" href="{{ url_for('screen_recordings.download', recording_id=recording.id) }}">Download</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div style="padding:22px;color:#6b7280;">No recordings have been saved.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (() => {
+    const startButton = document.getElementById('startRecording');
+    const stopButton = document.getElementById('stopRecording');
+    const status = document.getElementById('recordingStatus');
+    const title = document.getElementById('recordingTitle');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+    let recorder;
+    let stream;
+    let startedAt;
+    let chunks = [];
+
+    const setStatus = (message, error = false) => {
+      status.textContent = message;
+      status.style.color = error ? '#b91c1c' : '#4b5563';
+    };
+
+    const stopStream = () => {
+      if (stream) stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    };
+
+    startButton.addEventListener('click', async () => {
+      if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) {
+        setStatus('This browser does not support screen recording.', true);
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+          ? 'video/webm;codecs=vp9' : 'video/webm';
+        chunks = [];
+        recorder = new MediaRecorder(stream, { mimeType });
+        recorder.addEventListener('dataavailable', event => {
+          if (event.data.size) chunks.push(event.data);
+        });
+        recorder.addEventListener('stop', async () => {
+          const durationSeconds = Math.round((Date.now() - startedAt) / 1000);
+          const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+          stopStream();
+          startButton.disabled = false;
+          stopButton.disabled = true;
+          if (!blob.size) {
+            setStatus('No recording data was captured.', true);
+            return;
+          }
+          const formData = new FormData();
+          formData.append('title', title.value.trim());
+          formData.append('duration_seconds', durationSeconds);
+          formData.append('recording', blob, 'screen-recording.webm');
+          formData.append('csrf_token', csrfToken || '');
+          setStatus('Saving recording…');
+          try {
+            const response = await fetch('{{ url_for("screen_recordings.upload") }}', {
+              method: 'POST', body: formData, credentials: 'same-origin'
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Could not save recording.');
+            setStatus('Recording saved. Refreshing…');
+            window.location.reload();
+          } catch (error) {
+            setStatus(error.message || 'Could not save recording.', true);
+          }
+        });
+        stream.getVideoTracks()[0].addEventListener('ended', () => {
+          if (recorder?.state === 'recording') recorder.stop();
+        });
+        recorder.start(1000);
+        startedAt = Date.now();
+        startButton.disabled = true;
+        stopButton.disabled = false;
+        setStatus('Recording in progress.');
+      } catch (error) {
+        stopStream();
+        setStatus(error.name === 'NotAllowedError' ? 'Screen sharing was not approved.' : 'Could not start recording.', true);
+      }
+    });
+
+    stopButton.addEventListener('click', () => {
+      if (recorder?.state === 'recording') recorder.stop();
+    });
+  })();
+</script>
+{% endblock %}

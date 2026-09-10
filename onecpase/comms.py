@@ -152,6 +152,7 @@ def whatsapp_webhook():
 
     data = request.get_json(silent=True) or {}
 
+    db = None
     try:
         for entry in data.get("entry", []):
             for change in entry.get("changes", []):
@@ -220,7 +221,9 @@ def whatsapp_webhook():
                             """,
                             (conv["id"], wa_msg_id, msg_type, content, ts),
                         )
-        db.commit()
+        # db stays None when every entry was for an unregistered phone id.
+        if db is not None:
+            db.commit()
     except Exception:
         current_app.logger.exception("Failed to process inbound WhatsApp webhook")
 
@@ -246,6 +249,7 @@ def facebook_webhook():
 
     data = request.get_json(silent=True) or {}
 
+    db = None
     try:
         for entry in data.get("entry", []):
             page_id = str(entry.get("id", "") or "")
@@ -309,7 +313,9 @@ def facebook_webhook():
                                 "INSERT INTO fb_comments (fb_comment_id, post_id, commenter_name, commenter_id, content, timestamp) VALUES (?,?,?,?,?,?)",
                                 (comment_id, post_id, commenter_name, commenter_id, msg, ts),
                             )
-        db.commit()
+        # db stays None when every entry was for an unregistered page id.
+        if db is not None:
+            db.commit()
     except Exception:
         current_app.logger.exception("Failed to process inbound Facebook webhook")
 

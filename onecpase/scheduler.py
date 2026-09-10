@@ -32,6 +32,32 @@ _scheduler: BackgroundScheduler | None = None
 
 # ── Tenant lookup ──────────────────────────────────────────────────────────
 
+ITENSITY_SCRIPTS = (
+    "scripts.import_itensity_members",
+    "scripts.pull_itensity_export",
+    "scripts.import_itensity_transactions",
+)
+
+
+def itensity_scripts_available() -> bool:
+    """Whether the Itensity helper scripts can be imported.
+
+    The Itensity jobs are thin wrappers over a `scripts/` package that is not
+    part of this repository. When it is absent the jobs cannot do anything, so
+    they are never registered — otherwise the 15-minute sweep logs an
+    ImportError traceback around ninety times a day and buries real failures.
+    """
+    import importlib.util
+
+    for name in ITENSITY_SCRIPTS:
+        try:
+            if importlib.util.find_spec(name) is None:
+                return False
+        except (ImportError, ValueError):
+            return False
+    return True
+
+
 def _repo_root(app) -> Path:
     return Path(app.root_path).parent
 
@@ -196,6 +222,42 @@ def _job_sales_decision_followups(app) -> None:
 
 # ── Job 2: Itensity member export pull + import ─────────────────────────────
 
+def _write_itensity_snapshot(conn, snapshot: dict | None) -> None:
+    """Record Itensity's own counts, whether or not the roster passed the gate.
+
+    A mismatch is exactly when the dashboard's numbers are most worth having:
+    they are what the next run — or a person — reconciles against.
+    """
+    if not snapshot:
+        return
+    conn.execute(
+        """INSERT INTO itensity_live_snapshot
+           (id, active_count, blocked_count, unverified_count, inactive_count, total_count, fetched_at)
+           VALUES (1, ?, ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT(id) DO UPDATE SET
+             active_count=excluded.active_count, blocked_count=excluded.blocked_count,
+             unverified_count=excluded.unverified_count, inactive_count=excluded.inactive_count,
+             total_count=excluded.total_count, fetched_at=excluded.fetched_at""",
+        (snapshot["active"], snapshot["blocked"], snapshot["unverified"],
+         snapshot["inactive"], snapshot["total"]),
+    )
+
+
+def _record_itensity_snapshot(tenant, snapshot: dict | None) -> None:
+    """Same, on its own connection — used on the path where the import is skipped."""
+    if not snapshot:
+        return
+    conn = sqlite3.connect(tenant["db_path"])
+    try:
+        _write_itensity_snapshot(conn, snapshot)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        logger.exception("[scheduler] could not record the Itensity snapshot")
+    finally:
+        conn.close()
+
+
 def _job_itensity_member_import(app) -> None:
     tenant = _find_tenant(app, app.config["ITENSITY_TENANT_SLUG"])
     if tenant is None:
@@ -205,39 +267,46 @@ def _job_itensity_member_import(app) -> None:
         )
         return
 
-    from scripts.pull_itensity_export import pull_dashboard_snapshot, pull_export
-    from scripts.import_itensity_members import import_members, read_members
+    import json
+
+    from scripts.import_itensity_members import import_members, read_roster
+    from scripts.itensity_reconcile import RosterMismatch
+    from scripts.pull_itensity_roster import pull_roster
 
     root = _repo_root(app)
-    out_path = root / "data" / f"itensity_export_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+    out_path = root / "data" / f"itensity_roster_{datetime.now():%Y%m%d_%H%M%S}.json"
     try:
-        snapshot = pull_dashboard_snapshot(headless=True)
+        payload = pull_roster(headless=True)
     except Exception:
-        logger.exception("[scheduler] Itensity dashboard snapshot failed")
-        snapshot = None
-    try:
-        pull_export(out_path, headless=True)
-    except Exception:
-        logger.exception("[scheduler] Itensity export pull failed")
+        logger.exception("[scheduler] Itensity roster pull failed")
         return
 
-    members, skipped = read_members(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    chips = payload["snapshot"]["chips"]
+    snapshot = dict(chips) if chips else None
+
+    # The gate runs here too, or the nightly job would quietly import whatever
+    # short roster the portal happened to return.
+    try:
+        members, skipped, synthetic = read_roster(out_path)
+    except RosterMismatch as exc:
+        logger.error(
+            "[scheduler] Itensity import skipped — roster does not match Itensity: %s", exc
+        )
+        _record_itensity_snapshot(tenant, snapshot)
+        return
+    if synthetic:
+        logger.warning(
+            "[scheduler] %s Itensity members have no SA ID and were imported with a "
+            "placeholder ID: %s",
+            len(synthetic), ", ".join(row["itensity_ref"] for row in synthetic),
+        )
     conn = sqlite3.connect(tenant["db_path"])
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        if snapshot:
-            conn.execute(
-                """INSERT INTO itensity_live_snapshot
-                   (id, active_count, blocked_count, unverified_count, inactive_count, total_count, fetched_at)
-                   VALUES (1, ?, ?, ?, ?, ?, datetime('now'))
-                   ON CONFLICT(id) DO UPDATE SET
-                     active_count=excluded.active_count, blocked_count=excluded.blocked_count,
-                     unverified_count=excluded.unverified_count, inactive_count=excluded.inactive_count,
-                     total_count=excluded.total_count, fetched_at=excluded.fetched_at""",
-                (snapshot["active"], snapshot["blocked"], snapshot["unverified"],
-                 snapshot["inactive"], snapshot["total"]),
-            )
+        _write_itensity_snapshot(conn, snapshot)
         backup_path = _backup_before_write(
             root, tenant["db_path"], f"{tenant['slug']}_before_scheduled_member_import"
         )
@@ -337,13 +406,22 @@ def init_scheduler(app) -> None:
         return
 
     scheduler = BackgroundScheduler(timezone="Africa/Johannesburg")
-    scheduler.add_job(
-        lambda: _job_itensity_member_import(app),
-        CronTrigger(hour=2, minute=0),
-        id="itensity_member_import",
-        replace_existing=True,
-        misfire_grace_time=3600,
-    )
+    itensity_ready = itensity_scripts_available()
+    if not itensity_ready:
+        app.logger.warning(
+            "Itensity jobs not scheduled: the scripts package (%s) is not "
+            "importable. Member import and the transactions sweep are disabled "
+            "until it is installed on this host.",
+            ", ".join(ITENSITY_SCRIPTS),
+        )
+    if itensity_ready:
+        scheduler.add_job(
+            lambda: _job_itensity_member_import(app),
+            CronTrigger(hour=2, minute=0),
+            id="itensity_member_import",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
     scheduler.add_job(
         lambda: _job_ptp_automations(app),
         CronTrigger(hour=2, minute=30),
@@ -367,13 +445,14 @@ def init_scheduler(app) -> None:
         misfire_grace_time=600,
         max_instances=1,
     )
-    scheduler.add_job(
-        lambda: _job_itensity_transactions_sweep(app),
-        IntervalTrigger(minutes=15),
-        id="itensity_transactions_sweep",
-        replace_existing=True,
-        misfire_grace_time=600,
-    )
+    if itensity_ready:
+        scheduler.add_job(
+            lambda: _job_itensity_transactions_sweep(app),
+            IntervalTrigger(minutes=15),
+            id="itensity_transactions_sweep",
+            replace_existing=True,
+            misfire_grace_time=600,
+        )
     scheduler.start()
     _scheduler = scheduler
     app.logger.info(

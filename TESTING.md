@@ -10,11 +10,20 @@ Run tests from a clean checkout with the project's declared dependencies install
 
 The historical baseline of **14 failures out of 177 tests** was observed in a clean environment without `.env`, `ENCRYPTION_KEY`, and `TESSERACT_CMD`. It is an environment-specific observation, not a universal test count.
 
+As of 2026-09-05 the suite is **195 passed, 0 failed** with the project venv and `ENCRYPTION_KEY` configured. The 11 long-standing failures were classified and closed: three implementation defects (webhook commit on an unbound connection, contract terms ignoring `terms_text`, the DebiCheck discount tier gated on an arrangement that cannot exist yet), one schema defect (`tenant_integrations` was never created), and seven stale tests.
+
 ## Local command
 
+`pytest` is intentionally absent from `requirements.txt` — production installs
+no test tooling. Install the dev set instead:
+
 ```text
+python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
+
+On Windows, pass `--basetemp` to a short path outside the project to avoid a
+`PermissionError [WinError 5]` during pytest's temp cleanup.
 
 ## Failure classification
 

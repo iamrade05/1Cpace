@@ -11,11 +11,12 @@ from datetime import datetime
 from urllib.parse import quote
 
 import requests
-from flask import Blueprint, current_app, jsonify, render_template, request, session
+from flask import Blueprint, current_app, g, jsonify, render_template, request, session
 
 from .auth import login_required, permission_required
 from .extensions import csrf
 from .database import get_db
+from .platform_db import get_platform_db
 
 pbx_bp = Blueprint("pbx", __name__, url_prefix="/pbx")
 _token = {"access": None, "refresh": None, "access_exp": 0, "refresh_exp": 0}
@@ -73,13 +74,45 @@ def _normalise_phone(value):
     return "".join(ch for ch in str(value or "") if ch.isdigit() or ch == "+")
 
 
+def _phone_variants(phone) -> list[str]:
+    """The same number in both forms this app stores.
+
+    leads.phone_normalized is canonical 27XXXXXXXXX; members.contact is
+    whatever reception typed, usually the local 0XXXXXXXXX form.
+    """
+    from .leads import normalise_phone
+
+    canonical = normalise_phone(phone)
+    if not canonical:
+        return []
+    variants = [canonical]
+    if canonical.startswith("27") and len(canonical) == 11:
+        variants.append("0" + canonical[2:])
+    return variants
+
+
 def _find_contact(phone):
-    db = get_db(); digits = _normalise_phone(phone).replace("+", "")
-    if not digits: return None
-    lead = db.execute("SELECT id, full_name FROM leads WHERE phone_normalized = ? LIMIT 1", (digits,)).fetchone()
-    if lead: return {"lead_id": lead["id"], "member_id": None, "name": lead["full_name"]}
-    member = db.execute("SELECT id, full_name FROM members WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '+', ''), '-', '') = ? LIMIT 1", (digits,)).fetchone()
-    if member: return {"lead_id": None, "member_id": member["id"], "name": member["full_name"]}
+    db = get_db()
+    variants = _phone_variants(phone)
+    if not variants:
+        return None
+    lead = db.execute(
+        "SELECT id, full_name FROM leads WHERE phone_normalized = ? LIMIT 1", (variants[0],)
+    ).fetchone()
+    if lead:
+        return {"lead_id": lead["id"], "member_id": None, "name": lead["full_name"]}
+    # members has first_name/last_name/contact — not the leads column names.
+    placeholders = ",".join("?" for _ in variants)
+    member = db.execute(
+        f"""SELECT id, first_name, last_name FROM members
+            WHERE REPLACE(REPLACE(REPLACE(COALESCE(contact, ''), ' ', ''), '+', ''), '-', '')
+                  IN ({placeholders})
+            LIMIT 1""",
+        variants,
+    ).fetchone()
+    if member:
+        name = f"{member['first_name'] or ''} {member['last_name'] or ''}".strip()
+        return {"lead_id": None, "member_id": member["id"], "name": name}
     return None
 
 
@@ -231,9 +264,32 @@ def dial():
         return jsonify(ok=False, error=str(exc)), 502
 
 
+def _bind_webhook_tenant(tenant_slug: str | None) -> bool:
+    """Bind this webhook to the tenant named in its own URL.
+
+    A PBX posts with no session and no tenant cookie, so g.tenant is None and
+    get_db() would otherwise fall back to DATABASE_PATH — every tenant's call
+    events landing in whichever database that happens to be. Each tenant's
+    Yeastar is configured with its own /pbx/webhook/<slug> URL. The bare
+    /pbx/webhook path is kept for the existing single-tenant install and
+    still resolves to DATABASE_PATH.
+    """
+    if not tenant_slug:
+        return True
+    tenant = get_platform_db().execute(
+        "SELECT * FROM tenants WHERE slug = ? AND active = 1", (tenant_slug,)
+    ).fetchone()
+    if not tenant:
+        return False
+    g.tenant = dict(tenant)
+    g.tenant_slug = tenant["slug"]
+    return True
+
+
 @pbx_bp.post("/webhook")
+@pbx_bp.post("/webhook/<tenant_slug>")
 @csrf.exempt
-def webhook():
+def webhook(tenant_slug: str | None = None):
     # PBX webhooks are external, unauthenticated HTTP requests: fail closed.
     # Keep the exact Yeastar integration header name; never accept secrets in
     # query strings because URLs can be captured by proxy/access logs.
@@ -241,6 +297,9 @@ def webhook():
     supplied = str(request.headers.get("X-1Cpace-PBX-Secret", "") or "")
     if not secret or not supplied or not hmac.compare_digest(supplied, secret):
         return jsonify(error="Unauthorized"), 401
+    if not _bind_webhook_tenant(tenant_slug):
+        current_app.logger.warning("Ignoring PBX webhook for unknown tenant %r", tenant_slug)
+        return jsonify(error="Unknown tenant"), 404
     payload = request.get_json(silent=True) or {}
     event_type = payload.get("type") or payload.get("event") or payload.get("action") or "unknown"
     msg = payload.get("msg") if isinstance(payload.get("msg"), dict) else payload

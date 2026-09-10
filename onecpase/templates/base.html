@@ -697,6 +697,12 @@
          class="nav-item {% if request.endpoint in ('ptp.legal_referrals', 'ptp.refer_to_legal', 'ptp.resolve_legal_referral') %}active{% endif %}">
         <span class="icon">⚖</span> Legal Referrals
       </a>
+      {% if session.get('role') in ('admin', 'manager') %}
+      <a href="{{ url_for('collections.exception_queue') }}"
+         class="nav-item {% if request.endpoint in ('collections.exception_queue', 'collections.exception_decide') %}active{% endif %}">
+        <span class="icon">⚠</span> Exception Queue
+      </a>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -892,6 +898,10 @@
       <a href="{{ url_for('admin.users_index') }}"
          class="nav-item {% if request.blueprint == 'admin' and 'user' in request.endpoint %}active{% endif %}">
         <span class="icon">👤</span> Users
+      </a>
+      <a href="{{ url_for('screen_recordings.index') }}"
+         class="nav-item {% if request.blueprint == 'screen_recordings' %}active{% endif %}">
+        <span class="icon">⏺</span> Screen Recordings
       </a>
     </div>
     {% endif %}

@@ -952,6 +952,21 @@ CREATE TABLE IF NOT EXISTS webhook_events (
 
 CREATE INDEX IF NOT EXISTS idx_webhook_events_status ON webhook_events(provider, status);
 
+CREATE TABLE IF NOT EXISTS screen_recordings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    stored_filename TEXT NOT NULL UNIQUE,
+    mime_type TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    duration_seconds REAL,
+    created_by INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_screen_recordings_created ON screen_recordings(created_at DESC);
+
 CREATE TABLE IF NOT EXISTS wa_conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     wa_number TEXT NOT NULL,
@@ -1953,6 +1968,21 @@ CREATE TABLE IF NOT EXISTS webhook_events (
 
 CREATE INDEX IF NOT EXISTS idx_webhook_events_status ON webhook_events(provider, status);
 
+CREATE TABLE IF NOT EXISTS screen_recordings (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    stored_filename TEXT NOT NULL UNIQUE,
+    mime_type TEXT NOT NULL,
+    file_size BIGINT NOT NULL,
+    duration_seconds DOUBLE PRECISION,
+    created_by INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_screen_recordings_created ON screen_recordings(created_at DESC);
+
 CREATE TABLE IF NOT EXISTS wa_conversations (
     id SERIAL PRIMARY KEY,
     wa_number TEXT NOT NULL,
@@ -2055,6 +2085,18 @@ CREATE TABLE IF NOT EXISTS platform_admins (
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS tenant_integrations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    integration_name TEXT,
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (provider, external_id),
+    FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
 
 CREATE TABLE IF NOT EXISTS platform_audit_log (

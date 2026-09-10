@@ -61,6 +61,17 @@ def test_application_active_sync_advances_joined_without_request_session(app):
         ).fetchone()[0]
         db.commit()
 
+        # The bridge advances one controlled stage per application milestone,
+        # so the lead has to reach APPLICATION_SUBMITTED before activation can
+        # move it to JOINED.
+        _sync_sales_stage_for_application(db, aid, "awaiting_docs", actor_id=user_id)
+        lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
+        assert current_sales_stage(lead) == "APPLICATION_STARTED"
+
+        _sync_sales_stage_for_application(db, aid, "ready_to_push", actor_id=user_id)
+        lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
+        assert current_sales_stage(lead) == "APPLICATION_SUBMITTED"
+
         _sync_sales_stage_for_application(db, aid, "active", actor_id=user_id)
 
         lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()

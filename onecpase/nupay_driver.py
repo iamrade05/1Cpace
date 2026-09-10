@@ -17,7 +17,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -318,6 +318,135 @@ def _fill_upload_form(page: Page, mandate: dict[str, Any]) -> None:
         _safe_select(page, "select[name='frequency_rule']", rule)
 
 
+def _record_dir() -> Path | None:
+    """Directory for this run's step-by-step capture, or None when the
+    NUPAY_RECORD_DIR env var is unset. Diagnostic only — the push behaves
+    identically either way."""
+    raw = os.getenv("NUPAY_RECORD_DIR", "").strip()
+    if not raw:
+        return None
+    directory = Path(raw) / datetime.now().strftime("%Y%m%d_%H%M%S")
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+_SECRET_PATTERNS = (
+    re.compile(r"(password=)[^&\s\"]*", re.I),
+    re.compile(r"(\"password\"\s*:\s*\")[^\"]*", re.I),
+    re.compile(r"(otp=|totp=|two_factor_code=)[^&\s\"]*", re.I),
+)
+
+
+def _redact(text: str) -> str:
+    """Strip credentials before anything is written to disk.
+
+    The login POST body carries the portal password in clear text, and a
+    capture directory gets copied around, attached to tickets and synced to
+    OneDrive — it must never hold one.
+    """
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub(r"\1[REDACTED]", text)
+    return text
+
+
+def _attach_network_log(
+    page: Page,
+    record_dir: "Path | None",
+    failures: "list[str] | None" = None,
+    results: "list[dict] | None" = None,
+) -> None:
+    """Log the portal's own XHR/fetch traffic to network.log.
+
+    The page text cannot say whether CONFIRM actually submitted anything —
+    a push that reaches DONE and creates no mandate looks identical to one
+    that works. The request/response pair is the only place that shows it.
+    Static assets are skipped; bodies are captured for API calls only."""
+    # Capture must attach even without a record_dir: the failure list is
+    # how the caller learns the portal rejected the submission.
+    log = record_dir / "network.log" if record_dir is not None else None
+
+    def _write(line: str) -> None:
+        if log is None:
+            return
+        try:
+            with log.open("a", encoding="utf-8") as handle:
+                handle.write(_redact(line).rstrip() + "\n")
+        except Exception:
+            pass
+
+    def _on_request(request) -> None:
+        if request.resource_type in {"xhr", "fetch", "document"}:
+            stamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            _write(f"[{stamp}] --> {request.method} {request.url}")
+            if request.method != "GET":
+                try:
+                    _write(f"           body: {(request.post_data or '')[:1500]}")
+                except Exception:
+                    pass
+
+    def _on_response(response) -> None:
+        request = response.request
+        if request.resource_type not in {"xhr", "fetch", "document"}:
+            return
+        stamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        _write(f"[{stamp}] <-- {response.status} {response.url}")
+        body = ""
+        if request.resource_type in {"xhr", "fetch"}:
+            try:
+                body = response.text()[:1500]
+            except Exception:
+                body = ""
+            if body:
+                _write(f"           resp: {body}")
+        if failures is None or request.method == "GET":
+            return
+        # 419 is Laravel's expired-CSRF answer, and is how this portal
+        # rejects a submission while still rendering a normal-looking page.
+        if response.status >= 400:
+            failures.append(
+                f"HTTP {response.status} from {response.url}: {_redact(body)[:300]}"
+            )
+            return
+        # The portal's JSON reply is the authoritative outcome. The modal DOM
+        # is not: on 2026-09-09 a mandate was created successfully and the
+        # modal's "Contract Reference:" field stayed blank, so scraping the
+        # page reported a false failure for a real mandate.
+        try:
+            payload = json.loads(body) if body.lstrip().startswith("{") else None
+        except ValueError:
+            payload = None
+        if not isinstance(payload, dict):
+            return
+        if "contract_reference" in payload or "success" in payload:
+            if results is not None:
+                results.append(payload)
+            if payload.get("success") is False:
+                failures.append(
+                    f"portal reported success=false at {response.url}: "
+                    f"{_redact(str(payload.get('message') or body))[:300]}"
+                )
+
+    page.on("request", _on_request)
+    page.on("response", _on_response)
+    page.on("console", lambda msg: _write(f"[console:{msg.type}] {msg.text[:500]}"))
+    page.on("pageerror", lambda err: _write(f"[pageerror] {str(err)[:500]}"))
+
+
+def _snap(page: Page, record_dir: "Path | None", label: str) -> None:
+    """Save a screenshot plus the page's visible text at one step of the
+    push. Never raises — a broken capture must not fail a real push."""
+    if record_dir is None:
+        return
+    try:
+        page.screenshot(path=str(record_dir / f"{label}.png"), full_page=True)
+        (record_dir / f"{label}.txt").write_text(
+            f"url: {page.url}\n\n" + page.locator("body").inner_text(timeout=5_000),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
 def push_mandate(mandate: dict[str, Any]) -> PushResult:
     missing = _require_creds()
     if missing:
@@ -336,13 +465,42 @@ def push_mandate(mandate: dict[str, Any]) -> PushResult:
             browser = playwright.chromium.launch(headless=not headed)
             context = browser.new_context(accept_downloads=True)
             page = context.new_page()
+            record_dir = _record_dir()
+            # The portal answers a rejected submission with an HTTP error and
+            # a normal-looking page, so page text alone cannot decide success.
+            api_failures: list[str] = []
+            api_results: list[dict] = []
+            _attach_network_log(page, record_dir, api_failures, api_results)
             _login(page)
+            _snap(page, record_dir, "01_after_login")
             _open_upload(page, merchant_id)
+            _snap(page, record_dir, "02_upload_form")
             _fill_upload_form(page, mandate)
+            _snap(page, record_dir, "03_form_filled")
 
+            # NuPay answers a submission made too soon after the form renders
+            # with HTTP 419 and "Please take a moment to review all fields
+            # before submitting" — a dwell guard on its custom _form_nonce,
+            # not a CSRF failure (every /livewire/update in the same session
+            # returns 200). Give the form the time it asks for. The threshold
+            # is undocumented, hence the override.
+            dwell = float(os.getenv("NUPAY_SUBMIT_DELAY_SECONDS", "12") or 0)
+            if dwell > 0:
+                page.wait_for_timeout(int(dwell * 1000))
             page.locator("#btnSubmit").click(timeout=15_000)
+            _snap(page, record_dir, "04_after_submit")
             try:
-                page.get_by_role("button", name=re.compile("CONFIRM", re.I)).click(timeout=15_000)
+                # The dwell guard applies to the confirmation step too. On
+                # 2026-09-09 the form POST returned 200, CONFIRM was clicked
+                # 0.3s later, the page reloaded to a blank form and nothing
+                # reached the Mandate Report. Let the modal settle, then give
+                # it the same pause the submit needed.
+                confirm = page.get_by_role("button", name=re.compile("^CONFIRM$", re.I)).first
+                confirm.wait_for(state="visible", timeout=15_000)
+                if dwell > 0:
+                    page.wait_for_timeout(int(dwell * 1000))
+                confirm.click(timeout=15_000)
+                _snap(page, record_dir, "05_after_confirm")
             except PlaywrightTimeout:
                 debug_dir = Path(__file__).resolve().parent / "nupay_debug"
                 debug_dir.mkdir(exist_ok=True)
@@ -372,12 +530,24 @@ def push_mandate(mandate: dict[str, Any]) -> PushResult:
                 # BEFORE clicking it — but only once it has actually arrived.
                 try:
                     page.wait_for_function(
-                        """() => {
+                        r"""() => {
                             const el = document.querySelector('#confirmation-modal');
                             if (!el) return false;
-                            const t = el.innerText.trim().toLowerCase();
-                            return t && !t.startsWith('please take a moment to review')
-                                && !t.startsWith('please confirm the information');
+                            const t = el.innerText.trim();
+                            if (!t) return false;
+                            const low = t.toLowerCase();
+                            // The review boilerplate is NOT always the first
+                            // line — the modal opens with an empty
+                            // "Contract Reference:" and the boilerplate sits
+                            // below it, so startsWith() let the review pass
+                            // through as if it were the result (see the
+                            // 2026-09-09 08:17 push, which stored exactly
+                            // that with a blank reference).
+                            if (low.includes('please take a moment to review')) return false;
+                            if (low.includes('please confirm the information')) return false;
+                            // A reference with an actual value is the result.
+                            if (/contract reference:[^\S\r\n]*\S/i.test(t)) return true;
+                            return /(success|fail|error|declined|rejected|response code)/i.test(low);
                         }""",
                         # Confirmed against real pushes: the async result can
                         # take 30-35s to land, not just a couple of seconds —
@@ -388,7 +558,26 @@ def push_mandate(mandate: dict[str, Any]) -> PushResult:
                 except PlaywrightTimeout:
                     pass
                 success_text = page.locator("#confirmation-modal").inner_text(timeout=5_000)
+                _snap(page, record_dir, "06_modal_result")
+                # DONE is the click that actually commits the mandate. It
+                # returns as soon as the click is dispatched, and the browser
+                # was being closed immediately afterwards in the finally
+                # below — cancelling the request in flight. Confirmed against
+                # a real push on 2026-09-09: the app reported "mandate
+                # submitted" and NuPay's report held no such mandate at all.
+                # Wait for the portal to settle before letting go.
                 done.click()
+                try:
+                    page.wait_for_load_state("networkidle", timeout=60_000)
+                except PlaywrightTimeout:
+                    pass
+                _snap(page, record_dir, "07_after_done")
+                try:
+                    after_done = page.locator("#confirmation-modal").inner_text(timeout=5_000)
+                except Exception:
+                    after_done = ""
+                if after_done.strip():
+                    success_text = after_done
             except PlaywrightTimeout:
                 body = page.locator("body").inner_text(timeout=5_000)
                 return PushResult(False, f"NuPay new portal did not confirm submission: {body[:400]}", body[:2000])
@@ -396,7 +585,24 @@ def push_mandate(mandate: dict[str, Any]) -> PushResult:
                 browser.close()
 
             stripped = success_text.strip()
-            lowered = stripped.lower()
+            # The portal's own JSON reply decides the outcome. The modal DOM
+            # is unreliable: on 2026-09-09 NuPay answered
+            # {"success":true,...,"contract_reference":"DCPRD00029TTXL"} while
+            # the modal's Contract Reference field stayed blank, so scraping
+            # the page failed a mandate that had really been created.
+            created = next(
+                (r for r in api_results if r.get("contract_reference")), None
+            )
+            if created:
+                reference = str(created["contract_reference"]).strip()
+                note = str(created.get("message") or "Mandate created successfully.").strip()
+                return PushResult(True, f"{note} Contract Reference: {reference}"[:400], reference)
+            if api_failures:
+                return PushResult(
+                    False,
+                    "NuPay rejected the submission: " + api_failures[0][:300],
+                    "; ".join(api_failures)[:2000],
+                )
             if re.search(r"\b\d{6}\s*-", stripped):
                 return PushResult(
                     False,
@@ -405,17 +611,12 @@ def push_mandate(mandate: dict[str, Any]) -> PushResult:
                 )
             if not stripped:
                 return PushResult(False, "NuPay completed the confirmation flow without a response.")
-            if lowered.startswith((
-                "please take a moment to review",
-                "please confirm the information",
-            )):
-                return PushResult(
-                    True,
-                    "NuPay confirmation completed; mandate submitted. Use Check NuPay Status "
-                    "to retrieve the final contract status.",
-                    success_text[:2000],
-                )
-            return PushResult(True, stripped[:400], success_text[:2000])
+            return PushResult(
+                False,
+                "NuPay returned no contract reference, so the mandate was not "
+                "registered: " + " ".join(stripped.split())[:250],
+                success_text[:2000],
+            )
     except Exception as exc:
         return PushResult(False, f"NuPay new portal push failed: {exc}")
     finally:
@@ -468,12 +669,18 @@ def push_mandate_manual_review(mandate: dict[str, Any]) -> PushResult:
                 done = page.get_by_role("button", name=re.compile("DONE", re.I))
                 done.wait_for(timeout=0)
                 page.wait_for_function(
-                    """() => {
+                    r"""() => {
                         const el = document.querySelector('#confirmation-modal');
                         if (!el) return false;
-                        const t = el.innerText.trim().toLowerCase();
-                        return t && !t.startsWith('please take a moment to review')
-                            && !t.startsWith('please confirm the information');
+                        const t = el.innerText.trim();
+                        if (!t) return false;
+                        const low = t.toLowerCase();
+                        // Same reuse trap as push_mandate: match anywhere,
+                        // not just at the start of the modal text.
+                        if (low.includes('please take a moment to review')) return false;
+                        if (low.includes('please confirm the information')) return false;
+                        if (/contract reference:[^\S\r\n]*\S/i.test(t)) return true;
+                        return /(success|fail|error|declined|rejected|response code)/i.test(low);
                     }""",
                     timeout=0,
                 )
@@ -560,6 +767,38 @@ def _parse_tabulator_rows(x_data_value: str) -> list[dict[str, Any]] | None:
         return None
 
 
+# NuPay's own status wording, taken from the status[] checkboxes on the
+# mandate-search form: "Active", "Pending Authorisation", "Rejected
+# Authorisation", "In Active" and "Suspended". Only "Active" happens to
+# coincide with this app's vocabulary, so the portal's value has to be mapped
+# rather than lower-cased and used as-is — doing the latter stored
+# "pending authorisation" and "in active" straight into
+# debicheck_mandates.status, which nothing downstream recognises.
+#
+# Order matters. "In Active" contains "active" and "Rejected Authorisation"
+# contains "authorisation", so the negative wordings are tested first.
+_STATUS_PATTERNS: tuple[tuple[str, str], ...] = (
+    ("rejected",  r"reject|declin|unsuccessful|\bfail"),
+    ("cancelled", r"\bin[\s_-]*active\b|inactive|suspend|cancel|expire|terminat|abandon|dormant"),
+    ("pending",   r"pending|awaiting|waiting|processing|initiated|in progress|loaded|submitted"),
+    ("active",    r"\bactive\b|accept|approved|authenticated|successful|registered|complete"),
+)
+
+
+def _normalize_mandate_status(*values: Any) -> str | None:
+    """Map NuPay's status wording onto this app's mandate vocabulary
+    (active / pending / rejected / cancelled), taking the first value that
+    carries a recognisable status. Returns None when none of them do."""
+    for value in values:
+        text = re.sub(r"\s+", " ", str(value or "")).strip().lower()
+        if not text:
+            continue
+        for normalized, pattern in _STATUS_PATTERNS:
+            if re.search(pattern, text):
+                return normalized
+    return None
+
+
 def refresh_mandate_status(mandate: dict[str, Any]) -> MandateStatusResult:
     """Look up a mandate's live status via the new portal's Mandate Report
     page (Alpine/Tabulator table embedded directly in the page HTML)."""
@@ -605,11 +844,17 @@ def refresh_mandate_status(mandate: dict[str, Any]) -> MandateStatusResult:
                 # Widen it so mandates from any date are actually found.
                 earliest = os.getenv("NUPAY_NEW_STATUS_FROM_DATE", "2020-01-01")
                 _set_date(page, "#from_date", earliest)
-                _set_date(page, "#to_date", date.today().isoformat())
+                # A DebiCheck mandate is normally dated a few days ahead, so a
+                # report window that ends today can never contain the newest
+                # ones — precisely the mandates a status check is run for.
+                # (2026-09-09: DCPRD00029TTXL was created with submit_date
+                # 2026-09-11 and was invisible to this search.)
+                forward = int(os.getenv("NUPAY_NEW_STATUS_FORWARD_DAYS", "180") or 0)
+                _set_date(page, "#to_date", (date.today() + timedelta(days=forward)).isoformat())
                 page.get_by_role("button", name=re.compile("^CONTINUE$", re.I)).first.click(timeout=15_000)
                 page.wait_for_selector('[x-data^="tabulatorComponent("]', timeout=45_000)
                 raw = page.evaluate(
-                    """() => {
+                    r"""() => {
                         const el = document.querySelector('[x-data^="tabulatorComponent("]');
                         return el ? el.getAttribute('x-data') : null;
                     }"""
@@ -690,7 +935,9 @@ def refresh_mandate_status(mandate: dict[str, Any]) -> MandateStatusResult:
             f"Mandate not found in the new portal's Mandate Report ({len(rows)} rows checked).",
         )
 
-    status = str(match.get("status") or "unknown").strip().lower()
+    status = _normalize_mandate_status(
+        match.get("status"), match.get("status_reason"), match.get("mandate_status")
+    ) or "unknown"
     message = (
         f"Contract {match.get('contract_reference', '?')}: {match.get('status', '?')}"
         f" ({match.get('status_reason', '')}) — {str(match.get('response_description', '')).strip()}"

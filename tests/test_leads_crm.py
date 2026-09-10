@@ -190,9 +190,29 @@ def test_conversion_links_prospect_application_and_member(app):
             f"/leads/{prospect['id']}/activities",
             data={"activity_type": "visit", "outcome": "joined"},
         )
-        # Conversion requires the canonical SHOW/CONSULTATION stage.
+        # Conversion requires the canonical SHOW/CONSULTATION stage, and the
+        # pipeline only moves one stage at a time with each stage's own
+        # evidence in place.
         db = get_db()
         from onecpase.sales_pipeline import transition_sales_stage
+        transition_sales_stage(db, prospect["id"], "CONTACT_ATTEMPTED", 1)
+        transition_sales_stage(db, prospect["id"], "CONTACTED", 1)
+        db.execute(
+            """INSERT INTO lead_qualifications
+               (lead_id, interested, needs_identified, ready_to_join, qualified_by, qualified_at)
+               VALUES (?, 1, 1, 1, 1, datetime('now'))""",
+            (prospect["id"],),
+        )
+        db.commit()
+        transition_sales_stage(db, prospect["id"], "QUALIFIED", 1)
+        transition_sales_stage(db, prospect["id"], "INVITED", 1)
+        db.execute(
+            """INSERT INTO sales_appointments (lead_id, appointment_at, status)
+               VALUES (?, datetime('now'), 'BOOKED')""",
+            (prospect["id"],),
+        )
+        db.commit()
+        transition_sales_stage(db, prospect["id"], "APPOINTMENT_BOOKED", 1)
         transition_sales_stage(db, prospect["id"], "SHOW", 1, reason="Prospect attended a visit", commit=True)
         response = client.post(
             f"/leads/{prospect['id']}/convert",
@@ -535,3 +555,41 @@ def test_category_one_skips_three_rotation_turns_then_restores_consultant(app):
         ).fetchone()
         assert penalized["sales_disqualification_category"] == 1
         assert penalized["sales_skip_remaining"] == 0
+
+
+# ── Guided journey after conversion ───────────────────────────────────────────
+
+def _lead_with_application(app, application_status):
+    """A converted lead: marked joined, with an application at *status*."""
+    from onecpase.database import get_db as _get_db
+
+    with app.app_context():
+        db = _get_db()
+        lead_id = db.execute(
+            """INSERT INTO leads (full_name, phone, phone_normalized, lead_status, sales_stage)
+               VALUES ('Journey Prospect', '082 999 0000', '27829990000', 'joined', 'APPLICATION_STARTED')"""
+        ).lastrowid
+        db.execute(
+            """INSERT INTO membership_applications (lead_id, application_status)
+               VALUES (?, ?)""",
+            (lead_id, application_status),
+        )
+        db.commit()
+        lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
+        from onecpase.leads import _journey_step
+        return _journey_step(db, lead)
+
+
+def test_joined_lead_with_an_open_application_still_shows_the_membership_step(app):
+    """Conversion sets lead_status='joined' and opens the application in one
+    step. Treating 'joined' as closed hid the application work that had only
+    just started."""
+    assert _lead_with_application(app, "verification") == "membership"
+
+
+def test_joined_lead_closes_once_the_application_is_active(app):
+    assert _lead_with_application(app, "active") == "closed"
+
+
+def test_joined_lead_closes_when_the_application_was_declined(app):
+    assert _lead_with_application(app, "declined") == "closed"

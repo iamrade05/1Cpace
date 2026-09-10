@@ -15,6 +15,8 @@ lxml>=5.0.0
 hidapi>=0.14.0; sys_platform == "win32"
 playwright>=1.62.0  # Itensity push driver, NuPay new-portal driver — run `playwright install chromium` after installing
 pyotp>=2.9.0  # TOTP 2FA for the NuPay new-portal driver
-openpyxl>=3.1.0  # scripts/import_itensity_members.py — reads Itensity's Data Export .xlsx
+openpyxl>=3.1.0  # Itensity Data Export .xlsx — used by the external scripts/
+                 # package, which is NOT in this repository. Without it the
+                 # Itensity import/sweep jobs are skipped (see scheduler.py).
 pytesseract>=0.3.10  # call-list OCR — requires the Tesseract engine installed separately
 APScheduler>=3.10,<4.0  # in-process nightly jobs — onecpase/scheduler.py

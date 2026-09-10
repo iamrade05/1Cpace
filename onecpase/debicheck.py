@@ -233,6 +233,21 @@ def normalise_debicheck_status(status: str | None) -> str:
         return "failed"
     if value in {"pending", "submitted", "reviewing", "processing", "unknown"}:
         return value
+
+    # NuPay's own wording — "Pending Authorisation", "Rejected Authorisation",
+    # "In Active", "Suspended" — matches none of the sets above, so it used to
+    # fall through to "unknown". That meant a rejected or suspended mandate
+    # never marked the application's DebiCheck gate as failed, and the member
+    # read as merely un-checked rather than un-collectable. The driver now
+    # normalises before storing, but rows written before it did still hold the
+    # raw strings, so map them here as well.
+    mapped = nupay_driver._normalize_mandate_status(value.replace("_", " "))
+    if mapped == "active":
+        return "approved"
+    if mapped in {"rejected", "cancelled"}:
+        return "failed"
+    if mapped == "pending":
+        return "pending"
     return "unknown"
 
 

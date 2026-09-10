@@ -83,22 +83,61 @@ def _load_sections(contract_template) -> list:
     return default_sections_config()
 
 
+def _fill_gym_name(text, gym_name: str) -> str:
+    """Substitute {gym_name} without letting staff-entered braces raise.
+
+    Clause text is authored by admin users, so an unmatched brace must not
+    take the whole contract page down.
+    """
+    try:
+        return (text or "").format(gym_name=gym_name)
+    except (IndexError, KeyError, ValueError):
+        return (text or "").replace("{gym_name}", gym_name)
+
+
+def _terms_parts_from_text(contract_template) -> list:
+    """Fall back to the template's own terms_text.
+
+    A template saved from the admin form always carries terms_text (it is a
+    required field) but only carries terms_parts_config when the editor added
+    structured Parts. Without this the template's real terms are silently
+    replaced by the generic default set.
+    """
+    try:
+        raw_text = contract_template["terms_text"] if contract_template else ""
+    except (KeyError, IndexError):
+        return []
+    clauses = [line.strip() for line in (raw_text or "").splitlines() if line.strip()]
+    if not clauses:
+        return []
+    return [{
+        "title": "Terms and Conditions",
+        "intro": "",
+        "clauses": clauses,
+        "page_break": False,
+        "initials_required": True,
+    }]
+
+
 def _load_terms_parts(contract_template, gym_name: str) -> list:
     raw = contract_template["terms_parts_config"] if contract_template else None
+    parts = []
     if raw:
         try:
             parts = json.loads(raw)
         except (TypeError, ValueError):
-            parts = default_terms_parts_config()
-    else:
-        parts = default_terms_parts_config()
+            parts = []
+    # An empty/absent Parts config is not an instruction to print the default
+    # terms over this template's own.
+    if not parts:
+        parts = _terms_parts_from_text(contract_template) or default_terms_parts_config()
 
     rendered = []
     for part in parts:
         rendered.append({
-            "title": (part.get("title") or "").format(gym_name=gym_name),
-            "intro": (part.get("intro") or "").format(gym_name=gym_name),
-            "clauses": [c.format(gym_name=gym_name) for c in part.get("clauses", [])],
+            "title": _fill_gym_name(part.get("title"), gym_name),
+            "intro": _fill_gym_name(part.get("intro"), gym_name),
+            "clauses": [_fill_gym_name(c, gym_name) for c in part.get("clauses", [])],
             "page_break": bool(part.get("page_break")),
             "initials_required": bool(part.get("initials_required")),
         })

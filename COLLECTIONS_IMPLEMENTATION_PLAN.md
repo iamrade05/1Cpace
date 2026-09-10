@@ -62,6 +62,12 @@ should expose the engine fields directly:
 
 - Collections dashboard: queue counts, 40-call progress, contact rate, PTP
   status, access restrictions, inactive accounts, and pending exceptions.
+  **Built** — the PTP/Collections dashboard now carries Awaiting Manager
+  (linking to the exception queue, manager/admin only), Calls Today against the
+  configured target, and Contact Rate. `collections.daily_call_progress()` is
+  shared with the call queue screen so the two cannot quote different numbers,
+  and `collections.pending_manager_decisions()` counts both kinds of
+  escalation.
 - Reception queue: client, failed debit/reminder reason, months owing, amount,
   next action, priority, and assigned caller.
 - Client collections profile: payments, failed debits, call/communication
@@ -70,6 +76,17 @@ should expose the engine fields directly:
   DebiCheck requirement shown before submission.
 - Management exception queue: reason, system decision, requested override,
   decision, condition, approver, and audit timestamp.
+  **Built** — `/collections/exceptions`, manager/admin only. It shows both
+  payment arrangements the discount tiers could not auto-approve and open
+  `collection_exceptions` rows, and records every decision with its condition
+  against the member.
+
+  The Rule §7 producer is wired: creating a payment arrangement for a member
+  at three or more months owing, without full settlement or a qualifying
+  DebiCheck arrangement, records the request, forces manager approval, and
+  raises a `collection_exceptions` row. Reception is told the request went to
+  the manager rather than that it succeeded. Repeat requests do not stack
+  duplicate open exceptions.
 
 ## Configuration and rollout
 

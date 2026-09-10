@@ -56,8 +56,8 @@
       </div>
       <div class="form-group">
         <label class="form-label">Client Reference 2 — Staff Number</label>
-        <input name="client_ref2" class="form-control" maxlength="4" inputmode="numeric" pattern="[0-9]{4}"
-               placeholder="4 digits (optional for now)" value="{{ mandate.client_ref2 or '' }}">
+        <input name="client_ref2" class="form-control" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" required
+                placeholder="4 digits" value="{{ mandate.client_ref2 or '' }}">
       </div>
       <div class="form-group">
         <label class="form-label">Submit Date</label>

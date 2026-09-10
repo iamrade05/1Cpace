@@ -19,6 +19,9 @@ class Config:
     TENANTS_DIR      = os.environ.get("TENANTS_DIR", str(BASE_DIR.parent / "tenants"))
     # Field-level encryption key. Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     ENCRYPTION_KEY   = os.environ.get("ENCRYPTION_KEY", "")
+    # Phased go-live: only the areas belonging to this phase and the ones
+    # before it are reachable — see phases.py. "all" opens everything.
+    ACTIVE_PHASE     = os.environ.get("ACTIVE_PHASE", "1")
     # /access-report reads a hardcoded external SQL Server that only mirrors
     # this one tenant's data. Restrict the route to that tenant's slug so
     # other tenants get a 404 instead of an error (or a leak) — see
@@ -106,6 +109,9 @@ class Config:
     TURNSTILE_VENDOR_ID = int(os.environ.get("TURNSTILE_VENDOR_ID", "4825"), 16)
     TURNSTILE_PRODUCT_ID = int(os.environ.get("TURNSTILE_PRODUCT_ID", "8701"), 16)
     TURNSTILE_OUTPUT_ENABLED = os.environ.get("TURNSTILE_OUTPUT_ENABLED", "0") == "1"
+    # The turnstile is USB hardware wired to one gym, so its events belong to
+    # one tenant. Blank keeps the legacy behaviour of writing to DATABASE_PATH.
+    TURNSTILE_TENANT_SLUG = os.environ.get("TURNSTILE_TENANT_SLUG", "")
 
     # ── CSRF ─────────────────────────────────────────────────────────────────
     WTF_CSRF_ENABLED    = True

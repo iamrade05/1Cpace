@@ -32,3 +32,7 @@ uploads/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Itensity portal pulls / exports (real member PII — never commit)
+data/
+itensity_rows.json

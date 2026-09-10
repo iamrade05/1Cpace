@@ -4,6 +4,7 @@ import json
 
 from onecpase.comms import verify_fb_signature
 from onecpase.database import get_db
+from onecpase.platform_db import register_integration
 
 
 def _login(client, permissions=None, role="staff"):
@@ -63,6 +64,10 @@ def test_whatsapp_webhook_verification_rejects_wrong_token(client, app):
 def test_whatsapp_webhook_ingests_inbound_text_message(client, app):
     with app.app_context():
         app.config["WA_RECEPTION_PHONE_ID"] = "1000"
+        # A webhook is bound to its tenant through the platform integration
+        # registry, never through the browser session, so the phone id has to
+        # be registered before the handler will accept it.
+        assert register_integration("whatsapp", "1000", "elev8", "reception")
     payload = {
         "entry": [{"changes": [{"value": {
             "metadata": {"phone_number_id": "1000"},
@@ -116,8 +121,9 @@ def test_facebook_webhook_rejects_bad_signature_when_secret_configured(client, a
 def test_facebook_webhook_ingests_comment(client, app):
     with app.app_context():
         app.config["FB_APP_SECRET"] = ""
+        assert register_integration("facebook", "page_1", "elev8", "facebook page")
     payload = {
-        "entry": [{"changes": [{"field": "feed", "value": {
+        "entry": [{"id": "page_1", "changes": [{"field": "feed", "value": {
             "item": "comment", "verb": "add",
             "comment_id": "fb_c_1", "post_id": "post_1",
             "message": "How much is membership?",

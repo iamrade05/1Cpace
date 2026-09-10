@@ -16,6 +16,9 @@ def app(tmp_path):
         "ENCRYPTION_KEY": "kRWWWElbDm6KCdoe_UpkzAT4BnCrXq4msN8btwUXIS8=",
         "WTF_CSRF_ENABLED": False,
         "TURNSTILE_ENABLED": False,
+        # The suite exercises every area, including ones a phased launch keeps
+        # closed. Phase gating is covered on its own in test_phases.py.
+        "ACTIVE_PHASE": "all",
     })
 
     yield app

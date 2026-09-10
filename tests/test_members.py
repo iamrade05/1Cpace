@@ -1,5 +1,16 @@
 from onecpase.database import get_db
+from onecpase.encryption import decrypt_member, hash_for_lookup
 from unittest.mock import patch
+
+
+def _find_member(db, id_number):
+    """Look a member up the way the app stores them.
+
+    id_number is encrypted at rest, so a plaintext equality match never hits;
+    id_number_hash is the lookup key."""
+    return db.execute(
+        "SELECT * FROM members WHERE id_number_hash = ?", (hash_for_lookup(id_number),)
+    ).fetchone()
 
 
 def _login_as_admin(client):
@@ -48,6 +59,7 @@ def test_members_add_member(app):
                 "email": "john@example.com",
                 "join_date": "2026-01-01",
                 "package": "Basic",
+                "payment_type": "Cash",
             },
             follow_redirects=True,
         )
@@ -56,9 +68,7 @@ def test_members_add_member(app):
 
         # Verify member was saved in DB
         db = get_db()
-        member = db.execute(
-            "SELECT * FROM members WHERE id_number = ?", ("1234567890128",)
-        ).fetchone()
+        member = _find_member(db, "1234567890128")
         assert member is not None
         assert member["first_name"] == "John"
         assert member["last_name"] == "Doe"
@@ -72,6 +82,7 @@ def test_add_member_pushes_third_party_debicheck(app):
             "first_name": "New",
             "last_name": "Member",
             "id_number": "9001015009087",
+            "contact": "0712345678",
             "monthly_installment": "345.58",
             "payment_type": "Third-Party Debit Order",
             "payer_type": "third_party",
@@ -98,14 +109,13 @@ def test_add_member_pushes_third_party_debicheck(app):
         assert response.status_code == 302
         push.assert_called_once()
         db = get_db()
-        member = db.execute(
-            "SELECT * FROM members WHERE id_number = ?", (data["id_number"],)
-        ).fetchone()
+        member = _find_member(db, data["id_number"])
         mandate = db.execute(
             "SELECT * FROM debicheck_mandates WHERE member_id = ?", (member["id"],)
         ).fetchone()
         assert member["payment_type"] == "Third-Party Debit Order"
-        assert member["payer_id_number"] == data["payer_id_number"]
+        # payer_id_number is PII and encrypted at rest, like id_number.
+        assert decrypt_member(member)["payer_id_number"] == data["payer_id_number"]
         assert mandate["payer_type"] == "third_party"
         assert mandate["account_type"] == "1"
         assert mandate["status"] == "submitted"
@@ -118,6 +128,7 @@ def test_third_party_debicheck_requires_valid_payer_id(app):
             "first_name": "Blocked",
             "last_name": "Member",
             "id_number": "9101015009086",
+            "contact": "0712345679",
             "monthly_installment": "300",
             "payment_type": "Third-Party Debit Order",
             "payer_type": "third_party",
@@ -138,6 +149,4 @@ def test_third_party_debicheck_requires_valid_payer_id(app):
         assert response.status_code == 200
         push.assert_not_called()
         assert b"valid 13-digit SA ID number" in response.data
-        assert get_db().execute(
-            "SELECT id FROM members WHERE id_number = ?", (data["id_number"],)
-        ).fetchone() is None
+        assert _find_member(get_db(), data["id_number"]) is None

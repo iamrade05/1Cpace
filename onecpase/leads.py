@@ -323,15 +323,27 @@ def _allocate_sales_consultant(db, capture_user, source: str):
     return None
 
 
+# An application still needs work until it activates or is turned away.
+OPEN_APPLICATION_STATUSES_EXCLUDED = {"active", "declined"}
+
+
 def _journey_step(db, lead) -> str:
     """Choose the single guided activity card appropriate to this prospect."""
-    if lead["lead_status"] in FINAL_STATUSES or lead["lead_status"] == "joined":
-        return "closed"
     application = db.execute(
-        "SELECT id FROM membership_applications WHERE lead_id=? LIMIT 1", (lead["id"],)
+        """SELECT application_status FROM membership_applications
+           WHERE lead_id=? ORDER BY id DESC LIMIT 1""",
+        (lead["id"],),
     ).fetchone()
-    if application:
+    application_open = bool(application) and str(
+        application["application_status"] or ""
+    ).lower() not in OPEN_APPLICATION_STATUSES_EXCLUDED
+    # Conversion marks the lead joined and opens the application in the same
+    # step, so 'joined' on its own must not close the journey — finishing that
+    # application is precisely the work still outstanding.
+    if application_open:
         return "membership"
+    if lead["lead_status"] in FINAL_STATUSES:
+        return "closed"
     if lead["entry_path"] == "direct_show" and lead["lead_status"] == "show":
         return "walk_in"
     latest_appointment = db.execute(
@@ -1459,7 +1471,7 @@ def convert_lead(lid: int):
             else:
                 raise ValueError("Lead must be at SHOW or CONSULTATION before an application can be started.")
             db.execute(
-                """UPDATE leads SET lead_status='show', converted_member_id=?,
+                """UPDATE leads SET lead_status='joined', converted_member_id=?,
                    closure_reason=NULL, next_action='Complete membership application', next_action_at=datetime('now'),
                    last_activity_at=datetime('now'), updated_at=datetime('now') WHERE id=?""",
                 (member_id, lid),

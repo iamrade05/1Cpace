@@ -1,8 +1,9 @@
 import logging
 from logging.handlers import RotatingFileHandler
 
-from flask import Flask, g, request, session
+from flask import Flask, flash, g, jsonify, redirect, request, session, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
+from . import phases
 from .permissions import MODULE_PERMISSIONS
 from .config import Config
 from .database import close_db, init_db
@@ -34,6 +35,7 @@ from .sales_pipeline import sales_pipeline_bp
 from .turnstile_routes import turnstile_bp
 from .tenants import tenants_bp, TENANT_COOKIE_NAME
 from .platform_admin import platform_bp
+from .screen_recordings import screen_recordings_bp
 
 
 def create_app(test_config: dict | None = None) -> Flask:
@@ -124,6 +126,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(turnstile_bp)
     app.register_blueprint(tenants_bp)
     app.register_blueprint(platform_bp)
+    app.register_blueprint(screen_recordings_bp)
 
     # ── Database ──────────────────────────────────────────────────────────────
     with app.app_context():
@@ -170,7 +173,43 @@ def create_app(test_config: dict | None = None) -> Flask:
             g.tenant = tenant
             g.tenant_slug = tenant["slug"]
 
+    # ── Phased go-live ────────────────────────────────────────────────────────
+    @app.before_request
+    def _enforce_active_phase():
+        """Refuse areas whose phase has not opened yet.
+
+        The nav hides them, but a hidden link is not a closed door — staff
+        bookmark URLs, and a half-finished area answering a typed URL is how a
+        phased launch leaks.
+        """
+        blueprint = request.blueprint
+        active = app.config.get("ACTIVE_PHASE", 1)
+        if phases.is_enabled(blueprint, active):
+            return None
+
+        number = phases.phase_of(blueprint)
+        area = phases.phase_name(number) if number else (blueprint or "That area")
+        if request.method == "GET" and request.accept_mimetypes.accept_html:
+            flash(
+                f"{area} is not open yet — it arrives in phase {number}.",
+                "info",
+            )
+            return redirect(url_for("dashboard.dashboard"))
+        return jsonify(ok=False, error=f"{area} is not open yet."), 403
+
     # ── Template context processors ───────────────────────────────────────────
+    @app.context_processor
+    def inject_phases():
+        active = app.config.get("ACTIVE_PHASE", 1)
+
+        def phase_open(name: str) -> bool:
+            """True for an open nav section or an open blueprint."""
+            if name in phases.NAV_SECTIONS:
+                return phases.nav_section_enabled(name, active)
+            return phases.is_enabled(name, active)
+
+        return {"phase_open": phase_open, "active_phase": phases.normalise(active)}
+
     @app.context_processor
     def inject_permissions():
         role = session.get("role", "")

@@ -1,10 +1,29 @@
-from datetime import date
+from datetime import date, timedelta
 
-from onecpase.collections import _active_debit_cycle, _ensure_daily_call_tasks
+from onecpase.collections import (
+    _active_debit_cycle,
+    _ensure_daily_call_tasks,
+    _scheduled_and_operational_cycle,
+)
 from onecpase.database import get_db
 
 
-def _seed_callers_and_members(member_count=90):
+def _reminder_debit_day(today, reminder_offset=2):
+    """Find a debit day whose cycle puts *today* inside the reminder window.
+
+    The call-queue page always works off date.today(), so a test that loads it
+    has to anchor its seed to the real current date, not a fixed one."""
+    for month_offset in (0, 1):
+        month_index = today.year * 12 + today.month - 1 + month_offset
+        year, zero_month = divmod(month_index, 12)
+        for day in range(1, 29):
+            _, operational = _scheduled_and_operational_cycle(year, zero_month + 1, day)
+            if operational - timedelta(days=reminder_offset) <= today < operational:
+                return day
+    raise AssertionError("no debit day puts today inside a reminder window")
+
+
+def _seed_callers_and_members(member_count=90, debit_day=15):
     db = get_db()
     for uid, name, caller in (
         (10, "Mfundentle Mahanjane", 1),
@@ -23,12 +42,13 @@ def _seed_callers_and_members(member_count=90):
             """INSERT INTO members
                (member_ref, first_name, last_name, id_number, contact,
                 member_status, debit_order_date)
-               VALUES (?, 'Cycle', ?, ?, ?, 'Active', '15')""",
+               VALUES (?, 'Cycle', ?, ?, ?, 'Active', ?)""",
             (
                 f"ELE-{number + 1:010d}",
                 f"Member {number:03d}",
                 f"ID{number:04d}",
                 f"071{number:07d}",
+                str(debit_day),
             ),
         )
         # notes must carry the Itensity `type=` tag the reconciled balance
@@ -108,13 +128,16 @@ def test_call_result_counts_attempt_and_successful_contact(app):
 
 
 def test_call_list_opens_client_brief_profile(app):
+    today = date.today()
     with app.app_context():
-        _seed_callers_and_members(2)
+        _seed_callers_and_members(2, debit_day=_reminder_debit_day(today))
         db = get_db()
-        _ensure_daily_call_tasks(db, date(2026, 8, 12))
+        _ensure_daily_call_tasks(db, today)
         task = db.execute(
-            "SELECT id, member_id, assigned_to FROM collection_call_tasks ORDER BY id LIMIT 1"
+            "SELECT id, member_id, assigned_to FROM collection_call_tasks WHERE task_date=? ORDER BY id LIMIT 1",
+            (today.isoformat(),),
         ).fetchone()
+        assert task is not None
         db.execute(
             """INSERT INTO turnstile_events
                (raw_report_hex, member_id, decision, direction, created_at)

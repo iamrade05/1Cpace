@@ -11,7 +11,9 @@ from werkzeug.utils import secure_filename
 from .auth import permission_required, roles_required
 from .database import get_db, member_activity
 from .collections_engine import (
+    create_collection_exception,
     evaluate_collection_case,
+    evaluate_member_access,
     get_collection_rules,
     record_access_decision,
     sync_collection_case,
@@ -278,6 +280,13 @@ def ptp_dashboard():
         "SELECT COUNT(*) FROM legal_referrals WHERE status='open'"
     ).fetchone()[0]
 
+    # The rule engine already produces these; without them on the dashboard a
+    # manager has no signal that anything is waiting on a decision, and no
+    # visibility of whether today's call workload is actually being worked.
+    from .collections import daily_call_progress, pending_manager_decisions
+    call_progress = daily_call_progress(db)
+    manager_queue = pending_manager_decisions(db)
+
     # Filters
     cat_filter    = request.args.get("cat", "").strip()
     status_filter = request.args.get("status", "").strip()
@@ -319,6 +328,8 @@ def ptp_dashboard():
         inactive_count=inactive_count,
         legal_candidate_count=legal_candidate_count,
         legal_referral_count=legal_referral_count,
+        call_progress=call_progress,
+        manager_queue=manager_queue,
         cat_filter=cat_filter,
         status_filter=status_filter,
         search=search,
@@ -476,6 +487,10 @@ def _has_submitted_mandate(db, member_id: int) -> bool:
         (member_id,),
     ).fetchone() is not None
 
+
+RULE_7_EXCEPTION_REASON = (
+    "Three or more months owing with no qualifying DebiCheck arrangement or full settlement"
+)
 
 DEBICHECK_DISCOUNT_CEILING = 25   # Rule §9: DebiCheck + PTP, auto-approved up to this %
 CASH_UPFRONT_DISCOUNT_CEILING = 50  # cash paid in full upfront, auto-approved up to this %
@@ -711,7 +726,11 @@ def ptp_create(mid: int):
     discount_auto_approved = True
     if discount_pct > 0:
         is_cash_upfront = payment_method == "cash" and arrangement_type == "full"
-        if _has_qualifying_arrangement(db, mid) and discount_pct <= DEBICHECK_DISCOUNT_CEILING:
+        # The PTP half of "DebiCheck + PTP" is the record being created here, so
+        # the gate is a confirmed mandate. _has_qualifying_arrangement() also
+        # requires an already-saved pending PTP, which no first arrangement can
+        # satisfy — using it here made this tier unreachable.
+        if _has_submitted_mandate(db, mid) and discount_pct <= DEBICHECK_DISCOUNT_CEILING:
             discount_basis = "debicheck_ptp"
         elif is_cash_upfront and discount_pct <= CASH_UPFRONT_DISCOUNT_CEILING:
             discount_basis = "cash_upfront"
@@ -749,13 +768,48 @@ def ptp_create(mid: int):
             VALUES (?,?,1,?,?),(?,?,2,?,?)
         """, (ptp_id, mid, half, promise_date, ptp_id, mid, half, d2))
 
+    # Evaluated after the insert on purpose: a PTP plus an approved DebiCheck
+    # mandate IS the qualifying arrangement, so the new record is part of what
+    # the policy judges.
+    policy = evaluate_member_access(db, mid, today=date.today())
+
+    # Rule §7: at three or more months owing, only full settlement or a
+    # qualifying DebiCheck arrangement is standard. Anything else is a
+    # non-standard request that reception cannot settle on its own, so it is
+    # recorded and escalated to the management exception queue rather than
+    # quietly accepted.
+    escalated = False
+    if policy.get("status") == "THREE_PLUS_NO_DEBICHECK":
+        already_open = db.execute(
+            """SELECT 1 FROM collection_exceptions
+               WHERE member_id = ? AND status = 'pending' AND reason = ?
+               LIMIT 1""",
+            (mid, RULE_7_EXCEPTION_REASON),
+        ).fetchone()
+        if mgr_status != "approved":
+            mgr_status = "pending"
+            db.execute(
+                "UPDATE ptp_agreements SET manager_approval_status='pending' WHERE id=?",
+                (ptp_id,),
+            )
+        if not already_open:
+            create_collection_exception(
+                db, mid, RULE_7_EXCEPTION_REASON,
+                requested_action=(
+                    f"R{float(promise_amount):,.2f} by {promise_date} via "
+                    f"{payment_method} ({arrangement_type})"
+                ),
+                notes=notes or None,
+                created_by=session.get("user_id"),
+            )
+        escalated = True
+
     # Access is never granted merely because a PTP was created. The policy
     # engine must say ALLOWED and any required manager approval must already be
     # resolved. Otherwise the request is recorded but access remains blocked.
     access_granted = False
     if access_unblock == "yes":
-        from .collections_engine import evaluate_member_access
-        decision = evaluate_member_access(db, mid, today=date.today())
+        decision = policy
         if decision.get("access") == "ALLOWED" and mgr_status in {"not_required", "approved"}:
             db.execute(
                 "UPDATE members SET gym_access_status='temp_unblocked', access_blocked_until=?, access_block_reason=NULL WHERE id=?",
@@ -775,16 +829,27 @@ def ptp_create(mid: int):
             f"{discount_basis or 'no qualifying basis'} — "
             f"{'auto-approved' if discount_auto_approved and not needs_approval else 'awaiting manager approval'}."
         )
+    escalation_note = (
+        " Escalated to the management exception queue: three or more months "
+        "owing without a qualifying DebiCheck arrangement." if escalated else ""
+    )
     member_activity(
         db, mid,
         f"PTP created: R{float(promise_amount):,.2f} promised by {promise_date} "
         f"via {payment_method} ({arrangement_type}). "
         f"Access: {'temp unblock until ' + (unblock_until or '?') if access_granted else ('requested but not granted' if access_unblock == 'yes' else 'no change')}."
-        f"{discount_note} "
+        f"{discount_note}{escalation_note} "
         f"Notes: {notes[:120]}",
     )
     db.commit()
-    flash("PTP created successfully.", "success")
+    if escalated:
+        flash(
+            "PTP recorded and sent to the management exception queue: three or more "
+            "months owing without a qualifying DebiCheck arrangement needs a manager decision.",
+            "warning",
+        )
+    else:
+        flash("PTP created successfully.", "success")
     return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
 
 
@@ -976,6 +1041,17 @@ def ptp_update_status(mid: int, ptp_id: int):
 
 # ── Manager Approval ───────────────────────────────────────────────────────
 
+def _approval_redirect(mid: int):
+    """Send the manager back where they decided from.
+
+    Whitelisted rather than taking a URL, so this can never become an open
+    redirect.
+    """
+    if request.form.get("return_to") == "exception_queue":
+        return redirect(url_for("collections.exception_queue"))
+    return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
+
+
 @ptp_bp.route("/members/<int:mid>/ptp/<int:ptp_id>/approve", methods=["POST"])
 @roles_required("admin", "manager")
 def ptp_approve(mid: int, ptp_id: int):
@@ -984,7 +1060,7 @@ def ptp_approve(mid: int, ptp_id: int):
     notes    = (request.form.get("approval_notes") or "").strip()
     if decision not in {"approved", "declined"}:
         flash("Manager decision must be approved or declined.", "error")
-        return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
+        return _approval_redirect(mid)
 
     db.execute("""
         UPDATE ptp_agreements
@@ -1001,7 +1077,7 @@ def ptp_approve(mid: int, ptp_id: int):
     )
     db.commit()
     flash(f"PTP {decision}.", "success")
-    return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
+    return _approval_redirect(mid)
 
 
 # ── Access Control ─────────────────────────────────────────────────────────

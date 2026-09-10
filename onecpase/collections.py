@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from flask import (Blueprint, current_app, flash, g, redirect, render_template,
                    request, session, url_for)
 from flask_mail import Message
-from .auth import permission_required
+from .auth import permission_required, roles_required
 from .communication import (collection_care_email_html,
                             collection_care_email_subject,
                             collection_care_message)
@@ -963,3 +963,160 @@ def collections_delete(cid: int):
     db.commit()
     flash("Collection record deleted.", "info")
     return redirect(url_for("collections.collections_index"))
+
+
+# ── Shared collections KPIs ───────────────────────────────────────────────────
+
+def daily_call_progress(db, today: date | None = None) -> dict:
+    """Aggregate call-cycle KPIs for one day.
+
+    Uses the same definitions as the call queue screen — a call is a completed
+    task, a contact is a task flagged successful_contact — so the dashboard and
+    the queue can never quote different numbers for the same day.
+    """
+    task_date = (today or date.today()).isoformat()
+    target_per_caller = get_collection_rule_int(db, "daily_call_target", DAILY_CALL_TARGET)
+    row = db.execute(
+        """SELECT COUNT(id) AS assigned,
+                  COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0) AS calls,
+                  COALESCE(SUM(CASE WHEN successful_contact=1 THEN 1 ELSE 0 END), 0) AS contacts
+           FROM collection_call_tasks WHERE task_date=?""",
+        (task_date,),
+    ).fetchone()
+    caller_count = len(_collections_callers(db))
+    assigned = row["assigned"] or 0
+    calls = row["calls"] or 0
+    contacts = row["contacts"] or 0
+    daily_target = target_per_caller * caller_count
+    return {
+        "task_date": task_date,
+        "assigned": assigned,
+        "calls": calls,
+        "contacts": contacts,
+        "caller_count": caller_count,
+        "target_per_caller": target_per_caller,
+        "daily_target": daily_target,
+        "target_progress_pct": round(calls / daily_target * 100, 1) if daily_target else 0.0,
+        "contact_rate_pct": round(contacts / calls * 100, 1) if calls else 0.0,
+        "queue_counts": {
+            item["queue_type"]: item["count"]
+            for item in db.execute(
+                """SELECT queue_type, COUNT(*) AS count FROM collection_call_tasks
+                   WHERE task_date=? GROUP BY queue_type""",
+                (task_date,),
+            ).fetchall()
+        },
+    }
+
+
+def pending_manager_decisions(db) -> dict:
+    """What is sitting in the management exception queue right now."""
+    approvals = db.execute(
+        "SELECT COUNT(*) FROM ptp_agreements WHERE manager_approval_status='pending'"
+    ).fetchone()[0]
+    exceptions = db.execute(
+        "SELECT COUNT(*) FROM collection_exceptions WHERE status='pending'"
+    ).fetchone()[0]
+    return {
+        "ptp_approvals": approvals,
+        "engine_exceptions": exceptions,
+        "total": approvals + exceptions,
+    }
+
+
+# ── Management exception queue ────────────────────────────────────────────────
+
+def _ptp_escalation_reason(row) -> str:
+    """Why this arrangement is a manager's call and not reception's.
+
+    Mirrors the tiers in ptp.py:ptp_create — anything the rule engine could
+    not auto-approve lands here rather than being silently allowed or lost.
+    """
+    discount = float(row["discount_pct"] or 0)
+    if discount > 0 and not row["discount_basis"]:
+        return f"{discount:.0f}% discount with no qualifying DebiCheck or upfront-cash basis"
+    if discount > 0:
+        return f"{discount:.0f}% discount on the {row['discount_basis']} tier"
+    return "Non-standard arrangement referred by reception"
+
+
+def _pending_ptp_approvals(db):
+    return db.execute(
+        """SELECT p.*, m.member_ref, m.first_name, m.last_name,
+                  u.full_name AS requested_by_name
+           FROM ptp_agreements p
+           JOIN members m ON m.id = p.member_id
+           LEFT JOIN users u ON u.id = p.created_by
+           WHERE p.manager_approval_status = 'pending'
+           ORDER BY p.created_at, p.id"""
+    ).fetchall()
+
+
+def _open_engine_exceptions(db):
+    return db.execute(
+        """SELECT e.*, m.member_ref, m.first_name, m.last_name,
+                  u.full_name AS raised_by_name
+           FROM collection_exceptions e
+           JOIN members m ON m.id = e.member_id
+           LEFT JOIN users u ON u.id = e.created_by
+           WHERE e.status = 'pending'
+           ORDER BY e.created_at, e.id"""
+    ).fetchall()
+
+
+@collections_bp.get("/exceptions")
+@roles_required("admin", "manager")
+def exception_queue():
+    """Everything waiting on a manager decision, in one place.
+
+    Rule §7: a non-standard request at three or more months owing cannot be
+    silently overridden by reception. Until this screen existed the rule
+    engine produced these escalations and nobody could see them without
+    already knowing which member to open.
+    """
+    db = get_db()
+    ptp_rows = [dict(row) for row in _pending_ptp_approvals(db)]
+    for row in ptp_rows:
+        row["escalation_reason"] = _ptp_escalation_reason(row)
+    return render_template(
+        "collections/exceptions.html",
+        ptp_approvals=ptp_rows,
+        engine_exceptions=_open_engine_exceptions(db),
+    )
+
+
+@collections_bp.post("/exceptions/<int:exception_id>/decide")
+@roles_required("admin", "manager")
+def exception_decide(exception_id: int):
+    db = get_db()
+    decision = (request.form.get("decision") or "").strip().lower()
+    notes = (request.form.get("notes") or "").strip()
+    if decision not in {"approved", "declined"}:
+        flash("A manager decision must be approved or declined.", "error")
+        return redirect(url_for("collections.exception_queue"))
+    if decision == "declined" and not notes:
+        flash("Declining an exception requires a reason.", "error")
+        return redirect(url_for("collections.exception_queue"))
+
+    row = db.execute(
+        "SELECT * FROM collection_exceptions WHERE id = ? AND status = 'pending'",
+        (exception_id,),
+    ).fetchone()
+    if row is None:
+        flash("That exception has already been decided.", "warning")
+        return redirect(url_for("collections.exception_queue"))
+
+    db.execute(
+        """UPDATE collection_exceptions
+           SET status = ?, notes = ?, decided_by = ?, decided_at = datetime('now')
+           WHERE id = ?""",
+        (decision, notes or row["notes"], session.get("user_id"), exception_id),
+    )
+    member_activity(
+        db, row["member_id"],
+        f"Collections exception #{exception_id} {decision} by manager. "
+        + (f"Condition/reason: {notes[:120]}" if notes else "No condition recorded."),
+    )
+    db.commit()
+    flash(f"Exception {decision}.", "success")
+    return redirect(url_for("collections.exception_queue"))

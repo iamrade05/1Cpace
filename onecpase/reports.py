@@ -6,6 +6,7 @@ from werkzeug.datastructures import MultiDict
 from .auth import permission_required
 from .database import get_db
 from .encryption import decrypt
+from .member_counts import get_member_counts
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/reports")
 
@@ -208,10 +209,11 @@ def _load_overview(db):
     today_str = date.today().isoformat()
     month_start = date.today().replace(day=1).isoformat()
     s = {}
-    s['active_members']      = db.execute("SELECT COUNT(*) FROM members WHERE member_status='Active'").fetchone()[0]
-    s['frozen_members']      = db.execute("SELECT COUNT(*) FROM members WHERE member_status='Frozen'").fetchone()[0]
-    s['cancelled_members']   = db.execute("SELECT COUNT(*) FROM members WHERE member_status='Cancelled'").fetchone()[0]
-    s['total_members']       = db.execute("SELECT COUNT(*) FROM members").fetchone()[0]
+    member_counts = get_member_counts(db)
+    s['active_members']      = member_counts['active']
+    s['frozen_members']      = member_counts['by_status'].get('Frozen', 0)
+    s['cancelled_members']   = member_counts['by_status'].get('Cancelled', 0)
+    s['total_members']       = member_counts['total']
     s['new_this_month']      = db.execute("SELECT COUNT(*) FROM members WHERE join_date >= ?", (month_start,)).fetchone()[0]
     s['collected_this_month']= db.execute("SELECT COALESCE(SUM(amount_paid),0) FROM collections WHERE collection_date >= ?", (month_start,)).fetchone()[0]
     from .ptp import bulk_member_arrears
@@ -266,7 +268,7 @@ def _load_membership(db, period):
         FROM members m LEFT JOIN users u ON m.uploaded_by_id = u.id
         WHERE m.join_date BETWEEN ? AND ? ORDER BY m.join_date DESC LIMIT 50
     """, (from_date, to_date)).fetchall()
-    total_members = sum(r['cnt'] for r in status_breakdown)
+    total_members = get_member_counts(db)['total']
     return dict(from_date=from_date, to_date=to_date,
                 status_breakdown=status_breakdown, new_by_month=new_by_month,
                 package_breakdown=package_breakdown, payment_type_breakdown=payment_type_breakdown,
