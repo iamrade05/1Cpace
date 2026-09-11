@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 from .auth import permission_required
 from .database import current_tenant_name, get_db, member_activity, next_member_ref
 from .member_counts import get_member_counts
+from .elev8_data import get_elev8_member_count
 from .communication import collection_care_message
 from .encryption import decrypt_member, encrypt_member, hash_for_lookup, encryption_enabled
 from .debicheck import (
@@ -370,13 +371,27 @@ def members_index():
         uploaded_by_id=session["user_id"] if restrict_to_own else None,
     )
 
+    # dbo.Members is the authoritative current Elev8 roster/count, and the
+    # local members table stays the operational UI dataset. The lookup returns
+    # None when SQL Server is unavailable, so the local total is the fallback
+    # rather than a fabricated zero. It is deliberately skipped for a
+    # consultant restricted to their own uploads: that total is theirs, and
+    # the gym-wide roster count would silently replace it with everyone's.
+    authoritative_total_members = None if restrict_to_own else get_elev8_member_count()
+    total_members = (
+        authoritative_total_members
+        if authoritative_total_members is not None
+        else member_counts["total"]
+    )
+
     return render_template(
         "members/index.html",
         members=rows,
         search=q,
         status_filter=status_filter,
         status_counts=member_counts["by_status"],
-        total_members=member_counts["total"],
+        total_members=total_members,
+        authoritative_total_members=authoritative_total_members,
     )
 
 

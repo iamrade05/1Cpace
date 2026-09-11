@@ -7,6 +7,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from .auth import login_required
 from .database import get_db
 from .member_counts import get_member_counts
+from .elev8_data import get_elev8_member_count
 
 
 dashboard_bp = Blueprint("dashboard", __name__)
@@ -384,6 +385,11 @@ def dashboard():
     itensity_snapshot = db.execute(
         "SELECT * FROM itensity_live_snapshot WHERE id = 1"
     ).fetchone()
+    # The current Elev8 roster in dbo.Members is authoritative for the total.
+    # Snapshot/local values remain useful for the status breakdown.
+    authoritative_total_members = get_elev8_member_count()
+    if authoritative_total_members is not None:
+        total_members = authoritative_total_members
 
     pending_collections = db.execute(
         "SELECT COUNT(*) FROM collections WHERE status = 'pending'"
@@ -477,6 +483,7 @@ def dashboard():
         active_members=active_members,
         total_members=total_members,
         itensity_snapshot=itensity_snapshot,
+        authoritative_total_members=authoritative_total_members,
         inactive_members=inactive_members,
         pending_collections=pending_collections,
         outstanding_total=outstanding_total,
