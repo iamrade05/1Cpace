@@ -20,10 +20,6 @@ openpyxl>=3.1.0  # Itensity Data Export .xlsx — used by the external scripts/
                  # Itensity import/sweep jobs are skipped (see scheduler.py).
 pytesseract>=0.3.10  # call-list OCR — requires the Tesseract engine installed separately
 APScheduler>=3.10,<4.0  # in-process nightly jobs — onecpase/scheduler.py
-pyodbc>=5.0  # Elev8 SQL Server roster sync — onecpase/elev8_sync.py and
-             # elev8_data.py. Needs the "ODBC Driver 17 for SQL Server" system
-             # package too (msodbcsql17 on Linux); both imports are lazy, so a
-             # missing driver degrades to the local fallback instead of a crash.
 redis>=5.0  # rate-limit storage. APP_ENV=production refuses to start on
             # memory:// storage (onecpase/__init__.py), so any served
             # instance needs a real backend and this client to reach it.

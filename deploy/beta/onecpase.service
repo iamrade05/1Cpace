@@ -1,0 +1,29 @@
+[Unit]
+Description=1Cpase Web App (beta)
+After=network.target
+
+[Service]
+User=onecpase
+Group=onecpase
+WorkingDirectory=/opt/onecpase
+
+# PORT is set here as well as in .env because gunicorn.conf.py reads it at
+# config-load time, before the app runs load_dotenv(). 5000 is production
+# 1Cpace and 5001 is FiksAccounts — both different applications on this host.
+Environment=PORT=5002
+EnvironmentFile=/opt/onecpase/.env
+
+ExecStart=/opt/onecpase/venv/bin/gunicorn -c gunicorn.conf.py run:app
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Deliberately NOT set: ProtectSystem, ProtectHome, PrivateDevices,
+# MemoryDenyWriteExecute. The NuPay and Itensity drivers launch Playwright's
+# Chromium, which needs a writable browser cache and a JIT-capable mapping;
+# those directives break it in ways that surface only when a mandate is pushed.
+
+[Install]
+WantedBy=multi-user.target

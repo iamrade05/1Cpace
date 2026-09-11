@@ -1,0 +1,16 @@
+# Optional dependencies. NOT installed on servers by default.
+#
+# pyodbc reaches the Elev8 SQL Server (dbo.Members) for the roster sync in
+# scripts/sync_elev8_members.py and the authoritative member count in
+# onecpase/elev8_data.py. It also needs the "ODBC Driver 17 for SQL Server"
+# system package, plus unixODBC-devel to build on Linux.
+#
+# Install it only where the machine can actually reach that SQL Server —
+# in practice the Windows workstation on the Elev8 network. Do NOT install
+# it on the VPS: both imports are lazy, so without pyodbc the count returns
+# None instantly and the app falls back to local member counts. WITH pyodbc
+# but no route to SQL Server, every dashboard and members-list render blocks
+# for pyodbc's 8-second connect timeout instead.
+#
+#   python -m pip install -r requirements-optional.txt
+pyodbc>=5.0

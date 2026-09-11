@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """Deploy 1Cpace V8 to the beta instance on the Absolute Hosting VPS.
 
-Run from any directory:
-
     python deploy_beta.py                # validate, confirm, deploy
-    python deploy_beta.py --check-only   # validate locally, check the live
-                                         # service, change nothing
+    python deploy_beta.py --check-only   # validate and report, change nothing
     python deploy_beta.py --yes          # non-interactive
 
-Beta shares a host with production 1Cpace, which lives in /opt/cpace and is a
-different application entirely. This script only ever writes to /opt/cpace-beta
-and refuses to run if pointed anywhere else.
+Beta is /opt/onecpase, served at beta.1cpace.co.za by nginx on port 5002.
+Three unrelated applications share this host — production 1Cpace in
+/opt/cpace on 5000, FiksAccounts in /opt/fiksaccounts on 5001, and this.
+The target is hard-guarded so a mistyped flag cannot reach the other two.
 
-Secrets, databases and uploaded member documents are never sent from this
-computer and are never overwritten on the server. The server's .env is the
-only place beta's configuration lives.
+The onecpase package is replaced wholesale rather than extracted over, so
+modules deleted upstream do not linger on the server. The previous tree is
+backed up first and the swap only happens once the new tree is in place.
+
+Never sent from this computer and never overwritten on the server: the .env,
+the databases and uploads in /var/data/onecpase, and the venv.
 """
 
 from __future__ import annotations
@@ -41,26 +42,26 @@ except ImportError as exc:  # pragma: no cover - operator setup path
 
 ROOT = Path(__file__).resolve().parent
 
-APP_DIR = "/opt/cpace-beta"
-DATA_DIR = "/var/data/cpace-beta"
-SERVICE = "cpace-beta"
+APP_DIR = "/opt/onecpase"
+SERVICE = "onecpase"
+OWNER = "onecpase:onecpase"
+BACKUP_DIR = "/opt/onecpase-backups"
 DEFAULT_HOST = "102.211.207.233"
 DEFAULT_KEY = Path.home() / ".ssh" / "1cpace_absolute_ed25519"
 PUBLIC_HEALTH_URL = "https://beta.1cpace.co.za/healthz"
 
-# Production's directory. Guarded against, never written to.
-PRODUCTION_DIR = "/opt/cpace"
+# Other applications on the same host. Never a deploy target.
+FORBIDDEN_DIRS = ("/opt/cpace", "/opt/fiksaccounts")
 
 INCLUDE_FILES = (
     "run.py",
     "requirements.txt",
     "gunicorn.conf.py",
     "seed_platform_admin.py",
-    "deploy/beta/cpace-beta.service",
-    "deploy/beta/nginx-beta.conf",
+    "deploy/beta/onecpase.service",
 )
 
-# onecpase/ carries the templates and static assets as package data.
+# onecpase/ carries templates and static assets as package data.
 INCLUDE_DIRS = ("onecpase", "scripts")
 
 # Never shipped: real member data, secrets, local state, test tooling.
@@ -82,14 +83,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--check-only",
         action="store_true",
-        help="validate locally and check the live service without deploying",
+        help="validate locally and report the live service without deploying",
     )
     args = parser.parse_args()
     target = posixpath.normpath(args.app_dir)
-    if target == PRODUCTION_DIR or not target.startswith("/opt/cpace-beta"):
+    if target != APP_DIR or any(target.startswith(d) for d in FORBIDDEN_DIRS):
         raise SystemExit(
             f"Refusing to deploy to {target!r}. This script only writes to "
-            f"{APP_DIR}; production is deployed with the live app's own script."
+            f"{APP_DIR}. Production 1Cpace and FiksAccounts share this host "
+            "and have their own deployment paths."
         )
     args.app_dir = target
     return args
@@ -134,7 +136,7 @@ def validate_release(paths: list[Path]) -> None:
 
 
 def build_archive(paths: list[Path], directory: Path) -> Path:
-    archive = directory / "cpace-beta-release.tar.gz"
+    archive = directory / "onecpase-release.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
         for path in paths:
             tar.add(path, arcname=path.relative_to(ROOT).as_posix(), recursive=False)
@@ -173,61 +175,80 @@ def run(client: paramiko.SSHClient, command: str, *, check: bool = True) -> str:
     return out.strip()
 
 
-def preflight(client: paramiko.SSHClient, args: argparse.Namespace) -> None:
-    """Confirm the instance exists and is separate from production."""
-    missing = run(
-        client,
-        f"test -d {shlex.quote(args.app_dir)} && echo yes || echo no",
-    )
-    if missing == "no":
-        raise SystemExit(
-            f"{args.app_dir} does not exist on {args.host}. Run the one-time "
-            "setup in deploy/beta/README.md before the first deploy."
-        )
-    env_present = run(
-        client, f"test -f {shlex.quote(args.app_dir)}/.env && echo yes || echo no"
-    )
-    if env_present == "no":
-        raise SystemExit(
-            f"{args.app_dir}/.env is missing. Beta will not start without it — "
-            "see deploy/beta/README.md."
-        )
-    print(f"Remote: {args.app_dir} present, .env present.")
+def report(client: paramiko.SSHClient, args: argparse.Namespace) -> None:
+    """Describe the instance without changing it."""
+    app = shlex.quote(args.app_dir)
+    if run(client, f"test -d {app} && echo yes || echo no") == "no":
+        raise SystemExit(f"{args.app_dir} does not exist on {args.host}.")
+    if run(client, f"test -f {app}/.env && echo yes || echo no") == "no":
+        raise SystemExit(f"{args.app_dir}/.env is missing; beta cannot start without it.")
+    print(f"Remote {args.app_dir}: present, .env present.")
     print("Service:", run(client, f"systemctl is-active {SERVICE} || true"))
+    print("Phase:  ", run(
+        client, f"grep -E '^ACTIVE_PHASE=' {app}/.env || echo 'ACTIVE_PHASE unset (defaults to 1)'"
+    ))
 
 
 def deploy(client: paramiko.SSHClient, archive: Path, args: argparse.Namespace) -> None:
-    remote_tmp = f"/tmp/cpace-beta-{uuid.uuid4().hex}.tar.gz"
+    app = shlex.quote(args.app_dir)
+    stamp = run(client, "date +%Y%m%d_%H%M%S")
+    staging = f"{args.app_dir}/.release-{uuid.uuid4().hex}"
+    remote_tmp = f"/tmp/onecpase-{uuid.uuid4().hex}.tar.gz"
+
     sftp = client.open_sftp()
     try:
         sftp.put(str(archive), remote_tmp)
     finally:
         sftp.close()
-    print(f"Uploaded release to {remote_tmp}.")
+    print("Release uploaded.")
 
-    app = shlex.quote(args.app_dir)
-    # Extract over the tree. The archive holds no .env, no database and no
-    # uploads, so none of those can be clobbered by this step.
-    run(client, f"tar -xzf {remote_tmp} -C {app}")
+    # Back up the current tree (without the venv, which pip rebuilds) and the
+    # databases, before anything is moved.
+    run(client, f"mkdir -p {shlex.quote(BACKUP_DIR)}")
+    backup = f"{BACKUP_DIR}/onecpase_{stamp}.tar.gz"
+    run(client, f"tar -czf {shlex.quote(backup)} -C {app} --exclude=venv "
+                f"--exclude='.release-*' . 2>/dev/null || true")
+    run(client, f"tar -czf {shlex.quote(BACKUP_DIR)}/data_{stamp}.tar.gz "
+                f"-C /var/data/onecpase . 2>/dev/null || true")
+    print(f"Backed up to {BACKUP_DIR}/onecpase_{stamp}.tar.gz and data_{stamp}.tar.gz")
+
+    # Stage the new tree, then swap. The package is replaced outright so
+    # modules deleted upstream do not survive on the server.
+    run(client, f"rm -rf {shlex.quote(staging)} && mkdir -p {shlex.quote(staging)}")
+    run(client, f"tar -xzf {remote_tmp} -C {shlex.quote(staging)}")
     run(client, f"rm -f {remote_tmp}")
-    run(client, f"chown -R cpace:cpace {app}")
-    print("Release extracted.")
+
+    run(client, f"rm -rf {app}/onecpase.previous")
+    run(client, f"mv {app}/onecpase {app}/onecpase.previous")
+    run(client, f"mv {shlex.quote(staging)}/onecpase {app}/onecpase")
+    # Everything else overwrites in place.
+    run(client, f"cp -r {shlex.quote(staging)}/. {app}/")
+    run(client, f"rm -rf {shlex.quote(staging)}")
+    run(client, f"chown -R {OWNER} {app}")
+    print("Release swapped in; previous package kept as onecpase.previous.")
 
     run(client, f"{app}/venv/bin/pip install --quiet -r {app}/requirements.txt")
     print("Dependencies installed.")
 
-    run(client, f"install -D -m 644 {app}/deploy/beta/cpace-beta.service "
+    run(client, f"install -m 644 {app}/deploy/beta/onecpase.service "
                 f"/etc/systemd/system/{SERVICE}.service")
     run(client, "systemctl daemon-reload")
     run(client, f"systemctl restart {SERVICE}")
-    print(f"{SERVICE} restarted:", run(client, f"systemctl is-active {SERVICE} || true"))
+    state = run(client, f"systemctl is-active {SERVICE} || true")
+    print(f"{SERVICE}:", state)
+    if state != "active":
+        print(run(client, f"journalctl -u {SERVICE} -n 30 --no-pager || true", check=False))
+        raise SystemExit(
+            f"{SERVICE} did not come back up. The previous package is at "
+            f"{args.app_dir}/onecpase.previous and backups are in {BACKUP_DIR}."
+        )
 
 
 def check_public_health() -> None:
     try:
         with urlopen(PUBLIC_HEALTH_URL, timeout=30) as response:
-            body = response.read().decode(errors="replace")
-            print(f"{PUBLIC_HEALTH_URL} -> HTTP {response.status}: {body[:200]}")
+            print(f"{PUBLIC_HEALTH_URL} -> HTTP {response.status}: "
+                  f"{response.read().decode(errors='replace')[:200]}")
     except URLError as exc:
         print(f"Health check could not reach {PUBLIC_HEALTH_URL}: {exc}")
 
@@ -239,21 +260,21 @@ def main() -> int:
 
     client = connect(args)
     try:
-        preflight(client, args)
+        report(client, args)
         if args.check_only:
             check_public_health()
             print("Check-only: nothing was changed.")
             return 0
 
         if not args.yes:
-            print(f"\nAbout to deploy {len(paths)} files to {args.app_dir} on {args.host}.")
+            print(f"\nAbout to replace {args.app_dir} on {args.host} with "
+                  f"{len(paths)} files and restart {SERVICE}.")
             if input("Type DEPLOY to continue: ").strip() != "DEPLOY":
                 print("Aborted; nothing was changed.")
                 return 1
 
         with tempfile.TemporaryDirectory() as tmp:
-            archive = build_archive(paths, Path(tmp))
-            deploy(client, archive, args)
+            deploy(client, build_archive(paths, Path(tmp)), args)
     finally:
         client.close()
 

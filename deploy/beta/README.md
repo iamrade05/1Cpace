@@ -1,173 +1,103 @@
 # 1Cpace V8 — beta instance
 
-Beta runs as a second, independent instance on the same VPS as production
-1Cpace. Production is a **different application** (the Flask monolith in
-`/opt/cpace`, served at `1cpace.co.za`). Nothing here touches it.
-
-| | Production | Beta |
-|---|---|---|
-| App | 1Cpace monolith | 1Cpace **V8** (`onecpase` package) |
-| Directory | `/opt/cpace` | `/opt/cpace-beta` |
-| Port | 5000 | 5001 |
-| Service | `cpace` | `cpace-beta` |
-| Hostname | `1cpace.co.za` | `beta.1cpace.co.za` |
-| Databases | `/var/data/cpace/` | `/var/data/cpace-beta/` |
-
-Once the one-time setup below is done, every later release is just
-`python deploy_beta.py` from the repository root.
-
----
-
-## One-time server setup
-
-Run as root on the VPS.
-
-### 1. Directories
-
-The `cpace` user already exists (production runs as it).
+Beta is already provisioned and running. Releasing to it is one command:
 
 ```bash
-mkdir -p /opt/cpace-beta /var/data/cpace-beta /opt/cpace-beta/uploads /opt/cpace-beta/logs
-chown -R cpace:cpace /opt/cpace-beta /var/data/cpace-beta
+python deploy_beta.py --check-only   # report only, changes nothing
+python deploy_beta.py                # prompts before replacing anything
 ```
 
-### 2. Virtualenv
+## What is where
 
-```bash
-python3 -m venv /opt/cpace-beta/venv
-/opt/cpace-beta/venv/bin/pip install --upgrade pip wheel
+`102.211.207.233` is **AlmaLinux 10.2**, Python 3.12, and hosts **three
+unrelated applications**. Getting these confused is the main hazard.
+
+| | Production 1Cpace | FiksAccounts | **Beta (this app)** |
+|---|---|---|---|
+| Directory | `/opt/cpace` | `/opt/fiksaccounts` | **`/opt/onecpase`** |
+| Port | 5000 | 5001 | **5002** |
+| Service | `cpace` | `fiksaccounts` | **`onecpase`** |
+| User | `cpace` | `fiks` | **`onecpase`** |
+| Hostname | `1cpace.co.za` | — | **`beta.1cpace.co.za`** |
+
+Beta's data lives **outside** the app directory, which is why a release can
+replace `/opt/onecpase` safely:
+
+```
+/var/data/onecpase/1cpase.db       tenant database
+/var/data/onecpase/platform.db     tenant registry
+/var/data/onecpase/tenants/        provisioned tenant databases
+/var/data/onecpase/uploads/        member documents
 ```
 
-`deploy_beta.py` installs `requirements.txt` into this venv on every run.
+nginx and TLS are **already set up** — `/etc/nginx/conf.d/beta.1cpace.co.za.conf`
+proxies to `127.0.0.1:5002` with a Let's Encrypt certificate and an HTTP-to-HTTPS
+redirect, both managed by certbot. Do not hand-edit the certbot-managed lines.
+Redis is already running as **valkey** on `127.0.0.1:6379`.
 
-### 2b. Redis
+## What a release does
 
-Rate-limit storage. Production mode refuses to start on in-memory storage,
-because a restart would otherwise wipe every limit counter.
+`deploy_beta.py` ships `onecpase/`, `scripts/`, `run.py`, `gunicorn.conf.py`,
+`requirements.txt` and `seed_platform_admin.py`. It:
 
-```bash
-apt-get install -y redis-server
-systemctl enable --now redis-server
-redis-cli ping        # expect: PONG
-```
+1. compiles every Python file locally and refuses to ship a `.env` or database;
+2. backs up the current tree **and** `/var/data/onecpase` into `/opt/onecpase-backups/`;
+3. stages the new tree, then **replaces the `onecpase` package outright** so
+   modules deleted upstream don't linger — the old one is kept as
+   `onecpase.previous`;
+4. installs `requirements.txt`, reinstalls the unit, restarts, and reports
+   `journalctl` if the service doesn't come back.
 
-If production 1Cpace already uses this Redis, beta's `db 1` keeps the two
-apart; check with `redis-cli info keyspace`.
+It refuses any target that isn't `/opt/onecpase`.
 
-### 3. Configuration
+## Configuration
 
-Beta's `.env` lives at `/opt/cpace-beta/.env` and is **never** written by the
-deploy script — it is the one file that only exists on the server.
+`/opt/onecpase/.env` is the one file that exists only on the server — the
+deploy never writes it. Current keys: `SECRET_KEY`, `ENCRYPTION_KEY`,
+`DATABASE_PATH`, `PLATFORM_DATABASE_PATH`, `TENANTS_DIR`, `UPLOAD_FOLDER`,
+`SCHEDULER_ENABLED=0`, `TURNSTILE_ENABLED`, `ACTIVE_PHASE`.
 
-```bash
-# Generate the three secrets. They must NOT be copied from production.
-python3 -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(48))"
-python3 -c "from cryptography.fernet import Fernet; print('ENCRYPTION_KEY=' + Fernet.generate_key().decode())"
-python3 -c "import secrets; print('PBX_WEBHOOK_SECRET=' + secrets.token_urlsafe(32))"
-```
+**`ACTIVE_PHASE`** decides what is reachable — see `onecpase/phases.py`. A
+closed phase is hidden from the nav *and* refused by URL.
+`1`=Sales `2`=Collections+PTP `3`=Queries `4`=Fitness `5`=Reports `6`=HR
+`7`=Operations, or `all`. Unset defaults to `1`.
 
-`APP_ENV=production` is not cosmetic: it turns on `SESSION_COOKIE_SECURE`,
-HSTS and CSP, and it makes `create_app()` **fail closed** — it refuses to
-start without `SECRET_KEY`, `ENCRYPTION_KEY`, `PBX_WEBHOOK_SECRET` and a
-non-`memory://` rate-limit store. All four are therefore mandatory below.
+### Things beta is deliberately without
 
-```ini
-APP_ENV=production
-SECRET_KEY=<generated above>
-ENCRYPTION_KEY=<generated above>
-PBX_WEBHOOK_SECRET=<generated above>
-
-# Rate-limit storage. memory:// is refused in production mode; db 1 keeps
-# beta clear of anything else using this Redis.
-RATELIMIT_STORAGE_URL=redis://localhost:6379/1
-# One trusted proxy: nginx. At 0 every request looks like it comes from
-# 127.0.0.1 and the per-client rate limits become one shared global limit.
-RATELIMIT_TRUSTED_PROXY_COUNT=1
-
-DATABASE_PATH=/var/data/cpace-beta/1cpase.db
-PLATFORM_DATABASE_PATH=/var/data/cpace-beta/platform.db
-TENANTS_DIR=/var/data/cpace-beta/tenants
-UPLOAD_FOLDER=/opt/cpace-beta/uploads
-
-# Which areas are reachable — see onecpase/phases.py. 1 = Sales only.
-ACTIVE_PHASE=1
-
-# Leave the integrations inert until someone decides otherwise. A beta
-# carrying live NuPay credentials will create REAL mandates on the merchant
-# portal the moment a tester clicks through DebiCheck.
-NUPAY_NEW_EMAIL=
-NUPAY_NEW_PASSWORD=
-NUPAY_TOTP_SECRET=
-ITENSITY_USERNAME=
-ITENSITY_PASSWORD=
-
-# The scheduler fires the nightly Itensity jobs. Off until those are wanted.
-SCHEDULER_ENABLED=0
-```
-
-> **On `ENCRYPTION_KEY`:** a fresh key is correct for a beta starting from an
-> empty or scrubbed database. If beta is ever loaded with a copy of production
-> data, it needs *production's* key or every encrypted ID number becomes
-> unreadable. Decide which before importing anything.
-
-Then lock it down:
-
-```bash
-chown cpace:cpace /opt/cpace-beta/.env && chmod 600 /opt/cpace-beta/.env
-```
-
-### 4. First release
-
-From the repository root on your machine:
-
-```bash
-python -m pip install paramiko     # once
-python deploy_beta.py --check-only # confirms access, changes nothing
-python deploy_beta.py
-```
-
-### 5. Web server and TLS
-
-```bash
-cp /opt/cpace-beta/deploy/beta/nginx-beta.conf /etc/nginx/sites-available/beta.1cpace.co.za
-ln -s /etc/nginx/sites-available/beta.1cpace.co.za /etc/nginx/sites-enabled/
-nginx -t && systemctl reload nginx
-certbot --nginx -d beta.1cpace.co.za
-```
-
-`beta.1cpace.co.za` already resolves to this host, so certbot's HTTP challenge
-will pass without a DNS change.
-
-### 6. Power User
-
-The account that provisions tenants. It cannot be created from any screen.
-
-```bash
-cd /opt/cpace-beta
-sudo -u cpace PLATFORM_ADMIN_USERNAME=owner PLATFORM_ADMIN_PASSWORD='<strong password>' \
-  venv/bin/python seed_platform_admin.py
-```
-
-### 7. Browser automation (only if NuPay/Itensity are enabled)
-
-Skipped by default — the drivers are inert while the credentials above are
-blank, and Chromium is a large install.
-
-```bash
-sudo -u cpace /opt/cpace-beta/venv/bin/playwright install --with-deps chromium
-```
-
----
+- **`APP_ENV` is unset**, so the app runs in development mode. Setting
+  `APP_ENV=production` turns on HSTS, CSP and `SESSION_COOKIE_SECURE`, but it
+  also **fails closed** — it will refuse to boot without `PBX_WEBHOOK_SECRET`
+  and a non-`memory://` `RATELIMIT_STORAGE_URL` (valkey is already there:
+  `redis://localhost:6379/1`). Worth doing; it needs those two keys added in
+  the same edit or beta stops.
+- **NuPay and Itensity credentials are absent.** A beta carrying live NuPay
+  credentials creates **real mandates** on the merchant portal the moment
+  someone clicks through DebiCheck. Leave them out.
+- **`pyodbc` is not installed**, and should not be. Beta has no route to the
+  Elev8 SQL Server, so `get_elev8_member_count()` returns `None` instantly and
+  the member count falls back to local data. With pyodbc installed but no
+  route, every dashboard and members-list render would block for its
+  8-second connect timeout instead. See `requirements-optional.txt`.
+- **`SCHEDULER_ENABLED=0`**, so the nightly Itensity jobs don't run here.
 
 ## Operating it
 
 ```bash
-systemctl status cpace-beta
-journalctl -u cpace-beta -f
-systemctl restart cpace-beta
-curl -s localhost:5001/healthz
+systemctl status onecpase
+journalctl -u onecpase -f
+curl -s localhost:5002/healthz
 ```
 
-**Do not raise `workers` in `gunicorn.conf.py`.** The APScheduler jobs run
-inside the web process and its only guard does nothing under gunicorn, so two
-workers means every nightly job runs twice. The file explains the way out.
+**Do not raise `workers` in `gunicorn.conf.py`.** APScheduler runs inside the
+web process and its only guard does nothing under gunicorn, so two workers
+means every nightly job runs twice. Dormant while `SCHEDULER_ENABLED=0`; a
+live trap the moment that changes. `gunicorn.conf.py` explains the way out.
+
+## Rolling back
+
+```bash
+ls -la /opt/onecpase-backups/                       # timestamped tarballs
+rm -rf /opt/onecpase/onecpase
+mv /opt/onecpase/onecpase.previous /opt/onecpase/onecpase
+systemctl restart onecpase
+```
