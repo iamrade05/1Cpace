@@ -24,3 +24,6 @@ pyodbc>=5.0  # Elev8 SQL Server roster sync — onecpase/elev8_sync.py and
              # elev8_data.py. Needs the "ODBC Driver 17 for SQL Server" system
              # package too (msodbcsql17 on Linux); both imports are lazy, so a
              # missing driver degrades to the local fallback instead of a crash.
+redis>=5.0  # rate-limit storage. APP_ENV=production refuses to start on
+            # memory:// storage (onecpase/__init__.py), so any served
+            # instance needs a real backend and this client to reach it.

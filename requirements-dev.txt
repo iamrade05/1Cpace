@@ -3,3 +3,4 @@
 -r requirements.txt
 
 pytest>=8.0  # the merge gate — see TESTING.md
+paramiko>=3.4  # deploy_beta.py — SSH/SFTP to the beta VPS
