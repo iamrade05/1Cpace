@@ -2,6 +2,7 @@ from flask import (Blueprint, render_template, request, session,
                    redirect, url_for, flash, jsonify)
 from datetime import datetime, date, timedelta
 from .database import get_db
+from .collections_engine import arrears_discount_policy
 from .auth import login_required
 
 queries_bp = Blueprint('queries', __name__, url_prefix='/queries')
@@ -15,8 +16,6 @@ FINANCIAL_DECISION_CATEGORIES = {
     'payments', 'ptp_collections', 'cancellation', 'freeze', 'refund', 'access_card',
 }
 
-# Settlement-discount tiers by months in arrears: (min_months, percent), high→low.
-ARREARS_DISCOUNT_RULES = [(6, 75), (4, 50), (2, 25)]
 
 # Roles that see gym-wide follow-up counts rather than just their own.
 MANAGER_ROLES = {'admin', 'manager'}
@@ -296,10 +295,7 @@ def _as_int(value) -> int:
 
 def _discount_percent_for_arrears(months_owing: int) -> int:
     """Settlement discount % a member qualifies for, given months in arrears."""
-    for min_months, percent in ARREARS_DISCOUNT_RULES:
-        if months_owing >= min_months:
-            return percent
-    return 0
+    return arrears_discount_policy(months_owing)["discount_percent"]
 
 
 def _payment_arrears_decision(total_outstanding, arrears_months):
@@ -328,7 +324,8 @@ def _payment_arrears_decision(total_outstanding, arrears_months):
     elif arrears_months >= 4:
         recommendation = "Offer 50% settlement discount and confirm payment date."
         access_decision = "Keep access blocked until settlement or approved PTP."
-        manager_approval_required = False
+        # A 50% write-off is a manager decision, same as the 75% tier.
+        manager_approval_required = True
         ptp_required = "Yes"
         priority = "high"
     elif arrears_months >= 2:

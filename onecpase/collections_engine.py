@@ -6,7 +6,7 @@ and access control.
 """
 
 from datetime import date, datetime, timedelta
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
 
 
 MONEY_QUANTUM = Decimal("0.01")
@@ -20,6 +20,40 @@ DEFAULT_COLLECTION_RULES = {
 }
 
 COMMUNICATION_ORDER = ("CALL", "WHATSAPP", "SMS", "EMAIL")
+
+# Authoritative arrears settlement policy, used by both the PTP recovery plan
+# and the Queries account decision so the two cannot drift apart.
+# Discount is applied FIRST. The upfront contribution is then calculated
+# against the discounted balance. Higher discounts require manager approval.
+ARREARS_DISCOUNT_RULES = ((6, 75), (4, 50), (2, 25))
+ARREARS_DISCOUNT_MANAGER_RULES = ((6, True), (4, True), (2, False))
+
+
+def arrears_discount_policy(months_owing):
+    """Return the approved discount tier and whether manager approval is required."""
+    try:
+        months = int(months_owing or 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("months_owing must be an integer") from exc
+    if months < 0:
+        raise ValueError("months_owing cannot be negative")
+
+    discount_percent = 0
+    manager_approval_required = False
+    for min_months, percent in ARREARS_DISCOUNT_RULES:
+        if months >= min_months:
+            discount_percent = percent
+            break
+    for min_months, requires_manager in ARREARS_DISCOUNT_MANAGER_RULES:
+        if months >= min_months:
+            manager_approval_required = requires_manager
+            break
+
+    return {
+        "discount_percent": discount_percent,
+        "manager_approval_required": manager_approval_required,
+    }
+
 VALID_CALL_OUTCOMES = {
     "reminder_delivered",
     "promised_to_pay",
@@ -122,6 +156,69 @@ def upfront_percentage(arrears, amount) -> Decimal:
 
 def required_upfront_amount(arrears, percent) -> Decimal:
     return money(money(arrears) * money(percent) / Decimal("100"))
+
+
+def calculate_realistic_recovery_plan(
+    arrears,
+    normal_installment,
+    discount_percent=0,
+    upfront_percent=30,
+):
+    """Calculate an affordable arrears recovery plan.
+
+    The order is authoritative: discount the arrears first, then calculate the
+    upfront contribution from the discounted balance. The remaining balance is
+    recovered using the member's normal monthly instalment, with a smaller final
+    instalment where necessary.
+    """
+    arrears = money(arrears)
+    normal_installment = money(normal_installment)
+    discount_percent = money(discount_percent)
+    upfront_percent = money(upfront_percent)
+
+    if arrears < 0 or normal_installment < 0:
+        raise ValueError("arrears and normal_installment cannot be negative")
+    if discount_percent < 0 or discount_percent > 100:
+        raise ValueError("discount_percent must be between 0 and 100")
+    if upfront_percent < 0 or upfront_percent > 100:
+        raise ValueError("upfront_percent must be between 0 and 100")
+
+    discount_amount = money(arrears * discount_percent / Decimal("100"))
+    discounted_balance = money(arrears - discount_amount)
+    upfront_amount = required_upfront_amount(discounted_balance, upfront_percent)
+    remaining_balance = money(discounted_balance - upfront_amount)
+
+    if remaining_balance > 0 and normal_installment > 0:
+        recovery_months = int((remaining_balance / normal_installment).to_integral_value(rounding=ROUND_CEILING))
+        if money(normal_installment * recovery_months) < remaining_balance:
+            recovery_months += 1
+    else:
+        recovery_months = 0
+
+    if remaining_balance > 0 and normal_installment > 0:
+        regular_months = max(recovery_months - 1, 0)
+        final_installment = money(remaining_balance - normal_installment * regular_months)
+        recovery_installment = normal_installment
+    else:
+        regular_months = 0
+        final_installment = Decimal("0.00")
+        recovery_installment = Decimal("0.00")
+
+    return {
+        "arrears": arrears,
+        "normal_installment": normal_installment,
+        "discount_percent": discount_percent,
+        "discount_amount": discount_amount,
+        "discounted_balance": discounted_balance,
+        "upfront_percent": upfront_percent,
+        "upfront_amount": upfront_amount,
+        "remaining_balance": remaining_balance,
+        "recovery_installment": recovery_installment,
+        "recovery_months": recovery_months,
+        "regular_recovery_months": regular_months,
+        "final_recovery_installment": final_installment,
+        "monthly_amount_during_recovery": money(normal_installment + recovery_installment),
+    }
 
 
 def _parse_date(value):

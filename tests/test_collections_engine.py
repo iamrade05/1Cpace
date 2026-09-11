@@ -2,9 +2,11 @@ from datetime import date
 from decimal import Decimal
 
 from onecpase.collections_engine import (
+    arrears_discount_policy,
     calculate_arrears_installment,
     calculate_daily_call_kpi,
     calculate_debicheck_options,
+    calculate_realistic_recovery_plan,
     complete_call,
     determine_access,
     evaluate_collection_case,
@@ -84,3 +86,56 @@ def test_engine_schema_seeds_configurable_rules(app):
         assert "daily_call_target" in keys
         assert "upfront_min_percent" in keys
         assert db.execute("SELECT COUNT(*) FROM collections_cases").fetchone()[0] == 0
+
+
+def test_realistic_recovery_plan_discounts_before_upfront():
+    plan = calculate_realistic_recovery_plan(1725, 345, 25, 30)
+    assert plan["discount_amount"] == Decimal("431.25")
+    assert plan["discounted_balance"] == Decimal("1293.75")
+    assert plan["upfront_amount"] == Decimal("388.13")
+    assert plan["remaining_balance"] == Decimal("905.62")
+    assert plan["recovery_installment"] == Decimal("345.00")
+    assert plan["recovery_months"] == 3
+    assert plan["final_recovery_installment"] == Decimal("215.62")
+    assert plan["monthly_amount_during_recovery"] == Decimal("690.00")
+
+
+def test_arrears_discount_policy_requires_manager_at_four_months():
+    assert arrears_discount_policy(2) == {
+        "discount_percent": 25,
+        "manager_approval_required": False,
+    }
+    assert arrears_discount_policy(3) == {
+        "discount_percent": 25,
+        "manager_approval_required": False,
+    }
+    assert arrears_discount_policy(4) == {
+        "discount_percent": 50,
+        "manager_approval_required": True,
+    }
+    assert arrears_discount_policy(5) == {
+        "discount_percent": 50,
+        "manager_approval_required": True,
+    }
+    assert arrears_discount_policy(6) == {
+        "discount_percent": 75,
+        "manager_approval_required": True,
+    }
+
+
+def test_queries_account_decision_follows_the_shared_arrears_policy():
+    """Queries and PTP must not disagree about a member's settlement terms.
+
+    The Queries screen used to allow a 50% write-off without a manager while
+    the collections policy required one. Both now read the same policy.
+    """
+    from onecpase.queries import _payment_arrears_decision
+
+    for months in (0, 1, 2, 3, 4, 5, 6, 7):
+        policy = arrears_discount_policy(months)
+        decision = _payment_arrears_decision(1000, months)
+        assert decision["discount_percent"] == policy["discount_percent"], months
+        assert (
+            decision["manager_approval_required"]
+            == policy["manager_approval_required"]
+        ), months

@@ -11,6 +11,7 @@ from werkzeug.utils import secure_filename
 from .auth import permission_required, roles_required
 from .database import get_db, member_activity
 from .collections_engine import (
+    calculate_realistic_recovery_plan,
     create_collection_exception,
     evaluate_collection_case,
     evaluate_member_access,
@@ -21,6 +22,7 @@ from .collections_engine import (
 
 ptp_bp = Blueprint("ptp", __name__)
 
+UPFRONT_RECOVERY_PERCENT = 30    # upfront share of the discounted balance
 ARREARS_RESTRICTION_MONTHS = 2   # Rule §7/§12: more than two months owing
 INACTIVE_AFTER_MONTHS = 6        # Rule §15: unpaid for more than six months
 
@@ -688,7 +690,10 @@ def run_automations():
 @permission_required("all_collections")
 def ptp_create(mid: int):
     db = get_db()
-    if not db.execute("SELECT 1 FROM members WHERE id=?", (mid,)).fetchone():
+    member = db.execute(
+        "SELECT id, monthly_installment FROM members WHERE id=?", (mid,)
+    ).fetchone()
+    if not member:
         abort(404)
 
     f = request.form
@@ -738,6 +743,22 @@ def ptp_create(mid: int):
             discount_auto_approved = False
         discount_amount = round(float(arrears_amount or 0) * discount_pct / 100, 2)
 
+    # Recovery rule: discount first, then calculate the 30% upfront payment
+    # from the discounted balance. The remaining arrears are recovered using
+    # the member's normal monthly instalment rather than an arbitrary arrears
+    # instalment.
+    try:
+        recovery_plan = calculate_realistic_recovery_plan(
+            arrears_value,
+            float(member["monthly_installment"] or 0),
+            discount_pct,
+            UPFRONT_RECOVERY_PERCENT,
+        )
+    except (TypeError, ValueError):
+        recovery_plan = calculate_realistic_recovery_plan(
+            arrears_value, 0, discount_pct, UPFRONT_RECOVERY_PERCENT
+        )
+
     mgr_status = "pending" if (needs_approval or not discount_auto_approved) else "not_required"
 
     cursor = db.execute("""
@@ -745,15 +766,35 @@ def ptp_create(mid: int):
             (member_id, created_by, arrears_amount, promise_amount, promise_date,
              payment_method, arrangement_type, ptp_status, access_unblock, unblock_until,
              auto_block_if_failed, notes, manager_approval_status,
-             discount_pct, discount_amount, discount_basis)
-        VALUES (?,?,?,?,?,?,?,'pending',?,?,?,?,?,?,?,?)
+             discount_pct, discount_amount, discount_basis, discounted_balance,
+             upfront_percent, upfront_amount, remaining_balance, recovery_installment,
+             recovery_months)
+        VALUES (?,?,?,?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (mid, session.get("user_id"), float(arrears_amount or 0),
           float(promise_amount), promise_date, payment_method, arrangement_type,
           access_unblock,
           unblock_until if access_unblock == "yes" else None,
           auto_block, notes, mgr_status,
-          discount_pct, discount_amount, discount_basis))
+          discount_pct, discount_amount, discount_basis,
+          float(recovery_plan["discounted_balance"]),
+          float(recovery_plan["upfront_percent"]),
+          float(recovery_plan["upfront_amount"]),
+          float(recovery_plan["remaining_balance"]),
+          float(recovery_plan["recovery_installment"]),
+          int(recovery_plan["recovery_months"])))
     ptp_id = cursor.lastrowid
+
+    # Surface the exact recovery calculation to the receptionist so the PTP
+    # is based on the member's real monthly affordability.
+    flash(
+        f"Recovery plan: discounted balance R{float(recovery_plan['discounted_balance']):,.2f}; "
+        f"{float(recovery_plan['upfront_percent']):g}% upfront "
+        f"R{float(recovery_plan['upfront_amount']):,.2f}; "
+        f"remaining R{float(recovery_plan['remaining_balance']):,.2f}; "
+        f"arrears recovery R{float(recovery_plan['recovery_installment']):,.2f} per month "
+        f"for up to {int(recovery_plan['recovery_months'])} month(s).",
+        "info",
+    )
 
     # Handle split payment plan items
     if arrangement_type == "split":
