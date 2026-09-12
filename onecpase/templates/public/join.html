@@ -5,14 +5,90 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Join {{ tenant.name }}</title>
   <style>
-    :root{--navy:#002e45;--navy-d:#001e2d;--gold:#b0842d;--gold-d:#866421;--bg:#0b0b10;--s1:#10111a;--s2:#161820;--b1:#252832;--txt:#f0eff6;--t2:#9b9db4;--err:#ef4444}
-    *{box-sizing:border-box} body{margin:0;min-height:100vh;background:radial-gradient(circle at top,var(--navy),var(--bg) 48%);color:var(--txt);font-family:Arial,sans-serif;padding:28px 16px}.wrap{width:min(680px,100%);margin:auto}.brand{letter-spacing:.1em;color:var(--gold);font-weight:800;text-transform:uppercase}.card{background:rgba(16,17,26,.96);border:1px solid var(--b1);border-radius:14px;padding:clamp(20px,5vw,38px);box-shadow:0 22px 55px #0008}h1{margin:8px 0;font-size:clamp(1.8rem,6vw,3rem)}.intro{color:var(--t2);line-height:1.55;margin-bottom:24px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.full{grid-column:1/-1}label,legend{display:block;font-size:.83rem;font-weight:700;margin-bottom:7px}input,select{width:100%;padding:12px;border-radius:8px;border:1px solid #30333f;background:var(--s2);color:var(--txt);font-size:1rem}input:focus,select:focus{outline:2px solid var(--gold);border-color:transparent}.consent{display:flex;gap:10px;align-items:flex-start;color:var(--t2);font-weight:400;line-height:1.4}.consent input{width:auto;margin-top:3px}.errors{border:1px solid var(--err);background:#ef44441f;color:#fecaca;border-radius:8px;padding:12px;margin-bottom:18px}.errors ul{margin:0;padding-left:18px}.btn{border:0;border-radius:8px;background:var(--gold);color:#080808;font-weight:800;font-size:1rem;padding:14px 20px;cursor:pointer;width:100%}.btn:hover{background:var(--gold-d);color:white}.honeypot{position:absolute;left:-10000px}@media(max-width:600px){.grid{grid-template-columns:1fr}.full{grid-column:auto}}
+    :root{
+      /* Brand red is taken from the Elev8 mark itself (tenant_logos/elev8.svg). */
+      --brand:#d51f37;--brand-d:#a8172b;
+      --navy:#002e45;--bg:#0b0b10;--s1:#10111a;--s2:#161820;--b1:#252832;
+      --txt:#f0eff6;--t2:#9b9db4;--err:#ef4444
+    }
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:var(--bg);color:var(--txt);
+         font-family:Arial,Helvetica,sans-serif;padding:24px 16px}
+    .wrap{width:min(1040px,100%);margin:auto;display:grid;
+          grid-template-columns:minmax(0,0.85fr) minmax(0,1fr);gap:22px;align-items:stretch}
+
+    /* Brand panel. The photo is a background layer so that if the file is not
+       there the panel is simply solid brand red — no broken image icon, and
+       the page is still presentable the moment it goes live. */
+    .hero{
+      position:relative;border-radius:14px;overflow:hidden;padding:34px 28px;
+      display:flex;flex-direction:column;justify-content:space-between;gap:26px;
+      background:
+        linear-gradient(160deg, rgba(213,31,55,.93), rgba(168,23,43,.97)),
+        var(--brand);
+      box-shadow:0 22px 55px #0008;
+    }
+    .hero.has-photo{
+      background:
+        linear-gradient(160deg, rgba(213,31,55,.86), rgba(120,14,30,.94)),
+        url("{{ url_for('static', filename='images/join-hero.jpg') }}") center/cover no-repeat,
+        var(--brand);
+    }
+    /* The mark carries its own brand-red field, a shade off the panel gradient.
+       Rounding it makes that read as an intentional badge rather than a seam. */
+    .hero-logo{width:clamp(120px,38%,190px);height:auto;display:block;border-radius:12px}
+    .hero-name{letter-spacing:.12em;text-transform:uppercase;font-size:.78rem;
+               font-weight:800;color:#ffffffcc;margin-top:18px}
+    .hero h1{margin:10px 0 0;font-size:clamp(1.7rem,3.6vw,2.6rem);line-height:1.1;color:#fff}
+    .hero p{color:#ffffffdd;line-height:1.55;margin:12px 0 0;font-size:.95rem}
+    .hero-foot{color:#ffffffbb;font-size:.78rem;line-height:1.5}
+
+    .card{background:var(--s1);border:1px solid var(--b1);border-radius:14px;
+          padding:clamp(20px,4vw,32px);box-shadow:0 22px 55px #0008}
+    .card h2{margin:0 0 6px;font-size:1.25rem}
+    .intro{color:var(--t2);line-height:1.55;margin:0 0 22px;font-size:.9rem}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+    .full{grid-column:1/-1}
+    label,legend{display:block;font-size:.83rem;font-weight:700;margin-bottom:7px}
+    input,select{width:100%;padding:12px;border-radius:8px;border:1px solid #30333f;
+                 background:var(--s2);color:var(--txt);font-size:1rem}
+    input:focus,select:focus{outline:2px solid var(--brand);border-color:transparent}
+    .consent{display:flex;gap:10px;align-items:flex-start;color:var(--t2);
+             font-weight:400;line-height:1.4}
+    .consent input{width:auto;margin-top:3px}
+    .errors{border:1px solid var(--err);background:#ef44441f;color:#fecaca;
+            border-radius:8px;padding:12px;margin-bottom:18px}
+    .errors ul{margin:0;padding-left:18px}
+    .btn{border:0;border-radius:8px;background:var(--brand);color:#fff;font-weight:800;
+         font-size:1rem;padding:14px 20px;cursor:pointer;width:100%}
+    .btn:hover{background:var(--brand-d)}
+    .honeypot{position:absolute;left:-10000px}
+
+    @media(max-width:820px){
+      .wrap{grid-template-columns:1fr}
+      .hero{padding:26px 22px}
+      .hero-logo{width:clamp(110px,30%,150px)}
+    }
+    @media(max-width:600px){.grid{grid-template-columns:1fr}.full{grid-column:auto}}
   </style>
 </head>
-<body><main class="wrap"><div class="card">
-  <div class="brand">{{ tenant.name }}</div>
-  <h1>Start your fitness journey</h1>
-  <p class="intro">Complete this short form and one of our sales consultants will contact you. Enquiry channel: {{ campaign }}.</p>
+<body><main class="wrap">
+  {# Prefer the logo the platform recorded for this tenant; fall back to the
+     tenant_logos/<slug>.svg convention the uploader writes to. #}
+  {% set logo = tenant.logo_filename or (tenant.slug ~ '.svg') %}
+  <section class="hero has-photo">
+    <div>
+      <img class="hero-logo" src="{{ url_for('static', filename='tenant_logos/' ~ logo) }}"
+           alt="{{ tenant.name }}">
+      <div class="hero-name">{{ tenant.name }}</div>
+      <h1>Start your fitness journey</h1>
+      <p>Tell us a little about yourself and one of our consultants will call you back.</p>
+    </div>
+    <div class="hero-foot">Enquiry channel: {{ campaign }}</div>
+  </section>
+  <div class="card">
+  <h2>Send your enquiry</h2>
+  <p class="intro">It takes under a minute. We only use these details to contact you about joining.</p>
   {% if errors %}<div class="errors"><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -28,4 +104,5 @@
       <div class="full"><button class="btn" type="submit">Send my enquiry</button></div>
     </div>
   </form>
-</div></main></body></html>
+</div>
+</main></body></html>
