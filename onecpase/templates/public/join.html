@@ -29,9 +29,16 @@
       box-shadow:0 22px 55px #0008;
     }
     .hero.has-photo{
+      /* The wash is heavy only where the logo and headline sit and fades out
+         below them, so the photograph is actually visible instead of being a
+         red ghost. Anything above 0.8 alpha over the whole panel hides it. */
       background:
-        linear-gradient(160deg, rgba(213,31,55,.86), rgba(120,14,30,.94)),
-        url("{{ url_for('static', filename='images/join-hero.jpg') }}") center/cover no-repeat,
+        linear-gradient(180deg,
+          rgba(168,23,43,.94) 0%,
+          rgba(168,23,43,.78) 32%,
+          rgba(140,18,35,.42) 62%,
+          rgba(120,14,30,.30) 100%),
+        url("{{ url_for('static', filename='images/join-hero.jpg') }}") 50% 35%/cover no-repeat,
         var(--brand);
     }
     /* The mark carries its own brand-red field, a shade off the panel gradient.

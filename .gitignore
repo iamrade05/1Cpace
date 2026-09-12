@@ -36,3 +36,6 @@ Thumbs.db
 # Itensity portal pulls / exports (real member PII — never commit)
 data/
 itensity_rows.json
+
+# Local database safety copies (taken by the scripts before they write)
+*.db.backup-*
