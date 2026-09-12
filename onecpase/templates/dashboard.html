@@ -391,6 +391,7 @@
       <div class="fd-kpi-foot"><span>Acquisition</span><span class="fd-delta" id="members-delta">vs prior period</span></div>
     </article>
 
+    {% if phase_open('collections') %}
     <article class="fd-kpi" style="--card-color:var(--fd-orange);--card-glow:rgba(255,173,102,.12);">
       <div class="fd-kpi-head">
         <div class="fd-kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.7 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/></svg></div>
@@ -399,6 +400,7 @@
       <div class="fd-kpi-value">R{{ "{:,.0f}".format(outstanding_total) }}</div>
       <div class="fd-kpi-foot"><span>Arrears exposure</span><span class="fd-delta {% if pending_collections %}is-down{% endif %}">{{ pending_collections }} pending</span></div>
     </article>
+    {% endif %}
 
     <article class="fd-kpi" style="--card-color:var(--fd-gold);--card-glow:rgba(215,173,83,.13);">
       <div class="fd-kpi-head">
@@ -489,10 +491,10 @@
           <div class="fd-signal-list">
             <div><div class="fd-signal-head"><span>Member activity</span><strong>{{ active_pct }}%</strong></div><div class="fd-signal-track"><div class="fd-signal-fill" style="--signal-color:var(--fd-green);width:{{ active_pct }}%"></div></div></div>
             <div><div class="fd-signal-head"><span>Payments cleared</span><strong>{{ cleared_pct }}%</strong></div><div class="fd-signal-track"><div class="fd-signal-fill" style="--signal-color:var(--fd-cyan);width:{{ cleared_pct }}%"></div></div></div>
-            <div><div class="fd-signal-head"><span>Collection efficiency</span><strong>{{ collection_rate }}%</strong></div><div class="fd-signal-track"><div class="fd-signal-fill" style="--signal-color:var(--fd-gold);width:{{ [collection_rate, 100] | min }}%"></div></div></div>
+            {% if phase_open('collections') %}<div><div class="fd-signal-head"><span>Collection efficiency</span><strong>{{ collection_rate }}%</strong></div><div class="fd-signal-track"><div class="fd-signal-fill" style="--signal-color:var(--fd-gold);width:{{ [collection_rate, 100] | min }}%"></div></div></div>{% endif %}
           </div>
-          <div class="fd-alert-strip"><span>Outstanding exposure</span><strong>R{{ "{:,.0f}".format(outstanding_total) }}</strong></div>
-          {% if pending_leave > 0 %}<div class="fd-alert-strip"><span>Leave approvals waiting</span><strong>{{ pending_leave }}</strong></div>{% endif %}
+          {% if phase_open('collections') %}<div class="fd-alert-strip"><span>Outstanding exposure</span><strong>R{{ "{:,.0f}".format(outstanding_total) }}</strong></div>{% endif %}
+          {% if phase_open('hr') and pending_leave > 0 %}<div class="fd-alert-strip"><span>Leave approvals waiting</span><strong>{{ pending_leave }}</strong></div>{% endif %}
         </div>
       </div>
     </article>

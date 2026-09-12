@@ -596,7 +596,7 @@
       <span class="icon">📊</span> Dashboard
     </a>
 
-    {% if has_perm('view_leads') or has_perm('capture_leads') or has_perm('all_members') %}
+    {% if phase_open('sales') and (has_perm('view_leads') or has_perm('capture_leads') or has_perm('all_members')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="sales" aria-expanded="false">
       <span>Sales</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -624,7 +624,7 @@
     </div>
     {% endif %}
 
-    {% if has_perm('reception_whatsapp') or has_perm('sales_whatsapp') or has_perm('facebook_messages') or has_perm('facebook_comments') %}
+    {% if phase_open('communication') and (has_perm('reception_whatsapp') or has_perm('sales_whatsapp') or has_perm('facebook_messages') or has_perm('facebook_comments')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="communication" aria-expanded="false">
       <span>Communication</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -656,7 +656,7 @@
     </div>
     {% endif %}
 
-    {% if has_perm('all_members') %}
+    {% if phase_open('members') and (has_perm('all_members')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="members" aria-expanded="false">
       <span>Members</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -665,18 +665,22 @@
          class="nav-item {% if request.blueprint == 'members' %}active{% endif %}">
         <span class="icon">👥</span> Members
       </a>
+      {% if phase_open('queries') %}
       <a href="{{ url_for('queries.index') }}"
          class="nav-item {% if request.blueprint == 'queries' %}active{% endif %}">
         <span class="icon">🎫</span> Queries & Tickets
       </a>
+      {% endif %}
+      {% if phase_open('turnstile') %}
       <a href="{{ url_for('turnstile.index') }}"
          class="nav-item {% if request.blueprint == 'turnstile' %}active{% endif %}">
         <span class="icon">🚪</span> Turnstile
       </a>
+      {% endif %}
     </div>
     {% endif %}
 
-    {% if has_perm('all_collections') %}
+    {% if phase_open('connections') and (has_perm('all_collections')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="connections" aria-expanded="false">
       <span>Connections</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -706,11 +710,12 @@
     </div>
     {% endif %}
 
+    {% if phase_open('finance') %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="finance" aria-expanded="false">
       <span>Finance</span><span class="nav-accordion-chevron">▸</span>
     </button>
     <div class="nav-accordion-panel" data-section-panel="finance" hidden>
-      {% if has_perm('all_collections') %}
+      {% if phase_open('access_report') and has_perm('all_collections') %}
       <a href="{{ url_for('access_report.index') }}"
          class="nav-item {% if request.blueprint == 'access_report' %}active{% endif %}">
         <span class="icon">📋</span> Access Report
@@ -727,8 +732,9 @@
       </a>
       {% endif %}
     </div>
+    {% endif %}
 
-    {% if has_perm('fitness_module') or has_perm('classes') or has_perm('assessments') or has_perm('workout_plans') or has_perm('dailies') or has_perm('incident_log') or has_perm('body_matrix') or has_perm('nutrition_guide') or has_perm('supplements') %}
+    {% if phase_open('fitness') and (has_perm('fitness_module') or has_perm('classes') or has_perm('assessments') or has_perm('workout_plans') or has_perm('dailies') or has_perm('incident_log') or has_perm('body_matrix') or has_perm('nutrition_guide') or has_perm('supplements')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="fitness" aria-expanded="false">
       <span>Fitness</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -790,7 +796,7 @@
     </div>
     {% endif %}
 
-    {% if has_perm('equipment') %}
+    {% if phase_open('operations') and (has_perm('equipment')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="operations" aria-expanded="false">
       <span>Operations</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -802,7 +808,7 @@
     </div>
     {% endif %}
 
-    {% if has_perm('hr_staff') or has_perm('hr_leave') or has_perm('hr_payroll') or has_perm('hr_timesheets') or session.user_id %}
+    {% if phase_open('hr') and (has_perm('hr_staff') or has_perm('hr_leave') or has_perm('hr_payroll') or has_perm('hr_timesheets') or session.user_id) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="hr" aria-expanded="false">
       <span>HR</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -838,7 +844,7 @@
     </div>
     {% endif %}
 
-    {% if has_perm('reports_module') %}
+    {% if phase_open('analytics') and (has_perm('reports_module')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="analytics" aria-expanded="false">
       <span>Analytics</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -874,7 +880,7 @@
     </div>
     {% endif %}
 
-    {% if session.get('role') == 'admin' %}
+    {% if phase_open('admin') and (session.get('role') == 'admin') %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="admin" aria-expanded="false">
       <span>Admin</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -954,7 +960,9 @@
   </div>
 </div>
 
-{% if session.user_id %}
+{# The follow-up FAB links into Queries, which opens at phase 3. It sits
+   outside the nav accordion, so the section gate above does not cover it. #}
+{% if session.user_id and phase_open('queries') %}
 <a href="{{ url_for('queries.index') }}?followup=due"
    class="followup-fab {% if followup_due_count > 0 %}is-due{% endif %}"
    title="{{ followup_due_count }} {{ 'account' if followup_due_count == 1 else 'accounts' }} need follow-up{% if followup_scope == 'all' %} (gym-wide){% else %} (assigned to you){% endif %}">
