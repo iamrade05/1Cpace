@@ -18,7 +18,10 @@ DEFAULT_STAFF_PASSWORD = "Staff@123"
 
 # Accounts that a default-password reset must never touch. The owner account
 # has to stay reachable even if a bulk reset is run by mistake.
-PROTECTED_USERNAMES = frozenset({"mvuleni.radebe"})
+# Both spellings are listed deliberately: usernames were shortened from
+# firstname.lastname to firstname, and a protection keyed to a username that
+# has been renamed is no protection at all.
+PROTECTED_USERNAMES = frozenset({"mvuleni", "mvuleni.radebe"})
 
 
 def is_protected_user(username) -> bool:
