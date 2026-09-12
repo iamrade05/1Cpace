@@ -41,19 +41,47 @@
 </details>
 {% endif %}
 
-<div style="overflow-x:auto;padding-bottom:16px;">
-  <div style="display:flex;gap:12px;min-width:max-content;align-items:flex-start;">
-    {% for status_key, status_label in kanban_columns %}
-    {% set col = leads_by_status.get(status_key, []) %}
-    {% set color = status_colors[status_key] %}
-    <div style="width:225px;flex-shrink:0;">
-      <div style="background:{{ color }};color:#fff;border-radius:8px 8px 0 0;padding:10px 12px;display:flex;justify-content:space-between;">
-        <strong style="font-size:.72rem;text-transform:uppercase;letter-spacing:.6px;">{{ status_label }}</strong>
-        <span style="background:#ffffff33;border-radius:20px;padding:1px 8px;font-size:.72rem;">{{ col|length }}</span>
-      </div>
-      <div style="background:#e8eaf0;border-radius:0 0 8px 8px;padding:8px;min-height:110px;">
+<style>
+  /* Vertical pipeline. Each stage is collapsed until it is selected;
+     `name` makes the browser close the previous one, so exactly one stage
+     is open at a time without any JavaScript. */
+  .pipeline { display:flex; flex-direction:column; gap:8px; }
+  .pipeline-stage > summary {
+    list-style:none; cursor:pointer; user-select:none;
+    display:flex; align-items:center; gap:10px;
+    color:#fff; border-radius:8px; padding:11px 14px;
+  }
+  .pipeline-stage > summary::-webkit-details-marker { display:none; }
+  .pipeline-stage[open] > summary { border-radius:8px 8px 0 0; }
+  .pipeline-stage > summary:focus-visible { outline:2px solid #e94560; outline-offset:2px; }
+  .pipeline-chevron { transition:transform .15s ease; font-size:.8rem; }
+  .pipeline-stage[open] .pipeline-chevron { transform:rotate(90deg); }
+  .pipeline-title { font-size:.72rem; text-transform:uppercase; letter-spacing:.6px; flex:1; }
+  .pipeline-count { background:#ffffff33; border-radius:20px; padding:1px 9px; font-size:.72rem; }
+  .pipeline-body { background:#e8eaf0; border-radius:0 0 8px 8px; padding:10px; }
+  /* Full width now, so cards flow in a grid instead of a 225px column. */
+  .pipeline-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(235px,1fr)); gap:9px; }
+</style>
+
+<div class="pipeline">
+  {% set ns = namespace(opened=false) %}
+  {% for status_key, status_label in kanban_columns %}
+  {% set col = leads_by_status.get(status_key, []) %}
+  {% set color = status_colors[status_key] %}
+  {# Open the first stage that actually has prospects, so the board is not
+     a wall of closed bars on arrival. #}
+  {% set is_open = (not ns.opened and col|length > 0) %}
+  {% if is_open %}{% set ns.opened = true %}{% endif %}
+  <details class="pipeline-stage" name="pipeline"{% if is_open %} open{% endif %}>
+    <summary style="background:{{ color }};">
+      <span class="pipeline-chevron" aria-hidden="true">▸</span>
+      <strong class="pipeline-title">{{ status_label }}</strong>
+      <span class="pipeline-count">{{ col|length }}</span>
+    </summary>
+    <div class="pipeline-body">
+      <div class="pipeline-cards">
         {% for prospect in col %}
-        <article style="background:#fff;border-radius:6px;padding:11px;margin-bottom:8px;border-left:3px solid {{ color }};box-shadow:0 1px 3px #00000012;">
+        <article style="background:#fff;border-radius:6px;padding:11px;border-left:3px solid {{ color }};box-shadow:0 1px 3px #00000012;">
           <div style="font-weight:700;font-size:.83rem;">{{ prospect.full_name }}</div>
           <div style="font-size:.73rem;color:#6b7280;margin-top:2px;">{{ prospect.phone or prospect.email or '—' }} {% if prospect.phone %}<button type="button" class="btn btn-primary btn-sm" onclick="startPbxCall('{{ prospect.phone|e }}')">Call</button>{% endif %}</div>
           <div style="font-size:.7rem;color:#9ca3af;margin-top:3px;">{{ prospect.salesperson_name or 'Unassigned' }} · {{ prospect.original_source or prospect.source }}</div>
@@ -61,11 +89,11 @@
           {% if status_key == 'hot_prospect_7day' %}<div style="font-size:.7rem;color:#047857;margin-top:5px;font-weight:700;">Decision due {{ prospect.decision_date }}</div>{% endif %}
           <a href="{{ url_for('leads.lead_detail', lid=prospect.id) }}" style="display:inline-block;margin-top:8px;font-size:.72rem;color:#e94560;font-weight:700;text-decoration:none;">Open record →</a>
         </article>
-        {% else %}<div style="text-align:center;padding:24px 0;color:#b4bac5;font-size:.75rem;">Empty</div>{% endfor %}
+        {% else %}<div style="text-align:center;padding:20px 0;color:#b4bac5;font-size:.75rem;">Empty</div>{% endfor %}
       </div>
     </div>
-    {% endfor %}
-  </div>
+  </details>
+  {% endfor %}
 </div>
 
 <details class="form-card" style="margin-top:10px;">

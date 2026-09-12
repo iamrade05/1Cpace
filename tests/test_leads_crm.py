@@ -593,3 +593,44 @@ def test_joined_lead_closes_once_the_application_is_active(app):
 
 def test_joined_lead_closes_when_the_application_was_declined(app):
     assert _lead_with_application(app, "declined") == "closed"
+
+
+def test_pipeline_renders_as_a_vertical_accordion(client):
+    """The board is a vertical list of collapsed stages, not a horizontal scroll.
+
+    Each stage is a <details> sharing one `name`, which is what makes the
+    browser close the previously open stage — the "expand only when selected"
+    behaviour, with no JavaScript to go wrong.
+    """
+    _login_admin(client)
+    with client.application.app_context():
+        db = get_db()
+        for name, status in (
+            ("Accordion Alice", "captured"),
+            ("Accordion Bongani", "captured"),
+            ("Accordion Chipo", "contacted"),
+        ):
+            db.execute(
+                "INSERT INTO leads (full_name, phone, lead_status, source) VALUES (?,?,?,?)",
+                (name, "082 000 0000", status, "Walk-In / Enquiry"),
+            )
+        db.commit()
+
+    html = client.get("/leads/", follow_redirects=True).get_data(as_text=True)
+
+    # Every kanban stage is a collapsible section in one exclusive group.
+    assert html.count('class="pipeline-stage"') == 8
+    assert html.count('name="pipeline"') == 8
+
+    # Exactly one stage starts open: the first that actually has prospects.
+    assert html.count('name="pipeline" open') == 1
+    captured = html.index("Captured")
+    contacted = html.index("Contacted")
+    assert html.index('name="pipeline" open') < captured < contacted
+
+    # The old horizontal board is gone.
+    assert "min-width:max-content" not in html
+
+    # Prospects still render inside their stage.
+    for name in ("Accordion Alice", "Accordion Bongani", "Accordion Chipo"):
+        assert name in html
