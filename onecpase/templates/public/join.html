@@ -4,6 +4,27 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Join {{ tenant.name }}</title>
+
+  {# What Facebook, Instagram, TikTok and WhatsApp show when this link is
+     pasted. The platforms build their preview card from these tags — the URL
+     itself cannot be given custom wording in a post, so this is the only
+     place the headline can be set. Change share_headline to change it
+     everywhere at once. #}
+  {% set share_headline = 'CLICK TO GET MORE INFO' %}
+  {% set share_blurb = 'Enquire about joining ' ~ tenant.name ~ '. Leave your details and a consultant will call you back.' %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ tenant.name }}">
+  <meta property="og:title" content="{{ share_headline }}">
+  <meta property="og:description" content="{{ share_blurb }}">
+  <meta property="og:url" content="{{ request.url }}">
+  <meta property="og:image" content="{{ url_for('static', filename='images/join-hero.jpg', _external=True) }}">
+  <meta property="og:image:width" content="1266">
+  <meta property="og:image:height" content="553">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ share_headline }}">
+  <meta name="twitter:description" content="{{ share_blurb }}">
+  <meta name="twitter:image" content="{{ url_for('static', filename='images/join-hero.jpg', _external=True) }}">
+  <meta name="description" content="{{ share_blurb }}">
   <style>
     :root{
       /* Brand red is taken from the Elev8 mark itself (tenant_logos/elev8.svg). */
