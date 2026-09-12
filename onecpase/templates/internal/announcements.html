@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Announcements · 1Cpase{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Announcements</h1>
+    <p class="page-sub">Notices for all staff. Marking one read records that you saw it.</p>
+  </div>
+</div>
+
+{% if may_announce %}
+<details class="card" style="margin-bottom:12px;">
+  <summary style="cursor:pointer;padding:14px 16px;font-weight:700;">＋ Post an announcement</summary>
+  <form method="POST" action="{{ url_for('internal_comms.announcement_create') }}"
+        class="card-body" style="padding:16px;display:grid;gap:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label style="margin:0;">
+      <span style="display:block;font-size:.8rem;font-weight:700;margin-bottom:6px;">Title</span>
+      <input name="title" required maxlength="160" style="width:100%;">
+    </label>
+    <label style="margin:0;">
+      <span style="display:block;font-size:.8rem;font-weight:700;margin-bottom:6px;">Message</span>
+      <textarea name="body" rows="4" required maxlength="8000" style="width:100%;resize:vertical;"></textarea>
+    </label>
+    <label style="display:flex;gap:9px;align-items:center;font-weight:400;color:var(--t2);margin:0;">
+      <input type="checkbox" name="pinned" value="1" style="width:auto;"> Pin to the top
+    </label>
+    <div><button class="btn btn-primary" type="submit">Post</button></div>
+  </form>
+</details>
+{% endif %}
+
+{% for a in announcements %}
+<article class="card" style="margin-bottom:10px;{% if not a.seen %}border-left:3px solid var(--accent,#e94560);{% endif %}">
+  <div class="card-body" style="padding:16px;">
+    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">
+      <h2 style="margin:0;font-size:1.02rem;flex:1;">
+        {% if a.pinned %}<span title="Pinned">📌</span> {% endif %}{{ a.title }}
+      </h2>
+      {% if not a.seen %}
+      <span style="background:var(--accent,#e94560);color:#fff;border-radius:20px;
+                   padding:1px 9px;font-size:.72rem;font-weight:700;">NEW</span>
+      {% endif %}
+      <span style="color:var(--t2);font-size:.76rem;">
+        {{ a.author or 'Management' }} · {{ (a.created_at or '')|string|truncate(16, true, '') }}
+      </span>
+    </div>
+
+    <div style="margin-top:10px;font-size:.88rem;line-height:1.55;white-space:pre-wrap;">{{ a.body }}</div>
+
+    <div style="display:flex;gap:8px;align-items:center;margin-top:14px;flex-wrap:wrap;">
+      {% if not a.seen %}
+      <form method="POST" action="{{ url_for('internal_comms.announcement_read', announcement_id=a.id) }}" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-primary btn-sm" type="submit">Mark as read</button>
+      </form>
+      {% else %}
+      <span style="color:#34d399;font-size:.78rem;font-weight:700;">✓ You have read this</span>
+      {% endif %}
+
+      <span style="color:var(--t2);font-size:.76rem;margin-left:auto;">
+        Read by {{ a.read_count }} of {{ staff_total }} staff
+      </span>
+
+      {% if may_announce %}
+      <form method="POST" action="{{ url_for('internal_comms.announcement_pin', announcement_id=a.id) }}" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-ghost btn-sm" type="submit">{{ 'Unpin' if a.pinned else 'Pin' }}</button>
+      </form>
+      <form method="POST" action="{{ url_for('internal_comms.announcement_archive', announcement_id=a.id) }}" style="margin:0;"
+            onsubmit="return confirm('Archive this announcement? Staff will no longer see it, but the record of who read it is kept.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-ghost btn-sm" type="submit">Archive</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</article>
+{% else %}
+<div class="card"><div class="card-body" style="padding:22px;color:var(--t2);font-size:.85rem;">
+  No announcements yet.{% if may_announce %} Post the first one above.{% endif %}
+</div></div>
+{% endfor %}
+{% endblock %}

@@ -1051,6 +1051,59 @@ CREATE TABLE IF NOT EXISTS fb_comments (
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (linked_lead_id) REFERENCES leads(id)
 );
+
+/* ── Internal staff communication ────────────────────────────────────────
+   Direct messages between staff, and an announcements board. Separate from
+   the wa_/fb_ tables, which hold conversations with members and the public. */
+
+CREATE TABLE IF NOT EXISTS staff_threads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    /* Stored low id first so one pair of staff can only ever have one
+       thread, whichever of them starts it. */
+    user_low_id INTEGER NOT NULL,
+    user_high_id INTEGER NOT NULL,
+    last_message_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (user_low_id, user_high_id),
+    FOREIGN KEY (user_low_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_high_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS staff_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id INTEGER NOT NULL,
+    sender_id INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    /* Null until the other person opens the thread. */
+    read_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (thread_id) REFERENCES staff_threads(id) ON DELETE CASCADE,
+    FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_staff_messages_thread ON staff_messages(thread_id, id);
+CREATE INDEX IF NOT EXISTS idx_staff_messages_unread ON staff_messages(sender_id, read_at);
+
+CREATE TABLE IF NOT EXISTS announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_by INTEGER NOT NULL,
+    pinned INTEGER DEFAULT 0,
+    /* Archived rather than deleted, so who-read-what survives. */
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS announcement_reads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    announcement_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    read_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (announcement_id, user_id),
+    FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 """
 
 
@@ -2075,6 +2128,59 @@ CREATE TABLE IF NOT EXISTS fb_comments (
     timestamp TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     FOREIGN KEY (linked_lead_id) REFERENCES leads(id)
+);
+
+/* ── Internal staff communication ────────────────────────────────────────
+   Direct messages between staff, and an announcements board. Separate from
+   the wa_/fb_ tables, which hold conversations with members and the public. */
+
+CREATE TABLE IF NOT EXISTS staff_threads (
+    id SERIAL PRIMARY KEY,
+    /* Stored low id first so one pair of staff can only ever have one
+       thread, whichever of them starts it. */
+    user_low_id INTEGER NOT NULL,
+    user_high_id INTEGER NOT NULL,
+    last_message_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (user_low_id, user_high_id),
+    FOREIGN KEY (user_low_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_high_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS staff_messages (
+    id SERIAL PRIMARY KEY,
+    thread_id INTEGER NOT NULL,
+    sender_id INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    /* Null until the other person opens the thread. */
+    read_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    FOREIGN KEY (thread_id) REFERENCES staff_threads(id) ON DELETE CASCADE,
+    FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_staff_messages_thread ON staff_messages(thread_id, id);
+CREATE INDEX IF NOT EXISTS idx_staff_messages_unread ON staff_messages(sender_id, read_at);
+
+CREATE TABLE IF NOT EXISTS announcements (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_by INTEGER NOT NULL,
+    pinned INTEGER DEFAULT 0,
+    /* Archived rather than deleted, so who-read-what survives. */
+    active INTEGER DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS announcement_reads (
+    id SERIAL PRIMARY KEY,
+    announcement_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    read_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (announcement_id, user_id),
+    FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 """
 

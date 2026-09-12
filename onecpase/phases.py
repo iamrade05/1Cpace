@@ -39,6 +39,7 @@ PHASES: dict[int, tuple[str, frozenset[str]]] = {
                 "debicheck",        # mandates and debit orders
                 "members",          # the register a sale is checked against
                 "comms",            # WhatsApp and Facebook inboxes
+                "internal_comms",   # staff messages and announcements
                 "admin",            # tariffs, contract templates, users
                 "screen_recordings",
             }

@@ -30,6 +30,7 @@ from .access_report import access_report_bp
 from .call_list import call_list_bp
 from .pbx import pbx_bp
 from .comms import comms_bp, webhooks_bp
+from .internal_comms import internal_comms_bp, unread_counts
 from .queries import queries_bp
 from .sales_pipeline import sales_pipeline_bp
 from .turnstile_routes import turnstile_bp
@@ -120,6 +121,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(call_list_bp)
     app.register_blueprint(pbx_bp)
     app.register_blueprint(comms_bp)
+    app.register_blueprint(internal_comms_bp)
     app.register_blueprint(webhooks_bp)
     app.register_blueprint(queries_bp)
     app.register_blueprint(sales_pipeline_bp)
@@ -209,6 +211,23 @@ def create_app(test_config: dict | None = None) -> Flask:
             return phases.is_enabled(name, active)
 
         return {"phase_open": phase_open, "active_phase": phases.normalise(active)}
+
+    @app.context_processor
+    def inject_internal_unread():
+        """Unread counts for the Communication nav badge.
+
+        Only for a signed-in request, and skipped entirely if the tables are
+        not there yet — a context processor that raises takes down every page,
+        including the ones that would tell you why.
+        """
+        if not session.get("user_id"):
+            return {"internal_unread": {"messages": 0, "announcements": 0, "total": 0}}
+        try:
+            from .database import get_db
+            return {"internal_unread": unread_counts(get_db(), session["user_id"])}
+        except Exception:  # pragma: no cover - defensive only
+            app.logger.warning("internal unread counts unavailable", exc_info=True)
+            return {"internal_unread": {"messages": 0, "announcements": 0, "total": 0}}
 
     @app.context_processor
     def inject_permissions():

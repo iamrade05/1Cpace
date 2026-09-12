@@ -478,6 +478,8 @@
       background: rgba(255,255,255,0.04);
     }
     .nav-section { color: rgba(193,194,197,0.72); padding-top: 14px; }
+    .nav-badge { margin-left:auto; background:#e94560; color:#fff; border-radius:20px;
+                 padding:0 7px; font-size:.7rem; font-weight:700; line-height:1.6; }
     .nav-item {
       margin: 3px 10px;
       padding: 10px 12px;
@@ -624,11 +626,28 @@
     </div>
     {% endif %}
 
-    {% if phase_open('communication') and (has_perm('reception_whatsapp') or has_perm('sales_whatsapp') or has_perm('facebook_messages') or has_perm('facebook_comments')) %}
+    {# The four WhatsApp/Facebook links below are each permission-gated on
+       their own. This section used to require one of those permissions
+       too, purely to avoid rendering an empty section — but it now also
+       holds Staff Messages and Announcements, which every signed-in
+       member of staff may use, so the phase alone decides. #}
+    {% if phase_open('communication') %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="communication" aria-expanded="false">
       <span>Communication</span><span class="nav-accordion-chevron">▸</span>
     </button>
     <div class="nav-accordion-panel" data-section-panel="communication" hidden>
+      {# Internal staff comms — no external service, so these work regardless
+         of whether the WhatsApp/Facebook credentials are configured. #}
+      <a href="{{ url_for('internal_comms.messages_index') }}"
+         class="nav-item {% if request.endpoint and request.endpoint.startswith('internal_comms.') and 'announce' not in request.endpoint %}active{% endif %}">
+        <span class="icon">💬</span> Staff Messages
+        {% if internal_unread.messages %}<span class="nav-badge">{{ internal_unread.messages }}</span>{% endif %}
+      </a>
+      <a href="{{ url_for('internal_comms.announcements_index') }}"
+         class="nav-item {% if request.endpoint and 'announce' in request.endpoint %}active{% endif %}">
+        <span class="icon">📣</span> Announcements
+        {% if internal_unread.announcements %}<span class="nav-badge">{{ internal_unread.announcements }}</span>{% endif %}
+      </a>
       {% if has_perm('reception_whatsapp') %}
       <a href="{{ url_for('comms.whatsapp_inbox', number='reception') }}"
          class="nav-item {% if request.endpoint and request.endpoint.startswith('comms.whatsapp') and request.view_args and request.view_args.get('number')=='reception' %}active{% endif %}">
