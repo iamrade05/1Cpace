@@ -57,6 +57,13 @@
         </td>
         <td style="display:flex;gap:8px;">
           <a href="{{ url_for('admin.user_edit', uid=u.id) }}" class="btn btn-ghost btn-sm">Edit</a>
+          {% if u.id != session.user_id and not u.is_platform_user
+                and u.username|lower not in protected_usernames %}
+          <form method="POST" action="{{ url_for('admin.user_reset_password', uid=u.id) }}" style="margin:0;"
+                onsubmit="return confirm('Reset {{ u.full_name or u.username }} to the default password ({{ default_staff_password }})? They will have to choose a new one at their next sign-in.');">
+            <button class="btn btn-sm" style="background:#fef3c7;color:#92400e;">Reset password</button>
+          </form>
+          {% endif %}
           {% if u.id != session.user_id %}
           <form method="POST" action="{{ url_for('admin.user_toggle', uid=u.id) }}" style="margin:0;">
             <button class="btn btn-sm" style="background:{% if u.active %}#fee2e2;color:#991b1b{% else %}#d1fae5;color:#065f46{% endif %};">

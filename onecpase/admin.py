@@ -10,6 +10,19 @@ from .reports import AGG_FUNCS, FILTER_OPS, REPORT_TABLES
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 _VALID_ROLES = {"admin", "manager", "staff", "trainer", "reception"}
+
+# The password a staff account is reset to. Deliberately not a secret: every
+# path that sets it also sets must_change_password, so it survives only until
+# that person's next sign-in and is never what they actually log in with twice.
+DEFAULT_STAFF_PASSWORD = "Staff@123"
+
+# Accounts that a default-password reset must never touch. The owner account
+# has to stay reachable even if a bulk reset is run by mistake.
+PROTECTED_USERNAMES = frozenset({"mvuleni.radebe"})
+
+
+def is_protected_user(username) -> bool:
+    return str(username or "").strip().lower() in PROTECTED_USERNAMES
 _SALES_SKIP_COUNTS = {0: 0, 1: 3, 2: 5}
 
 
@@ -508,7 +521,12 @@ def users_index():
            WHERE COALESCE(is_platform_user, 0) = 0
            ORDER BY role, full_name"""
     ).fetchall()
-    return render_template("admin/users.html", users=users)
+    return render_template(
+        "admin/users.html",
+        users=users,
+        protected_usernames=PROTECTED_USERNAMES,
+        default_staff_password=DEFAULT_STAFF_PASSWORD,
+    )
 
 
 @admin_bp.route("/users/add", methods=["GET", "POST"])
@@ -642,7 +660,7 @@ def user_edit(uid: int):
                            department=?, active=?, is_sales_consultant=?, sales_available=?,
                            sales_rotation_order=?, sales_disqualification_category=?,
                            sales_skip_remaining=?, is_collections_caller=?, pbx_extension=?,
-                           password_hash=?, must_change_password=0
+                           password_hash=?, must_change_password=1
                            WHERE id=?""",
                         (full_name, email, contact, role, dept, active,
                          is_sales_consultant, sales_available, sales_rotation_order,
@@ -680,6 +698,45 @@ def user_edit(uid: int):
                            roles=sorted(_VALID_ROLES),
                            all_perms=all_perms, user_perms=user_perms,
                            module_permissions=MODULE_PERMISSIONS)
+
+
+@admin_bp.post("/users/<int:uid>/reset-password")
+@_admin_required
+def user_reset_password(uid: int):
+    """Reset one account to the default staff password.
+
+    The account is forced to choose a new one at next sign-in, so the default
+    is a handover mechanism rather than a password anybody keeps using.
+    """
+    if uid == session.get("user_id"):
+        flash("Use Change Password to set your own password.", "error")
+        return redirect(url_for("admin.users_index"))
+    db = get_db()
+    user = db.execute(
+        "SELECT username, full_name, is_platform_user FROM users WHERE id=?", (uid,)
+    ).fetchone()
+    if not user:
+        flash("User not found.", "warning")
+        return redirect(url_for("admin.users_index"))
+    if user["is_platform_user"]:
+        flash("Platform power-user identities cannot be reset here.", "error")
+        return redirect(url_for("admin.users_index"))
+    if is_protected_user(user["username"]):
+        flash(f"'{user['username']}' is protected and cannot be reset to the "
+              "default password.", "error")
+        return redirect(url_for("admin.users_index"))
+
+    db.execute(
+        """UPDATE users SET password_hash=?, must_change_password=1 WHERE id=?""",
+        (generate_password_hash(DEFAULT_STAFF_PASSWORD), uid),
+    )
+    db.commit()
+    flash(
+        f"{user['full_name'] or user['username']} was reset to the default "
+        f"password ({DEFAULT_STAFF_PASSWORD}). They must change it at next sign-in.",
+        "success",
+    )
+    return redirect(url_for("admin.users_index"))
 
 
 @admin_bp.post("/users/<int:uid>/toggle")
