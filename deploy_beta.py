@@ -24,7 +24,9 @@ import argparse
 import os
 import posixpath
 import shlex
+import socket
 import sys
+import time
 import tarfile
 import tempfile
 import uuid
@@ -144,25 +146,48 @@ def build_archive(paths: list[Path], directory: Path) -> Path:
 
 
 def connect(args: argparse.Namespace) -> paramiko.SSHClient:
+    """Open an SSH connection, retrying a timed-out TCP connect.
+
+    This host intermittently fails to answer the first connect within 20s
+    while the ssh client succeeds on the same key moments later, so a single
+    attempt aborts a deploy for no real reason. Only timeouts are retried —
+    an auth or host-key failure is final and should surface immediately.
+    """
     if not args.key.is_file():
         raise SystemExit(f"SSH private key was not found: {args.key}")
-    client = paramiko.SSHClient()
-    client.load_system_host_keys()
-    client.set_missing_host_key_policy(paramiko.RejectPolicy())
-    try:
-        client.connect(
-            args.host,
-            username=args.user,
-            key_filename=str(args.key),
-            look_for_keys=False,
-            allow_agent=False,
-            timeout=20,
-        )
-    except paramiko.SSHException as exc:
-        raise SystemExit(
-            f"Secure SSH connection failed for {args.user}@{args.host}: {exc}"
-        ) from exc
-    return client
+
+    attempts = 3
+    for attempt in range(1, attempts + 1):
+        client = paramiko.SSHClient()
+        client.load_system_host_keys()
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
+        try:
+            client.connect(
+                args.host,
+                username=args.user,
+                key_filename=str(args.key),
+                look_for_keys=False,
+                allow_agent=False,
+                timeout=60,
+                banner_timeout=60,
+                auth_timeout=60,
+            )
+            return client
+        except (TimeoutError, socket.timeout) as exc:
+            client.close()
+            if attempt == attempts:
+                raise SystemExit(
+                    f"Could not reach {args.user}@{args.host} after {attempts} "
+                    f"attempts: {exc}. The host answers ping and port 22 when "
+                    "this happens, so retrying usually works."
+                ) from exc
+            print(f"  connect attempt {attempt} timed out; retrying...")
+            time.sleep(3)
+        except paramiko.SSHException as exc:
+            client.close()
+            raise SystemExit(
+                f"Secure SSH connection failed for {args.user}@{args.host}: {exc}"
+            ) from exc
 
 
 def run(client: paramiko.SSHClient, command: str, *, check: bool = True) -> str:
