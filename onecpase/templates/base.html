@@ -598,6 +598,15 @@
       <span class="icon">📊</span> Dashboard
     </a>
 
+    {# Top-level so reception can capture walk-ins without opening Sales CRM.
+       Same permission leads_add enforces. #}
+    {% if phase_open('sales') and has_perm('capture_leads') %}
+    <a href="{{ url_for('leads.leads_add') }}"
+       class="nav-item {% if request.endpoint == 'leads.leads_add' %}active{% endif %}">
+      <span class="icon">➕</span> Capture Prospect
+    </a>
+    {% endif %}
+
     {% if phase_open('sales') and (has_perm('view_leads') or has_perm('capture_leads') or has_perm('all_members')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="sales" aria-expanded="false">
       <span>Sales</span><span class="nav-accordion-chevron">▸</span>
