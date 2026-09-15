@@ -31,6 +31,7 @@ from .call_list import call_list_bp
 from .pbx import pbx_bp
 from .comms import comms_bp, webhooks_bp
 from .internal_comms import internal_comms_bp, unread_counts
+from .events import events_bp, admin_events_bp
 from .queries import queries_bp
 from .sales_pipeline import sales_pipeline_bp
 from .turnstile_routes import turnstile_bp
@@ -122,6 +123,8 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(pbx_bp)
     app.register_blueprint(comms_bp)
     app.register_blueprint(internal_comms_bp)
+    app.register_blueprint(events_bp)
+    app.register_blueprint(admin_events_bp)
     app.register_blueprint(webhooks_bp)
     app.register_blueprint(queries_bp)
     app.register_blueprint(sales_pipeline_bp)

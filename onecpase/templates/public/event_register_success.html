@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ event.name }} – Registered</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #EDE8DF; min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 24px 16px;
+  }
+  .card {
+    width: 100%; max-width: 460px; background: #fff; border-radius: 16px;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
+    padding: 40px 28px; text-align: center;
+  }
+  .confirm-icon {
+    width: 64px; height: 64px; background: linear-gradient(135deg, #EAF3DE, #D0E8C0);
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 16px; font-size: 30px;
+  }
+  h2 { font-size: 22px; font-weight: 700; color: #1A1A1A; margin-bottom: 8px; }
+  p { font-size: 13px; color: #888; line-height: 1.6; }
+  .motto-bar { color: #1B2B5E; font-size: 11px; margin-top: 24px; font-weight: 700; letter-spacing: .5px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="confirm-icon">✅</div>
+  {% if already %}
+  <h2>Already Registered</h2>
+  <p>That cellphone number is already registered for {{ event.name }}. If this wasn't you, please contact the gym.</p>
+  {% else %}
+  <h2>You're Registered{{ ', ' ~ name if name }}!</h2>
+  <p>Welcome to {{ event.name }}{% if event.event_date %} on {{ event.event_date }}{% endif %}. See you there!</p>
+  {% endif %}
+  <div class="motto-bar">Elev8 Health &amp; Fitness</div>
+</div>
+</body>
+</html>

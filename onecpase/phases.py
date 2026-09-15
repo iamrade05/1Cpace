@@ -34,6 +34,7 @@ PHASES: dict[int, tuple[str, frozenset[str]]] = {
                 "sales_pipeline",
                 "call_list",
                 "join",             # public join form — the top of the funnel
+                "events",           # public event registration link
                 "applications",     # application → compliance → approval
                 "contracts",
                 "debicheck",        # mandates and debit orders
@@ -41,6 +42,7 @@ PHASES: dict[int, tuple[str, frozenset[str]]] = {
                 "comms",            # WhatsApp and Facebook inboxes
                 "internal_comms",   # staff messages and announcements
                 "admin",            # tariffs, contract templates, users
+                "admin_events",     # create/manage events and their registrations
                 "screen_recordings",
             }
         ),

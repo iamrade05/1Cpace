@@ -921,6 +921,10 @@
          class="nav-item {% if request.blueprint == 'admin' and 'tariff' in request.endpoint %}active{% endif %}">
         <span class="icon">💳</span> Membership Plans
       </a>
+      <a href="{{ url_for('admin_events.events_index') }}"
+         class="nav-item {% if request.blueprint == 'admin_events' %}active{% endif %}">
+        <span class="icon">🏃</span> Events
+      </a>
       <a href="{{ url_for('admin.contract_templates_index') }}"
          class="nav-item {% if request.blueprint == 'admin' and 'contract_template' in request.endpoint %}active{% endif %}">
         <span class="icon">📄</span> Contract Templates

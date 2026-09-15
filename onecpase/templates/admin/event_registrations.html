@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ event.name }} Registrations | 1Cpase{% endblock %}
+{% block page_title %}{{ event.name }} — Registrations{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+  <p style="font-size:0.85rem;color:#6b7280;">{{ registrations|length }} registered.</p>
+  <div style="display:flex;gap:8px;">
+    <a href="{{ url_for('admin_events.event_registrations_export', event_id=event.id) }}" class="btn btn-secondary">Export CSV</a>
+    <a href="{{ url_for('admin_events.events_index') }}" class="btn btn-ghost">← All Events</a>
+  </div>
+</div>
+
+<div class="table-card" style="overflow-x:auto;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Phone</th>
+        <th>Email</th>
+        <th>DOB</th>
+        <th>Gender</th>
+        <th>Pace</th>
+        <th>Source</th>
+        <th>Friend</th>
+        <th>Emergency Contact</th>
+        <th>Registered</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in registrations %}
+      <tr>
+        <td style="font-weight:600;color:#1F2933;">{{ r.first_name }} {{ r.last_name }}</td>
+        <td>{{ r.phone }}</td>
+        <td>{{ r.email or '—' }}</td>
+        <td>{{ r.date_of_birth or '—' }}</td>
+        <td>{{ r.gender or '—' }}</td>
+        <td>{{ r.pace or '—' }}</td>
+        <td style="font-size:0.78rem;color:#6b7280;">{{ r.referral_source or '—' }}</td>
+        <td>{{ r.friend_name if r.bringing_friend else '—' }}</td>
+        <td style="font-size:0.78rem;">{{ r.emergency_contact_name }} · {{ r.emergency_contact_phone }}{% if r.emergency_contact_relation %} ({{ r.emergency_contact_relation }}){% endif %}</td>
+        <td style="font-size:0.78rem;color:#9ca3af;">{{ r.registered_at|string|truncate(16, true, '') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10" style="color:#9ca3af;text-align:center;padding:24px;">No registrations yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

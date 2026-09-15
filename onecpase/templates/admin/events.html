@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Events | 1Cpase{% endblock %}
+{% block page_title %}Events{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+  <p style="font-size:0.85rem;color:#6b7280;">Each event gets its own public registration link — share it anywhere, anyone can register, no account needed.</p>
+  <a href="{{ url_for('admin_events.event_add') }}" class="btn btn-primary">+ Create Event</a>
+</div>
+
+<div class="table-card">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Event</th>
+        <th>Date</th>
+        <th>Location</th>
+        <th>Registrations</th>
+        <th>Status</th>
+        <th>Registration Link</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td style="font-weight:600;color:#1F2933;">{{ e.name }}</td>
+        <td>{{ e.event_date or '—' }}</td>
+        <td>{{ e.location or '—' }}</td>
+        <td><a href="{{ url_for('admin_events.event_registrations', event_id=e.id) }}" style="font-weight:700;">{{ e.registration_count }}</a></td>
+        <td>
+          <span style="font-size:0.72rem;font-weight:600;padding:2px 8px;border-radius:10px;
+                       background:{% if e.active %}#d1fae5;color:#065f46{% else %}#fee2e2;color:#991b1b{% endif %};">
+            {{ 'Open' if e.active else 'Closed' }}
+          </span>
+        </td>
+        <td style="font-size:0.78rem;">
+          <input readonly onclick="this.select()" value="{{ url_for('events.register', slug=e.slug, _external=True) }}"
+                 style="width:220px;font-size:0.72rem;">
+        </td>
+        <td style="display:flex;gap:8px;">
+          <a href="{{ url_for('admin_events.event_registrations', event_id=e.id) }}" class="btn btn-ghost btn-sm">Registrations</a>
+          <form method="POST" action="{{ url_for('admin_events.event_toggle', event_id=e.id) }}" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm" style="background:{% if e.active %}#fee2e2;color:#991b1b{% else %}#d1fae5;color:#065f46{% endif %};">
+              {{ 'Close' if e.active else 'Reopen' }}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="color:#9ca3af;text-align:center;padding:24px;">No events yet. Create one to get a registration link.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

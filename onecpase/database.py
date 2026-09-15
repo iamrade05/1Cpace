@@ -239,6 +239,9 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpase") -> Non
         _ensure_column(db, backend, "leads", col, defn)
     from .sales_pipeline import ensure_sales_pipeline_schema
     ensure_sales_pipeline_schema(db, backend)
+
+    from .events import ensure_events_schema
+    ensure_events_schema(db, backend)
     db.execute("CREATE INDEX IF NOT EXISTS idx_leads_phone_normalized ON leads(phone_normalized)")
     # These indexes keep the idempotent application backfill fast at startup.
     db.execute("CREATE INDEX IF NOT EXISTS idx_membership_applications_member ON membership_applications(member_id)")
