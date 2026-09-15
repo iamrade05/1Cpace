@@ -1074,8 +1074,10 @@ def add_activity(lid: int):
             new_stage, new_recycle_reason = "recycle", "unreachable_after_attempts"
         elif activity_type == "appointment" and outcome in {"scheduled", "confirmed", "rescheduled"}:
             new_stage = "appointment_booked"
-        elif activity_type == "appointment" and outcome in {"showed", "joined"}:
+        elif activity_type == "appointment" and outcome == "showed":
             new_stage = "show"
+        elif activity_type == "appointment" and outcome == "joined":
+            new_stage = "joined"
         elif activity_type == "appointment" and outcome == "no_show":
             new_stage = "recall_queue"
         elif activity_type == "appointment" and outcome == "cancelled":
@@ -1084,6 +1086,8 @@ def add_activity(lid: int):
             new_stage, new_recycle_reason = "recycle", "showed_not_interested"
         elif activity_type == "visit" and outcome == "not_interested":
             new_stage, new_recycle_reason = "recycle", "showed_not_interested"
+        elif activity_type == "visit" and outcome == "joined":
+            new_stage = "joined"
         elif activity_type == "visit":
             new_stage = "show"
         elif activity_type == "consultation" and outcome == "not_interested":

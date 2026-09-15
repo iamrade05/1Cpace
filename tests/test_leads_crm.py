@@ -190,6 +190,12 @@ def test_conversion_links_prospect_application_and_member(app):
             f"/leads/{prospect['id']}/activities",
             data={"activity_type": "visit", "outcome": "joined"},
         )
+        # A "visit" activity with outcome "joined" must actually record the
+        # prospect as joined — it used to fall through to the generic visit
+        # branch and silently rewrite lead_status back to "show" instead.
+        assert get_db().execute(
+            "SELECT lead_status FROM leads WHERE id=?", (prospect["id"],)
+        ).fetchone()["lead_status"] == "joined"
         # Conversion requires the canonical SHOW/CONSULTATION stage, and the
         # pipeline only moves one stage at a time with each stage's own
         # evidence in place.
@@ -256,7 +262,10 @@ def test_sales_process_feeds_sales_kpi_report(app):
                WHERE lead_id=? AND field='lead_status' ORDER BY id DESC LIMIT 1""",
             (lead["id"],),
         ).fetchone()
-        assert tuple(event) == ("assigned", "show", 1, 1)
+        # A visit with outcome "joined" must record the prospect as joined,
+        # not "show" — this literally was the audit trail proving the bug:
+        # it asserted ("assigned", "show", 1, 1) as the expected/correct value.
+        assert tuple(event) == ("assigned", "joined", 1, 1)
 
         response = client.get("/sales-dashboard?from=2000-01-01&to=2099-12-31")
         assert response.status_code == 200
@@ -355,6 +364,12 @@ def test_guided_referral_contact_to_appointment_to_membership_journey(app):
         )
         assert response.status_code == 302
         assert response.headers["Location"].endswith(f"/leads/{lid}/convert")
+        # An "appointment" activity with outcome "joined" must actually record
+        # the prospect as joined — it used to be grouped with outcome "showed"
+        # and silently rewrite lead_status to "show" instead.
+        assert get_db().execute(
+            "SELECT lead_status FROM leads WHERE id=?", (lid,)
+        ).fetchone()["lead_status"] == "joined"
 
 
 def test_offer_and_membership_are_blocked_before_gym_attendance(app):
