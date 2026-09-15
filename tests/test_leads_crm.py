@@ -351,25 +351,57 @@ def test_guided_referral_contact_to_appointment_to_membership_journey(app):
                 "scheduled_for": f"{date.today().isoformat()}T15:00",
             },
         )
+        # Attendance and the join decision are two separate questions, asked
+        # one at a time. The Appointment Result card only asks whether the
+        # client showed — there is no "Client Joined" shortcut here any more.
         page = client.get(f"/leads/{lid}")
         assert b"Appointment Result" in page.data
-        assert b"Client Joined" in page.data
+        assert b"Client Attended" in page.data
+        assert b"Client Joined" not in page.data
         assert b"Client Didn't Show" in page.data
         assert b"Not Interested" in page.data
 
+        client.post(
+            f"/leads/{lid}/activities",
+            data={"activity_type": "appointment", "outcome": "showed"},
+        )
+        assert get_db().execute(
+            "SELECT lead_status, sales_stage FROM leads WHERE id=?", (lid,)
+        ).fetchone()["lead_status"] == "show"
+
+        # Attendance now confirmed, the Client Attendance Result card asks
+        # the second question: did they actually join?
+        page = client.get(f"/leads/{lid}")
+        assert b"Client Attendance Result" in page.data
+        assert b"Client Joined" in page.data
+
         response = client.post(
             f"/leads/{lid}/activities",
-            data={"activity_type": "appointment", "outcome": "joined"},
+            data={"activity_type": "visit", "outcome": "joined"},
             follow_redirects=False,
         )
         assert response.status_code == 302
         assert response.headers["Location"].endswith(f"/leads/{lid}/convert")
-        # An "appointment" activity with outcome "joined" must actually record
-        # the prospect as joined — it used to be grouped with outcome "showed"
-        # and silently rewrite lead_status to "show" instead.
-        assert get_db().execute(
-            "SELECT lead_status FROM leads WHERE id=?", (lid,)
-        ).fetchone()["lead_status"] == "joined"
+        row = get_db().execute(
+            "SELECT lead_status, sales_stage FROM leads WHERE id=?", (lid,)
+        ).fetchone()
+        assert row["lead_status"] == "joined"
+        # The canonical stage must hold at SHOW here, not race ahead to
+        # JOINED — convert_lead()'s own "must be at SHOW or CONSULTATION"
+        # gate is what actually creates the application, and JOINED is a
+        # terminal stage with no further legal transition out of it.
+        assert row["sales_stage"] == "SHOW"
+
+        convert_response = client.post(
+            f"/leads/{lid}/convert",
+            data={"package": "Premium 12", "id_number": "9001015009087"},
+            follow_redirects=False,
+        )
+        assert convert_response.status_code == 302
+        application = get_db().execute(
+            "SELECT id FROM membership_applications WHERE lead_id=?", (lid,)
+        ).fetchone()
+        assert application is not None
 
 
 def test_offer_and_membership_are_blocked_before_gym_attendance(app):

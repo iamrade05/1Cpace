@@ -120,7 +120,17 @@
       <h3 style="font-size:.9rem;color:var(--warn);text-transform:uppercase;margin-bottom:6px;">{{ 'Missed Appointment Follow-up' if journey_step == 'appointment_follow_up' else 'Appointment Result' }}</h3>
       <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">Choose the client's actual appointment result.</p>
       {% if journey_step == 'appointment_result' %}
-      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="joined"><button type="submit" class="btn btn-primary" style="background:var(--ok)!important;width:100%;">Client Joined → Membership</button></form>
+      {# Attendance and the join/interest decision are two different questions
+         asked one at a time - this form only records that the appointment
+         happened. Posting outcome=showed moves lead_status to "show", which
+         is what brings up the separate Client Attendance Result card (below)
+         asking whether they joined. There is deliberately no "joined" button
+         here any more: skipping straight to it from an appointment recorded
+         neither attendance nor interest, and left the canonical sales stage
+         unable to ever reach SHOW - see sync_legacy_stage() in
+         sales_pipeline.py for why that made every conversion after this
+         screen fail its "must be at SHOW or CONSULTATION" check. #}
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="showed"><button type="submit" class="btn btn-primary" style="background:var(--ok)!important;width:100%;">Client Attended</button></form>
       <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="no_show"><div class="form-group"><label class="form-label">No-show note *</label><input name="reason" class="form-control" required placeholder="Why did the client not attend?"></div><button type="submit" class="btn btn-secondary">Client Didn't Show</button></form>
       {% endif %}
       <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="rescheduled"><div class="form-group"><label class="form-label">New appointment date and time *</label><input type="datetime-local" name="scheduled_for" class="form-control" required></div><button type="submit" class="btn btn-secondary">Reschedule Appointment</button></form>

@@ -1,4 +1,5 @@
 """Controlled sales-stage progression layered onto the existing CRM."""
+from collections import deque
 from datetime import datetime, timezone
 
 from flask import Blueprint, flash, jsonify, redirect, request, session, url_for
@@ -237,15 +238,72 @@ def transition_sales_stage(db, lead_id: int, new_stage: str, user_id: int | None
     )
 
 
+def _stage_path(start: str, target: str) -> list[str] | None:
+    """Shortest chain of single ALLOWED_TRANSITIONS hops from start to target.
+
+    Returns the intermediate/target stages only (start excluded), or None if
+    target cannot be reached from start at all by following only edges that
+    ALLOWED_TRANSITIONS already permits.
+    """
+    if start == target:
+        return []
+    came_from: dict[str, str] = {start: None}
+    queue = deque([start])
+    while queue:
+        node = queue.popleft()
+        if node == target:
+            break
+        for nxt in ALLOWED_TRANSITIONS.get(node, set()):
+            if nxt not in came_from:
+                came_from[nxt] = node
+                queue.append(nxt)
+    if target not in came_from:
+        return None
+    path = []
+    node = target
+    while node != start:
+        path.append(node)
+        node = came_from[node]
+    path.reverse()
+    return path
+
+
+# These four stages require real evidence a legacy lead_status string cannot
+# supply - an actual application, actually submitted - and are set only by
+# convert_lead()'s own controlled steps and the Itensity handoff. The generic
+# bridge below must never manufacture them out of a status write alone: doing
+# so races ahead of convert_lead()'s own SHOW/CONSULTATION -> APPLICATION_*
+# walk and leaves it nothing to do but fail its own "must be at SHOW or
+# CONSULTATION" check, because by the time it runs the canonical stage has
+# already jumped straight past both to the terminal JOINED.
+CONTROLLED_ONLY_STAGES = frozenset(
+    {"APPLICATION_INVITED", "APPLICATION_STARTED", "APPLICATION_SUBMITTED", "JOINED"}
+)
+
+
 def sync_legacy_stage(db, lead_id: int, legacy_stage: str, user_id: int | None = None) -> None:
     """Bridge existing CRM writes into the controlled stage when valid.
 
     Existing shortcuts remain visible in the legacy CRM, but cannot silently
-    advance the canonical stage past a missing controlled step.
+    advance the canonical stage past a missing controlled step: every hop
+    still has to be one ALLOWED_TRANSITIONS already permits, walked one at a
+    time and each recorded in sales_stage_history.
+
+    This used to only ever attempt a single hop - if the legacy stage's
+    canonical target was not a direct neighbour of wherever the lead's
+    canonical stage already stood, the call silently did nothing. In real use
+    the ordinary CRM path (call/WhatsApp -> appointment booked -> show ->
+    joined) almost never lines up with a single canonical hop from ASSIGNED,
+    so the canonical stage got stranded there for nearly every lead - which
+    is what made every application downstream fail its "must be at SHOW or
+    CONSULTATION" check. Walking the full chain of legitimate hops fixes that
+    without weakening the "only via an allowed step" rule the docstring
+    describes: every stage in the path was already a legal move from the one
+    before it.
     """
     lead = _lead(db, lead_id)
     target = LEGACY_STAGE_MAP.get(legacy_stage)
-    if not target:
+    if not target or target in CONTROLLED_ONLY_STAGES:
         return
     if not lead["sales_stage"]:
         db.execute("UPDATE leads SET sales_stage=? WHERE id=?", (target, lead_id))
@@ -257,9 +315,12 @@ def sync_legacy_stage(db, lead_id: int, legacy_stage: str, user_id: int | None =
         )
         db.commit()
         return
-    if target != current_sales_stage(lead) and target in ALLOWED_TRANSITIONS.get(current_sales_stage(lead), set()):
-        _write_transition(
-            db, lead, target, user_id, "Legacy CRM stage synchronized", None,
+    path = _stage_path(current_sales_stage(lead), target)
+    if not path:
+        return
+    for stage in path:
+        lead = _write_transition(
+            db, lead, stage, user_id, "Legacy CRM stage synchronized", None,
             validate_requirements=False,
         )
 
