@@ -194,3 +194,164 @@ def test_zero_balance_member_is_excluded_and_paid_task_is_removed(app):
         assert db.execute(
             "SELECT COUNT(*) FROM collection_call_tasks WHERE id=?", (task["id"],)
         ).fetchone()[0] == 0
+
+
+# ── Escalation: toggle_escalation delegates to next_communication() ─────────
+#
+# Previously duplicated next_communication()'s CALL->WHATSAPP->SMS->EMAIL map
+# as its own hardcoded dict, and "marked sent" always silently advanced to
+# the next channel with no way to record an actual failure - WHATSAPP_FAILED
+# /SMS_FAILED (collections_engine.py) were unreachable dead constants.
+
+def _seed_task_awaiting_whatsapp(app):
+    """A task that has already had an unsuccessful call outcome recorded,
+    so next_channel is WHATSAPP - the state toggle_escalation acts on."""
+    with app.app_context():
+        _seed_callers_and_members(2)
+        db = get_db()
+        _ensure_daily_call_tasks(db, date(2026, 8, 12))
+        task = db.execute(
+            "SELECT id, assigned_to FROM collection_call_tasks ORDER BY id LIMIT 1"
+        ).fetchone()
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess["user_id"] = task["assigned_to"]
+            sess["username"] = "collections-caller"
+            sess["role"] = "reception"
+            sess["permissions"] = ["collections_call_queue"]
+        client.post(
+            f"/collections/call-queue/{task['id']}/result",
+            data={"outcome": "no_answer", "notes": ""},
+        )
+    with app.app_context():
+        row = get_db().execute(
+            "SELECT next_channel FROM collection_call_tasks WHERE id=?", (task["id"],)
+        ).fetchone()
+        assert row["next_channel"] == "WHATSAPP"
+    return task["id"], task["assigned_to"]
+
+
+def _post_escalation(app, task_id, assigned_to, channel, result):
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess["user_id"] = assigned_to
+            sess["username"] = "collections-caller"
+            sess["role"] = "reception"
+            sess["permissions"] = ["collections_call_queue"]
+        return client.post(
+            f"/collections/call-queue/{task_id}/escalation",
+            data={"channel": channel, "result": result},
+        )
+
+
+def test_marking_whatsapp_sent_leaves_it_on_the_same_channel(app):
+    task_id, assigned_to = _seed_task_awaiting_whatsapp(app)
+    response = _post_escalation(app, task_id, assigned_to, "whatsapp", "sent")
+    assert response.status_code == 302
+    with app.app_context():
+        row = get_db().execute(
+            "SELECT next_channel, whatsapp_sent FROM collection_call_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+        assert row["whatsapp_sent"] == 1
+        assert row["next_channel"] == "WHATSAPP"  # unchanged - awaiting a reply or a failure decision
+
+
+def test_marking_whatsapp_failed_advances_to_sms(app):
+    task_id, assigned_to = _seed_task_awaiting_whatsapp(app)
+    response = _post_escalation(app, task_id, assigned_to, "whatsapp", "failed")
+    assert response.status_code == 302
+    with app.app_context():
+        row = get_db().execute(
+            "SELECT next_channel FROM collection_call_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+        assert row["next_channel"] == "SMS"
+
+
+def test_marking_sms_failed_advances_to_email(app):
+    task_id, assigned_to = _seed_task_awaiting_whatsapp(app)
+    _post_escalation(app, task_id, assigned_to, "whatsapp", "failed")
+    response = _post_escalation(app, task_id, assigned_to, "sms", "failed")
+    assert response.status_code == 302
+    with app.app_context():
+        row = get_db().execute(
+            "SELECT next_channel FROM collection_call_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+        assert row["next_channel"] == "EMAIL"
+
+
+def test_toggle_escalation_actually_calls_next_communication(app, monkeypatch):
+    """Proves wiring, not just matching output: under the old hardcoded
+    dict, this input would produce the same values regardless, so a
+    black-box test alone couldn't tell 'now calls the engine' apart from
+    'still hardcoded'. Monkeypatching the engine function is the only way to
+    prove the route actually calls it."""
+    from onecpase import collections as collections_module
+
+    task_id, assigned_to = _seed_task_awaiting_whatsapp(app)
+    monkeypatch.setattr(collections_module, "next_communication", lambda outcome=None: "CARRIER_PIGEON")
+    _post_escalation(app, task_id, assigned_to, "whatsapp", "failed")
+    with app.app_context():
+        row = get_db().execute(
+            "SELECT next_channel FROM collection_call_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+        assert row["next_channel"] == "CARRIER_PIGEON"
+
+
+# ── daily_call_progress delegates to calculate_daily_call_kpi() ─────────────
+
+def test_daily_call_progress_delegates_to_the_kpi_engine(app, monkeypatch):
+    from onecpase import collections as collections_module
+
+    with app.app_context():
+        _seed_callers_and_members(2)
+        db = get_db()
+        _ensure_daily_call_tasks(db, date(2026, 8, 12))
+        task = db.execute(
+            "SELECT id FROM collection_call_tasks WHERE task_date='2026-08-12' ORDER BY id LIMIT 1"
+        ).fetchone()
+        db.execute(
+            "UPDATE collection_call_tasks SET status='completed', successful_contact=1 WHERE id=?",
+            (task["id"],),
+        )
+        db.commit()
+
+        monkeypatch.setattr(
+            collections_module, "calculate_daily_call_kpi",
+            lambda *a, **k: {"completion_percentage": 12.34, "contact_rate": 56.78,
+                              "target": 0, "completed": 0, "remaining": 0,
+                              "calls_attempted": 0, "contacts": 0},
+        )
+        result = collections_module.daily_call_progress(db, today=date(2026, 8, 12))
+        # Fails on the old code: the function isn't imported/called at all,
+        # so the hand-computed real percentages come back instead.
+        assert result["target_progress_pct"] == 12.3   # rounded to the dashboard's 1dp, not the engine's 2dp
+        assert result["contact_rate_pct"] == 56.8
+
+
+def test_daily_call_progress_real_percentages_are_unchanged(app):
+    # Behavioral regression guard, unpatched: the real numbers the dashboard
+    # shows today must come out the same after routing through the engine.
+    from onecpase.collections import daily_call_progress
+
+    with app.app_context():
+        _seed_callers_and_members(10)
+        db = get_db()
+        _ensure_daily_call_tasks(db, date(2026, 8, 12))
+        tasks = db.execute(
+            "SELECT id FROM collection_call_tasks WHERE task_date='2026-08-12'"
+        ).fetchall()
+        assert len(tasks) >= 4, "seed must produce enough tasks to complete 4 of them"
+        for task in tasks[:4]:
+            db.execute(
+                "UPDATE collection_call_tasks SET status='completed', successful_contact=1 WHERE id=?",
+                (task["id"],),
+            )
+        db.commit()
+
+        result = daily_call_progress(db, today=date(2026, 8, 12))
+        assert result["calls"] == 4
+        assert result["contacts"] == 4
+        assert result["daily_target"] == 80  # 40 per caller x 2 callers
+        assert result["target_progress_pct"] == 5.0    # 4/80 * 100
+        assert result["contact_rate_pct"] == 100.0      # 4/4 * 100

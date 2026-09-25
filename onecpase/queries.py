@@ -430,11 +430,15 @@ def _account_summary(db, member_id):
            FROM queries WHERE member_id=?""",
         (member_id,)
     ).fetchone()
+    # The dispute pattern below is bound as a parameter, not written into the
+    # SQL text, so it survives psycopg2's own %-style substitution on
+    # Postgres (an inlined LIKE pattern using that character collides with
+    # substitution once a non-empty params tuple is present).
     dispute_count = db.execute(
         """SELECT COUNT(*) FROM queries
-           WHERE member_id=? AND (LOWER(COALESCE(query_type,'')) LIKE '%dispute%'
-                                  OR LOWER(COALESCE(description,'')) LIKE '%dispute%')""",
-        (member_id,)
+           WHERE member_id=? AND (LOWER(COALESCE(query_type,'')) LIKE ?
+                                  OR LOWER(COALESCE(description,'')) LIKE ?)""",
+        (member_id, "%dispute%", "%dispute%")
     ).fetchone()[0]
 
     access_status = member.get("gym_access_status") or "allowed"

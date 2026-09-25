@@ -710,7 +710,7 @@
 
     {% if phase_open('connections') and (has_perm('all_collections')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="connections" aria-expanded="false">
-      <span>Connections</span><span class="nav-accordion-chevron">▸</span>
+      <span>Collections</span><span class="nav-accordion-chevron">▸</span>
     </button>
     <div class="nav-accordion-panel" data-section-panel="connections" hidden>
       <a href="{{ url_for('collections.collections_index') }}"
@@ -928,6 +928,14 @@
       <a href="{{ url_for('admin.contract_templates_index') }}"
          class="nav-item {% if request.blueprint == 'admin' and 'contract_template' in request.endpoint %}active{% endif %}">
         <span class="icon">📄</span> Contract Templates
+      </a>
+      <a href="{{ url_for('admin.pbx_codes_index') }}"
+         class="nav-item {% if request.blueprint == 'admin' and 'pbx_code' in request.endpoint %}active{% endif %}">
+        <span class="icon">☎️</span> PBX Account Codes
+      </a>
+      <a href="{{ url_for('whatsapp_web.status_page') }}"
+         class="nav-item {% if request.blueprint == 'whatsapp_web' %}active{% endif %}">
+        <span class="icon">📱</span> WhatsApp Web Sender
       </a>
       <a href="{{ url_for('admin.report_definitions_index') }}"
          class="nav-item {% if request.blueprint == 'admin' and 'report_definition' in request.endpoint %}active{% endif %}">

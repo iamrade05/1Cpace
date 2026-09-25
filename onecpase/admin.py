@@ -158,6 +158,83 @@ def tariff_toggle(tid: int):
     return redirect(url_for("admin.tariffs_index"))
 
 
+# ── PBX Account Codes ───────────────────────────────────────────────────────
+# Reception and sales share physical phones and identify themselves by PIN
+# ("account code" in Yeastar's terms) rather than by extension. This maps
+# each code to the staff member it belongs to, so the PBX call log
+# (onecpase/pbx.py's webhook handler) can show who actually made a call.
+
+@admin_bp.route("/pbx-codes")
+@_admin_required
+def pbx_codes_index():
+    db = get_db()
+    codes = db.execute(
+        """SELECT pac.*, u.full_name AS user_name
+           FROM pbx_account_codes pac LEFT JOIN users u ON u.id = pac.user_id
+           ORDER BY pac.code"""
+    ).fetchall()
+    staff = db.execute(
+        "SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name"
+    ).fetchall()
+    return render_template("admin/pbx_codes.html", codes=codes, staff=staff)
+
+
+@admin_bp.route("/pbx-codes/add", methods=["GET", "POST"])
+@_admin_required
+def pbx_code_add():
+    db = get_db()
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        label = request.form.get("label", "").strip()
+        user_id = request.form.get("user_id") or None
+        if not code or not label:
+            flash("Code and label are both required.", "error")
+        elif db.execute("SELECT 1 FROM pbx_account_codes WHERE code=?", (code,)).fetchone():
+            flash(f"Code \"{code}\" already exists.", "error")
+        else:
+            db.execute(
+                "INSERT INTO pbx_account_codes (code, label, user_id) VALUES (?,?,?)",
+                (code, label, user_id),
+            )
+            db.commit()
+            flash(f"Account code \"{code}\" added.", "success")
+            return redirect(url_for("admin.pbx_codes_index"))
+    staff = db.execute(
+        "SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name"
+    ).fetchall()
+    return render_template("admin/pbx_code_form.html", code=None, staff=staff, form=request.form)
+
+
+@admin_bp.route("/pbx-codes/<int:code_id>/edit", methods=["GET", "POST"])
+@_admin_required
+def pbx_code_edit(code_id: int):
+    db = get_db()
+    row = db.execute("SELECT * FROM pbx_account_codes WHERE id=?", (code_id,)).fetchone()
+    if not row:
+        flash("Account code not found.", "warning")
+        return redirect(url_for("admin.pbx_codes_index"))
+
+    if request.method == "POST":
+        label = request.form.get("label", "").strip()
+        user_id = request.form.get("user_id") or None
+        active = 1 if request.form.get("active") else 0
+        if not label:
+            flash("Label is required.", "error")
+        else:
+            db.execute(
+                "UPDATE pbx_account_codes SET label=?, user_id=?, active=? WHERE id=?",
+                (label, user_id, active, code_id),
+            )
+            db.commit()
+            flash(f"Account code \"{row['code']}\" updated.", "success")
+            return redirect(url_for("admin.pbx_codes_index"))
+
+    staff = db.execute(
+        "SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name"
+    ).fetchall()
+    return render_template("admin/pbx_code_form.html", code=row, staff=staff, form=dict(row))
+
+
 # ── Contract Template Manager ────────────────────────────────────────────────
 
 @admin_bp.route("/contract-templates")

@@ -114,7 +114,7 @@
                  title="SA ID number must be exactly 13 digits"
                  placeholder="13-digit SA ID"
                  value="{{ d.get('id_number','') }}"
-                 oninput="extractFromId(this.value)">
+                 oninput="extractFromId(this.value, true)">
         </div>
         <div class="form-group">
           <label class="form-label">Date of Birth</label>
@@ -220,6 +220,9 @@
             {{ t.name }}
           </option>
           {% endfor %}
+          {% if session.get('role') in ('admin', 'manager') %}
+          <option value="Custom" {% if d.get('tariff') == 'Custom' %}selected{% endif %}>Custom package (manager)…</option>
+          {% endif %}
         </select>
       </div>
 
@@ -237,6 +240,8 @@
           <div id="tariffSummaryAmount" style="font-size:1.8rem;font-weight:900;color:#185FA5;"></div>
         </div>
       </div>
+
+      {% with cp = d, custom_on = (d.get('tariff') == 'Custom') %}{% include 'members/_custom_package.html' %}{% endwith %}
 
       <!-- Hidden fields populated by JS -->
       <input type="hidden" name="contract_duration" id="contractDuration" value="{{ d.get('contract_duration','') }}">
@@ -588,6 +593,7 @@
 </form>
 </div>
 
+<script src="{{ url_for('static', filename='js/sa_id.js') }}"></script>
 <script>
 /* ── Tab switching ── */
 const TABS = 5;
@@ -636,17 +642,14 @@ function showFormError(msg) {
 }
 
 /* ── ID → DOB / Gender ── */
-function extractFromId(id) {
+function extractFromId(id, typed) {
   const dobField = document.getElementById('dobField');
   const gField   = document.getElementById('genderField');
   const ageBadge = document.getElementById('ageBadge');
-  if (!id || id.length < 6) { ageBadge.style.display='none'; return; }
-  const yy = parseInt(id.substring(0,2),10), mm = id.substring(2,4), dd = id.substring(4,6);
-  const today = new Date(), cy = parseInt(String(today.getFullYear()).substring(2),10);
-  const year  = (yy > cy ? 1900 : 2000) + yy;
-  const dob   = new Date(`${year}-${mm}-${dd}`);
-  if (isNaN(dob.getTime())) { ageBadge.style.display='none'; return; }
-  if (!dobField.value) dobField.value = `${year}-${mm}-${dd}`;
+  const iso = saIdBirthDate(id);
+  if (!iso) { ageBadge.style.display='none'; return; }
+  saIdFillDob(dobField, iso, typed);
+  const today = new Date(), [by, bm, bd] = iso.split('-').map(Number), dob = new Date(by, bm-1, bd);
   let age = today.getFullYear() - dob.getFullYear();
   if (today.getMonth()-dob.getMonth()<0||(today.getMonth()===dob.getMonth()&&today.getDate()<dob.getDate())) age--;
   ageBadge.textContent = `Age ${age}`;
@@ -738,6 +741,8 @@ function applyTariff(val) {
   const months = opt.dataset.months;
   const amount = parseFloat(opt.dataset.amount || 0);
   const summary = document.getElementById('tariffSummary');
+  const customPanel = document.getElementById('customPackagePanel');
+  if (customPanel) customPanel.style.display = val === 'Custom' ? 'block' : 'none';
 
   if (val && months) {
     document.getElementById('contractDuration').value  = months + ' months';

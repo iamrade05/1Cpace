@@ -43,6 +43,7 @@ PHASES: dict[int, tuple[str, frozenset[str]]] = {
                 "internal_comms",   # staff messages and announcements
                 "admin",            # tariffs, contract templates, users
                 "admin_events",     # create/manage events and their registrations
+                "whatsapp_web",     # WhatsApp Web sender status/QR page
                 "screen_recordings",
             }
         ),

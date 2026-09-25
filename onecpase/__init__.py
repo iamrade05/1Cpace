@@ -32,6 +32,7 @@ from .pbx import pbx_bp
 from .comms import comms_bp, webhooks_bp
 from .internal_comms import internal_comms_bp, unread_counts
 from .events import events_bp, admin_events_bp
+from .whatsapp_web import whatsapp_web_bp
 from .queries import queries_bp
 from .sales_pipeline import sales_pipeline_bp
 from .turnstile_routes import turnstile_bp
@@ -125,6 +126,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(internal_comms_bp)
     app.register_blueprint(events_bp)
     app.register_blueprint(admin_events_bp)
+    app.register_blueprint(whatsapp_web_bp)
     app.register_blueprint(webhooks_bp)
     app.register_blueprint(queries_bp)
     app.register_blueprint(sales_pipeline_bp)
@@ -144,6 +146,9 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     from .scheduler import init_scheduler
     init_scheduler(app)
+
+    from .whatsapp_web import init_whatsapp_web
+    init_whatsapp_web(app)
 
     app.teardown_appcontext(close_db)
     app.teardown_appcontext(close_platform_db)

@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>Membership Contract — {{ m.first_name }} {{ m.last_name }}</title>
   <style>
     :root { --accent: {{ (contract_template.accent_color if contract_template and contract_template.accent_color else '#185FA5') }}; }
@@ -19,8 +20,21 @@
       display: flex; justify-content: space-between; align-items: center;
       position: sticky; top: 0; z-index: 100;
     }
-    .toolbar span { color: #9ca3af; font-size: 0.82rem; }
-    .toolbar-btns { display: flex; gap: 10px; }
+    .toolbar span { color: #9ca3af; font-size: 0.82rem; flex: 1 1 0; min-width: 160px; }
+    .toolbar { gap: 16px; }
+    .toolbar-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+    .attach-form { display: inline-flex; margin: 0; }
+    .attach-btn { cursor: pointer; }
+
+    /* ── Where the contract stands (staff view only) ── */
+    .status-bar { max-width: 860px; margin: 16px auto 0; font-size: 0.85rem; }
+    .contract-state { padding: 10px 14px; border-radius: 6px; font-weight: 600; }
+    .contract-state.signed   { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .contract-state.unsigned { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+    .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 8px;
+             background: #eff6ff; color: #1e3a8a; border: 1px solid #bfdbfe; }
+    .flash-error   { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+    .flash-warning { background: #fffbeb; color: #92400e; border-color: #fde68a; }
     .btn-print, .btn-back {
       padding: 8px 18px; border: none; border-radius: 7px;
       font-size: 0.82rem; font-weight: 600; cursor: pointer;
@@ -129,10 +143,41 @@
     .sig-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
     .sig-block { border-top: 2px solid #1F2933; padding-top: 8px; }
     .sig-block .sig-line {
-      height: 52px; border-bottom: 1px dashed #d1d5db; margin-bottom: 8px;
+      min-height: 52px; border-bottom: 1px dashed #d1d5db; margin-bottom: 8px;
+      display: flex; align-items: flex-end;
+    }
+    .sig-block .sig-line img {
+      /* Physical signature size, not a screen pixel size, so it matches on
+         screen and on the printed page. */
+      width: 40mm; height: auto; display: block;
     }
     .sig-block .sig-label { font-size: 0.75rem; color: #6b7280; }
     .sig-block .sig-name  { font-size: 0.82rem; font-weight: 700; color: #1F2933; }
+    .sig-block .sig-signed-at { font-size: 0.68rem; color: #9ca3af; margin-top: 2px; }
+    .btn-sign {
+      margin-top: 6px; padding: 5px 12px; border: 1px solid var(--accent);
+      background: #fff; color: var(--accent); border-radius: 6px;
+      font-size: 0.76rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-sign:hover { background: var(--accent); color: #fff; }
+
+    /* ── Signature pad modal ── */
+    .sig-modal {
+      display: none; position: fixed; inset: 0; background: rgba(17,24,39,.55);
+      z-index: 200; align-items: center; justify-content: center; padding: 16px;
+    }
+    .sig-modal.open { display: flex; }
+    .sig-modal-box {
+      background: #fff; border-radius: 10px; padding: 20px;
+      max-width: 640px; width: 100%;
+    }
+    .sig-modal-title { font-size: 0.95rem; font-weight: 700; color: #1F2933; margin-bottom: 4px; }
+    .sig-modal-hint { font-size: 0.78rem; color: #6b7280; margin-bottom: 12px; }
+    .sig-canvas {
+      width: 100%; height: 220px; border: 2px dashed #d1d5db; border-radius: 8px;
+      touch-action: none; background: #fafafa; cursor: crosshair;
+    }
+    .sig-modal-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 14px; }
 
     /* ── Footer ── */
     .contract-footer {
@@ -145,8 +190,9 @@
     /* ── Print styles ── */
     @media print {
       body { background: #fff; }
-      .toolbar { display: none; }
+      .toolbar, .status-bar { display: none; }
       .page { margin: 0; box-shadow: none; border-radius: 0; padding: 36px 48px; }
+      .btn-sign, .sig-modal { display: none !important; }
       @page { margin: 1.5cm; }
     }
   </style>
@@ -158,15 +204,51 @@
   <span>{{ contract_template.agreement_title if contract_template else 'Membership Contract' }} — {{ m.first_name }} {{ m.last_name }} &nbsp;|&nbsp; Generated {{ generated_at }}</span>
   <div class="toolbar-btns">
     {% if m.id %}<a href="{{ url_for('members.member_detail', mid=m.id) }}" class="btn-back">← Back to Member</a>{% endif %}
+    {% if signing_enabled and m.id %}
+    <button type="button" class="btn-print" data-role="member" data-label="Member Signature & Date"
+            onclick="openSigPad(this.dataset.role, this.dataset.label)">✍ Sign on screen</button>
+    {% endif %}
     <button class="btn-print" onclick="window.print()">🖨 Print / Save PDF</button>
+    {% if signing_enabled and m.id %}
+    <form method="post" action="{{ url_for('members.member_upload_doc', mid=m.id) }}"
+          enctype="multipart/form-data" class="attach-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="document_type" value="Signed Contract">
+      <input type="hidden" name="return_to" value="{{ url_for('contracts.view_contract', mid=m.id) }}">
+      <label class="btn-back attach-btn">📎 Attach signed copy
+        <input type="file" name="document" accept=".pdf,.jpg,.jpeg,.png" hidden onchange="this.form.submit()">
+      </label>
+    </form>
+    {% endif %}
   </div>
 </div>
+
+{% if signing_enabled and m.id %}
+<div class="status-bar">
+  {% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="flash flash-{{ category }}">{{ message }}</div>
+  {% endfor %}
+  <div class="contract-state {{ 'signed' if contract_status == 'signed' else 'unsigned' }}">
+    {% if contract_status == 'signed' %}✓ Contract signed{% else %}Not signed yet{% endif %}
+    {% if signatures.get('member') %} &middot; signed on screen{% endif %}
+    {% if signed_docs %} &middot; signed copy attached:
+      <a href="{{ url_for('members.member_download_doc', mid=m.id, doc_id=signed_docs[0].id) }}">{{ signed_docs[0].original_name }}</a>
+    {% endif %}
+    {% if contract_status != 'signed' %} &middot; sign on screen, or print it, have it signed, then attach the signed copy.{% endif %}
+  </div>
+</div>
+{% endif %}
 
 <div class="page">
 
   <!-- Header -->
   <div class="contract-header">
-    <div>
+    <div style="display:flex;align-items:flex-start;gap:14px;">
+      {% if tenant and tenant.logo_filename %}
+      <img src="{{ url_for('static', filename='tenant_logos/' + tenant.logo_filename) }}"
+           alt="{{ tenant.name }} logo" style="height:52px;width:auto;flex-shrink:0;">
+      {% endif %}
+      <div>
       <div class="gym-name">{{ contract_template.gym_name if contract_template else 'Elev8 Health & Fitness' }}</div>
       <div class="gym-sub">1Cpase Gym Management System</div>
       {% if contract_template and (contract_template.reg_no or contract_template.address) %}
@@ -176,6 +258,7 @@
         {{ contract_template.address or '' }}
       </div>
       {% endif %}
+      </div>
     </div>
     <div class="contract-meta">
       <strong>Contract #{{ "%05d"|format(m.id) }}</strong>
@@ -189,13 +272,51 @@
   {% if request.endpoint == 'contracts.public_share' %}
   <div class="share-response" style="margin:14px 0;padding:14px;border:1px solid #d1d5db;background:#f8fafc;">
     <strong>Client response</strong>
-    <p>Please review this agreement. Approve only when all details are correct.</p>
+    {% if share.notice %}
+    <p style="color:#b45309;font-weight:600;margin:8px 0;">{{ share.notice }}</p>
+    {% endif %}
+
+    {% if share.stage == 'verified' %}
+    <p>You are verified. Please review this agreement and approve only when all details are correct.</p>
     <form method="post" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn btn-primary" name="response" value="approved" type="submit">Approve Contract</button>
       <button class="btn btn-secondary" name="response" value="declined" type="submit">Decline / Request Changes</button>
       <input name="note" placeholder="Optional note" style="min-width:220px;">
     </form>
+
+    {% elif share.stage == 'code_sent' %}
+    <p>A 6-digit code was sent to {{ share.sent_to }}. Enter it to continue.</p>
+    <form method="post" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="verify_code">
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"
+             placeholder="6-digit code" required style="min-width:160px;letter-spacing:3px;">
+      <button class="btn btn-primary" type="submit">Verify</button>
+    </form>
+    <form method="post" style="margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="send_code">
+      <button class="btn btn-secondary" type="submit">Send a new code</button>
+    </form>
+
+    {% else %}
+    <p>To approve this agreement, first confirm it is you. We will send a 6-digit code to the WhatsApp number
+       or email address the gym has on file for you.</p>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="send_code">
+      <button class="btn btn-primary" type="submit">Send me a code</button>
+    </form>
+    {% endif %}
+
+    {% if share.stage != 'verified' %}
+    <form method="post" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-secondary" name="response" value="declined" type="submit">Decline / Request Changes</button>
+      <input name="note" placeholder="Optional note" style="min-width:220px;">
+    </form>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -282,7 +403,7 @@
       <div>
         <div class="ph-label">Monthly Installment</div>
         <div style="font-size:0.75rem;color:#378ADD;margin-top:2px;">
-          {{ m.tariff or 'See tariff below' }}
+          {{ (m.package if m.tariff == 'Custom' and m.package else m.tariff) or 'See tariff below' }}
           {% if m.contract_duration %}&nbsp;·&nbsp;{{ m.contract_duration }}{% endif %}
         </div>
       </div>
@@ -290,7 +411,7 @@
     </div>
     <div class="detail-grid cols-3">
       {% if field_enabled('membership', 'tariff') %}
-      <div class="detail-cell"><div class="lbl">Tariff</div><div class="val">{{ m.tariff or '—' }}</div></div>
+      <div class="detail-cell"><div class="lbl">Tariff</div><div class="val">{{ (m.package if m.tariff == 'Custom' and m.package else m.tariff) or '—' }}</div></div>
       {% endif %}
       {% if field_enabled('membership', 'contract_duration') %}
       <div class="detail-cell"><div class="lbl">Contract Duration</div><div class="val">{{ m.contract_duration or '—' }}</div></div>
@@ -423,25 +544,50 @@
   </div>
 
   <!-- Signatures -->
-  <div class="sig-row {% if field_enabled('signatures', 'witness_name') and m.witness_name %}cols-3{% endif %}">
-    <div class="sig-block">
-      <div class="sig-line"></div>
-      <div class="sig-name">{{ m.first_name }} {{ m.last_name }}</div>
-      <div class="sig-label">Member Signature &amp; Date</div>
+  {% macro sig_block(role, name, label) %}
+  <div class="sig-block">
+    <div class="sig-line">
+      {% if signatures.get(role) %}
+      <img src="{{ url_for('contracts.signature_image', mid=m.id, role=role) }}" alt="{{ label }}">
+      {% endif %}
     </div>
-    <div class="sig-block">
-      <div class="sig-line"></div>
-      <div class="sig-name">{{ m.consultant_name or 'Authorised Representative' }}</div>
-      <div class="sig-label">Gym Representative Signature &amp; Date</div>
-    </div>
-    {% if field_enabled('signatures', 'witness_name') and m.witness_name %}
-    <div class="sig-block">
-      <div class="sig-line"></div>
-      <div class="sig-name">{{ m.witness_name }}</div>
-      <div class="sig-label">Witness Signature &amp; Date</div>
-    </div>
+    <div class="sig-name">{{ name }}</div>
+    <div class="sig-label">{{ label }}</div>
+    {% if signatures.get(role) %}
+    <div class="sig-signed-at">Signed {{ signatures[role].signed_at[:16].replace('T', ' ') if signatures[role].signed_at else '' }}</div>
+    {% if signing_enabled %}
+    <button type="button" class="btn-sign" data-role="{{ role }}" data-label="{{ label }}" onclick="openSigPad(this.dataset.role, this.dataset.label)">Re-sign</button>
+    {% endif %}
+    {% elif signing_enabled %}
+    <button type="button" class="btn-sign" data-role="{{ role }}" data-label="{{ label }}" onclick="openSigPad(this.dataset.role, this.dataset.label)">✍ Sign on Screen</button>
     {% endif %}
   </div>
+  {% endmacro %}
+  <div class="sig-row {% if field_enabled('signatures', 'witness_name') and m.witness_name %}cols-3{% endif %}">
+    {{ sig_block('member', m.first_name ~ ' ' ~ m.last_name, 'Member Signature & Date') }}
+    {{ sig_block('representative', m.consultant_name or 'Authorised Representative', 'Gym Representative Signature & Date') }}
+    {% if field_enabled('signatures', 'witness_name') and m.witness_name %}
+    {{ sig_block('witness', m.witness_name, 'Witness Signature & Date') }}
+    {% endif %}
+  </div>
+
+  {% if signing_enabled %}
+  <!-- Signature pad modal: works with mouse, touch (tablet) and pen -->
+  <div class="sig-modal" id="sigModal">
+    <div class="sig-modal-box">
+      <div class="sig-modal-title" id="sigModalTitle">Sign here</div>
+      <div class="sig-modal-hint">Use a finger, stylus, or mouse to sign below.</div>
+      <canvas class="sig-canvas" id="sigCanvas"></canvas>
+      <div class="sig-modal-actions">
+        <button type="button" class="btn-back" style="background:#f3f4f6;color:#374151;" onclick="clearSigPad()">Clear</button>
+        <div style="display:flex;gap:10px;">
+          <button type="button" class="btn-back" style="background:#f3f4f6;color:#374151;" onclick="closeSigPad()">Cancel</button>
+          <button type="button" class="btn-print" onclick="saveSigPad()">Save Signature</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   {% if contract_template and contract_template.footer_text %}
   <div style="margin-top:20px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:.74rem;color:#6b7280;">{{ contract_template.footer_text }}</div>
@@ -454,5 +600,103 @@
   </div>
 
 </div>
+
+{% if signing_enabled %}
+<script>
+(function () {
+  const modal = document.getElementById('sigModal');
+  const canvas = document.getElementById('sigCanvas');
+  const ctx = canvas.getContext('2d');
+  const title = document.getElementById('sigModalTitle');
+  let currentRole = null;
+  let drawing = false;
+  let hasStroke = false;
+
+  function sizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = rect.width * ratio;
+    canvas.height = rect.height * ratio;
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#1F2933';
+  }
+
+  function pos(evt) {
+    const rect = canvas.getBoundingClientRect();
+    const point = evt.touches && evt.touches.length ? evt.touches[0] : evt;
+    return { x: point.clientX - rect.left, y: point.clientY - rect.top };
+  }
+
+  function start(evt) {
+    evt.preventDefault();
+    drawing = true;
+    hasStroke = true;
+    const p = pos(evt);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  }
+  function move(evt) {
+    if (!drawing) return;
+    evt.preventDefault();
+    const p = pos(evt);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  }
+  function end(evt) {
+    if (evt) evt.preventDefault();
+    drawing = false;
+  }
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, { passive: false });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+
+  window.openSigPad = function (role, label) {
+    currentRole = role;
+    title.textContent = 'Sign here — ' + label;
+    modal.classList.add('open');
+    // The canvas has no real size while its modal is display:none, so it
+    // must be sized after becoming visible, not before.
+    requestAnimationFrame(function () {
+      sizeCanvas();
+      hasStroke = false;
+    });
+  };
+  window.closeSigPad = function () {
+    modal.classList.remove('open');
+    currentRole = null;
+  };
+  window.clearSigPad = function () {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasStroke = false;
+  };
+  window.saveSigPad = async function () {
+    if (!hasStroke) {
+      alert('Please sign before saving.');
+      return;
+    }
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    try {
+      const response = await fetch('{{ url_for("contracts.sign_contract", mid=m.id) }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': token },
+        body: JSON.stringify({ signer_role: currentRole, image_data: canvas.toDataURL('image/png') }),
+      });
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || 'Could not save the signature.');
+      window.location.reload();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+})();
+</script>
+{% endif %}
 </body>
 </html>

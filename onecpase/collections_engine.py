@@ -98,6 +98,20 @@ def _integer_rule(rules, key: str, default: int) -> int:
         raise ValueError(f"Invalid integer rule {key}: {value!r}") from exc
 
 
+def _effective_upfront_percent(rules) -> Decimal:
+    """Never demand more upfront than the configured ceiling (Rule 6).
+
+    Under any sane configuration (min below max, e.g. the seeded 30/40) this
+    is a no-op - min_percent already governs required_upfront_amount below
+    it. It only matters if upfront_min_percent is ever configured above
+    upfront_max_percent, in which case it stops the required amount from
+    silently exceeding the policy's own stated ceiling.
+    """
+    min_percent = _decimal_rule(rules, "upfront_min_percent", "30")
+    max_percent = _decimal_rule(rules, "upfront_max_percent", "40")
+    return min(min_percent, max_percent)
+
+
 def calculate_arrears_installment(
     arrears,
     months,
@@ -270,7 +284,7 @@ def evaluate_collection_case(
     arrears = money(arrears)
     upfront_amount = money(upfront_amount)
     inactive_after = _integer_rule(rules, "inactive_after_months", 6)
-    min_upfront = _decimal_rule(rules, "upfront_min_percent", "30")
+    min_upfront = _effective_upfront_percent(rules)
     required_upfront = required_upfront_amount(arrears, min_upfront)
     inactive = months_owing > inactive_after or _older_than_inactive_threshold(
         oldest_arrears_month, today, inactive_after
@@ -465,7 +479,7 @@ def evaluate_member_access(db, member_id: int, *, today=None) -> dict:
         (member_id,),
     ).fetchone()
     verified_paid = money(verified_receipts["total"] if verified_receipts else 0)
-    required_upfront = required_upfront_amount(total, _decimal_rule(rules, "upfront_min_percent", "30"))
+    required_upfront = required_upfront_amount(total, _effective_upfront_percent(rules))
     decision = evaluate_collection_case(
         months, total, debicheck_active,
         upfront_paid=verified_paid >= required_upfront if months == 2 else False,
@@ -473,6 +487,7 @@ def evaluate_member_access(db, member_id: int, *, today=None) -> dict:
         full_settlement=total > 0 and verified_paid >= money(total),
         rules=rules, oldest_arrears_month=oldest, today=today,
     )
+    decision = apply_manager_exception(db, member_id, decision, today=today)
     decision.update({
         "member_status": member["member_status"],
         "arrears": total,
@@ -540,7 +555,7 @@ def _engine_table_statements(backend):
             FOREIGN KEY (collection_id) REFERENCES collections(id), FOREIGN KEY (created_by) REFERENCES users(id)
         )""",
         f"""CREATE TABLE IF NOT EXISTS collection_exceptions (
-            id {id_type}, case_id INTEGER, member_id INTEGER NOT NULL, reason TEXT NOT NULL,
+            id {id_type}, case_id INTEGER, ptp_id INTEGER, member_id INTEGER NOT NULL, reason TEXT NOT NULL,
             requested_action TEXT, status TEXT NOT NULL DEFAULT 'pending', notes TEXT,
             created_by INTEGER, decided_by INTEGER, decided_at TEXT, created_at {timestamp},
             FOREIGN KEY (case_id) REFERENCES collections_cases(id), FOREIGN KEY (member_id) REFERENCES members(id),
@@ -561,6 +576,9 @@ def _engine_table_statements(backend):
 def ensure_collections_engine_schema(db, backend="sqlite"):
     for statement in _engine_table_statements(backend):
         db.execute(statement)
+    from .database import _ensure_column
+
+    _ensure_column(db, backend, "collection_exceptions", "ptp_id", "INTEGER")
     insert = "INSERT INTO collection_rules (rule_key, rule_value, value_type) VALUES (?, ?, ?)"
     if backend == "sqlite":
         insert = insert.replace("INSERT INTO", "INSERT OR IGNORE INTO")
@@ -666,11 +684,114 @@ def record_access_decision(db, member_id, access_status, reason, *, case_id=None
     )
 
 
-def create_collection_exception(db, member_id, reason, *, case_id=None, requested_action=None, notes=None, created_by=None):
+def create_collection_exception(
+    db, member_id, reason, *, case_id=None, ptp_id=None, requested_action=None, notes=None, created_by=None
+):
     cursor = db.execute(
         """INSERT INTO collection_exceptions
-           (case_id, member_id, reason, requested_action, notes, created_by)
-           VALUES (?,?,?,?,?,?)""",
-        (case_id, member_id, reason, requested_action, notes, created_by),
+           (case_id, ptp_id, member_id, reason, requested_action, notes, created_by)
+           VALUES (?,?,?,?,?,?,?)""",
+        (case_id, ptp_id, member_id, reason, requested_action, notes, created_by),
     )
     return cursor.lastrowid
+
+
+# ── Manager decisions on Rule §7 exceptions ──────────────────────────────────
+#
+# One escalated request produces two queue cards: the arrangement awaiting
+# approval and the exception. ``ptp_id`` ties them together so a decision on
+# either settles both, and it is how an approved exception knows how long it
+# lasts - to the promise date of the arrangement it was raised for.
+
+def decide_collection_exception(db, exception_id, decision, decided_by, notes=None):
+    """Record a manager decision on a pending exception and settle its arrangement.
+
+    Returns the exception row as it was, or None if it was not pending.
+    """
+    row = db.execute(
+        "SELECT * FROM collection_exceptions WHERE id = ? AND status = 'pending'",
+        (exception_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    db.execute(
+        """UPDATE collection_exceptions
+           SET status = ?, notes = ?, decided_by = ?, decided_at = datetime('now','localtime')
+           WHERE id = ?""",
+        (decision, notes or row["notes"], decided_by, exception_id),
+    )
+    if row["ptp_id"]:
+        db.execute(
+            """UPDATE ptp_agreements
+               SET manager_approval_status = ?, approved_by = ?,
+                   approved_date = datetime('now','localtime'), approval_notes = ?,
+                   updated_at = datetime('now','localtime')
+               WHERE id = ? AND manager_approval_status = 'pending'""",
+            (decision, decided_by, notes or "", row["ptp_id"]),
+        )
+    return row
+
+
+def settle_exception_for_arrangement(db, ptp_id, decision, decided_by, notes=None):
+    """The other direction: a manager decided the arrangement card, so the
+    exception raised for it is decided the same way."""
+    db.execute(
+        """UPDATE collection_exceptions
+           SET status = ?, notes = COALESCE(NULLIF(?, ''), notes), decided_by = ?,
+               decided_at = datetime('now','localtime')
+           WHERE ptp_id = ? AND status = 'pending'""",
+        (decision, notes or "", decided_by, ptp_id),
+    )
+
+
+def apply_manager_exception(db, member_id, decision, *, today=None):
+    """Lift the Rule §7 block while a manager-approved exception is live.
+
+    Only THREE_PLUS_NO_DEBICHECK is lifted - an inactive account or a
+    two-month restriction is not what these exceptions are raised for. The
+    exception lasts through the promise date of its arrangement and ends early
+    if that arrangement is no longer pending or partially paid. Every access
+    decision (the live check, the sweep) goes through this so they agree.
+    """
+    if decision.get("status") != "THREE_PLUS_NO_DEBICHECK":
+        return decision
+    on = (_parse_date(today) or date.today()).isoformat()
+    grant = db.execute(
+        """SELECT p.promise_date
+           FROM collection_exceptions e
+           JOIN ptp_agreements p ON p.id = e.ptp_id
+           WHERE e.member_id = ? AND e.status = 'approved'
+             AND p.ptp_status IN ('pending', 'partially_paid')
+             AND p.promise_date >= ?
+           ORDER BY p.promise_date DESC LIMIT 1""",
+        (member_id, on),
+    ).fetchone()
+    if grant is None:
+        return decision
+    return {
+        **decision,
+        "status": "THREE_PLUS_MANAGER_EXCEPTION",
+        "access": "ALLOWED",
+        "action": "MANAGER_EXCEPTION_ACTIVE",
+        "manager_exception_until": grant["promise_date"],
+    }
+
+
+def grant_exception_access(db, member_id, *, today=None):
+    """Bring the stored access status in line once an exception is approved.
+
+    The turnstile also refuses a stored 'blocked', so the live decision alone is
+    not enough. The same temporary-unblock the sweep already expires is used, set
+    to the promise date. Does nothing unless the live decision now says an
+    exception is active. Returns whether access was granted.
+    """
+    decision = evaluate_member_access(db, member_id, today=today)
+    if decision.get("status") != "THREE_PLUS_MANAGER_EXCEPTION":
+        return False
+    db.execute(
+        """UPDATE members SET gym_access_status = 'temp_unblocked',
+           access_blocked_until = ?, access_block_reason = NULL WHERE id = ?""",
+        (decision["manager_exception_until"], member_id),
+    )
+    record_access_decision(db, member_id, "ALLOWED", decision["action"], source="manager_exception")
+    return True

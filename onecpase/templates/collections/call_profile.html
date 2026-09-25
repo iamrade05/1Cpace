@@ -74,12 +74,28 @@
       <button type="button" onclick="copyWaTemplate()" class="btn btn-ghost btn-sm" style="border-color:#059669;color:#059669;">Copy Message</button>
       <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
         <input type="hidden" name="channel" value="whatsapp">
+        <input type="hidden" name="result" value="sent">
         <button type="submit" class="btn btn-ghost btn-sm" {% if task.whatsapp_sent %}disabled{% endif %}>{% if task.whatsapp_sent %}✓ WhatsApp sent{% else %}Mark WhatsApp sent{% endif %}</button>
       </form>
+      {% if task.whatsapp_sent and task.next_channel == 'WHATSAPP' %}
+      <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
+        <input type="hidden" name="channel" value="whatsapp">
+        <input type="hidden" name="result" value="failed">
+        <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--err);border-color:var(--err);">Mark WhatsApp failed / no response</button>
+      </form>
+      {% endif %}
       <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
         <input type="hidden" name="channel" value="sms">
+        <input type="hidden" name="result" value="sent">
         <button type="submit" class="btn btn-ghost btn-sm" {% if task.sms_sent %}disabled{% endif %}>{% if task.sms_sent %}✓ SMS sent{% else %}Mark SMS sent{% endif %}</button>
       </form>
+      {% if task.sms_sent and task.next_channel == 'SMS' %}
+      <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
+        <input type="hidden" name="channel" value="sms">
+        <input type="hidden" name="result" value="failed">
+        <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--err);border-color:var(--err);">Mark SMS failed / no response</button>
+      </form>
+      {% endif %}
       <span class="badge {{ 'badge-success' if task.email_sent else 'badge-gray' }}">{{ 'Email sent' if task.email_sent else 'No email on file / not sent' }}</span>
     </div>
   </div>
@@ -125,11 +141,9 @@ function copyWaTemplate() {
   });
 }
 </script>
-{% endblock %}
-
 <script>
 async function startCollectionPbxCall(phone, taskId) {
-  const token = document.querySelector('input[name="csrf_token"]')?.value || '';
+  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   try {
     const r = await fetch('{{ url_for("pbx.dial") }}', {
       method:'POST',
@@ -142,3 +156,4 @@ async function startCollectionPbxCall(phone, taskId) {
   } catch (e) { alert(e.message); }
 }
 </script>
+{% endblock %}

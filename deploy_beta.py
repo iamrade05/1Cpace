@@ -68,7 +68,7 @@ INCLUDE_DIRS = ("onecpase", "scripts")
 
 # Never shipped: real member data, secrets, local state, test tooling.
 EXCLUDED_SUFFIXES = (".pyc", ".pyo", ".db", ".sqlite3", ".log")
-EXCLUDED_PARTS = {"__pycache__", ".pytest_cache", ".mypy_cache", "uploads", "tenants"}
+EXCLUDED_PARTS = {"__pycache__", ".pytest_cache", ".mypy_cache", "uploads", "tenants", "whatsapp_web_session"}
 
 
 def parse_args() -> argparse.Namespace:

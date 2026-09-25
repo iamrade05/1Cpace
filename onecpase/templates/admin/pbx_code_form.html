@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit Account Code' if code else 'Add Account Code' }} | 1Cpase{% endblock %}
+{% block page_title %}{{ 'Edit Account Code' if code else 'Add Account Code' }}{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:520px;">
+  <div class="card-body" style="padding:20px;">
+    <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group">
+        <label class="form-label">PIN / Account Code *</label>
+        {% if code %}
+        <input class="form-control" value="{{ code.code }}" readonly>
+        <small style="color:#6b7280;">Fixed once created — add a new code instead if it changes.</small>
+        {% else %}
+        <input name="code" class="form-control" required value="{{ form.get('code', '') }}" placeholder="3074">
+        {% endif %}
+      </div>
+      <div class="form-group">
+        <label class="form-label">Label *</label>
+        <input name="label" class="form-control" required value="{{ form.get('label', '') }}" placeholder="Entle">
+        <small style="color:#6b7280;">Shown in the call log even if it isn't linked to a staff account below.</small>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Staff Member</label>
+        <select name="user_id" class="form-control">
+          <option value="">— Not linked —</option>
+          {% for s in staff %}
+          <option value="{{ s.id }}" {% if form.get('user_id')|string == s.id|string %}selected{% endif %}>{{ s.full_name }}</option>
+          {% endfor %}
+        </select>
+        <small style="color:#6b7280;">Leave unlinked for a shared/pool code that isn't one specific person.</small>
+      </div>
+      {% if code %}
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;">
+          <input type="checkbox" name="active" value="1" {% if code.active %}checked{% endif %}>
+          Active
+        </label>
+      </div>
+      {% endif %}
+      <button class="btn btn-primary" type="submit">{{ 'Save Changes' if code else 'Add Code' }}</button>
+      <a href="{{ url_for('admin.pbx_codes_index') }}" class="btn btn-ghost">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -83,6 +83,24 @@ class Config:
     FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN", "")
     FB_PAGE_ID = os.environ.get("FB_PAGE_ID", "")
 
+    # ── WhatsApp Web sender (onecpase/whatsapp_web.py) ──────────────────────
+    # Alternative to the Meta Cloud API above, for when WA_TOKEN isn't set up:
+    # drives a real WhatsApp Web session in a background browser instead.
+    # Off by default - a real phone number has to be deliberately linked via
+    # the QR code before this does anything, and it carries real risk to
+    # whatever number gets linked (WhatsApp can rate-limit/ban numbers it
+    # detects behaving like a bot) that the Cloud API doesn't have.
+    WHATSAPP_WEB_ENABLED = os.environ.get("WHATSAPP_WEB_ENABLED", "0") == "1"
+    # Deliberately NOT under onecpase/ - a deploy replaces that package
+    # wholesale, which would silently log the linked phone back out.
+    WHATSAPP_WEB_SESSION_DIR = os.environ.get(
+        "WHATSAPP_WEB_SESSION_DIR", str(BASE_DIR.parent / "whatsapp_web_session")
+    )
+    # Minimum gap between two outgoing messages, seconds. Sending a burst of
+    # messages back-to-back is exactly the pattern WhatsApp's abuse detection
+    # looks for.
+    WHATSAPP_WEB_SEND_DELAY = float(os.environ.get("WHATSAPP_WEB_SEND_DELAY", "8"))
+
     # ── Yeastar PBX / CRM calling ───────────────────────────────────────────
     PBX_BASE_URL = os.environ.get("PBX_BASE_URL", "https://pbx.yeastarycm.co.za").rstrip("/")
     PBX_API_VERSION = os.environ.get("PBX_API_VERSION", "openapi/v1.0").strip("/")

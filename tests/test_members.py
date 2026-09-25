@@ -150,3 +150,72 @@ def test_third_party_debicheck_requires_valid_payer_id(app):
         push.assert_not_called()
         assert b"valid 13-digit SA ID number" in response.data
         assert _find_member(get_db(), data["id_number"]) is None
+
+
+# ── Document upload return_to ─────────────────────────────────────────────────
+# Documents are now uploaded from both the member page and the application
+# page. Without return_to every action bounced back to the member page even
+# when it was opened from the application page, breaking that flow.
+
+def _member_id(app):
+    with app.app_context():
+        return get_db().execute(
+            "INSERT INTO members (first_name, last_name, id_number) VALUES ('Doc', 'Test', 'DOC-TEST-1')"
+        ).lastrowid
+
+
+def test_document_upload_defaults_to_the_member_page(app):
+    import io
+
+    mid = _member_id(app)
+    with app.test_client() as client:
+        _login_as_admin(client)
+        response = client.post(
+            f"/members/{mid}/documents",
+            data={"document_type": "Other", "document": (io.BytesIO(b"hi"), "note.pdf")},
+            content_type="multipart/form-data",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith(f"/members/{mid}#docs")
+
+
+def test_document_upload_honours_return_to_the_application_page(app):
+    import io
+
+    mid = _member_id(app)
+    with app.test_client() as client:
+        _login_as_admin(client)
+        response = client.post(
+            f"/members/{mid}/documents",
+            data={
+                "document_type": "Signed Contract",
+                "document": (io.BytesIO(b"hi"), "contract.pdf"),
+                "return_to": "/applications/7",
+            },
+            content_type="multipart/form-data",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["Location"] == "/applications/7"
+
+
+def test_document_upload_ignores_an_external_return_to(app):
+    """return_to must stay a local path - never an open redirect."""
+    import io
+
+    mid = _member_id(app)
+    with app.test_client() as client:
+        _login_as_admin(client)
+        response = client.post(
+            f"/members/{mid}/documents",
+            data={
+                "document_type": "Other",
+                "document": (io.BytesIO(b"hi"), "note.pdf"),
+                "return_to": "//evil.example.com/steal",
+            },
+            content_type="multipart/form-data",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith(f"/members/{mid}#docs")

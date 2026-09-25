@@ -174,40 +174,53 @@ def _is_statement_qualified(analysis) -> bool:
 
 
 def _is_ready_to_push(cl, analysis=None) -> bool:
+    """Gate for the Itensity push button.
+
+    DebiCheck, the ID copy, and the registration fee are deliberately NOT
+    required here — they happen in parallel with, or after, the Itensity
+    push (DebiCheck in particular needs the Itensity client reference the
+    push itself returns, so requiring it first was unreachable). They are
+    still tracked — see _outstanding_followups — just not blocking.
+    """
     return (
         cl["contract_status"] == "signed"
-        and cl["debit_check_status"] == "approved"
         and cl["bank_statement_status"] == "analysed"
         and _is_statement_qualified(analysis)
-        and cl["id_copy_status"] in ("uploaded", "verified")
-        and cl["pos_status"] == "paid"
         and (cl["guardian_required"] != "required" or cl["guardian_status"] == "approved")
         and cl["manager_approval_status"] in ("not_required", "approved")
     )
 
 
 def _missing_requirements(cl, analysis=None) -> list[str]:
-    """Human-readable list of compliance items still outstanding."""
+    """Human-readable list of items still blocking the Itensity push."""
     if cl is None:
         return ["Compliance checklist not started"]
     missing = []
     if cl["contract_status"] != "signed":
         missing.append("Contract not signed")
-    if cl["debit_check_status"] != "approved":
-        missing.append("DebiCheck not approved")
     if cl["bank_statement_status"] != "analysed":
         missing.append("Bank statement not analysed")
     elif not _is_statement_qualified(analysis):
         missing.append("Bank statement does not meet the two-month income or 30% balance rule")
-    if cl["id_copy_status"] not in ("uploaded", "verified"):
-        missing.append("ID copy not uploaded")
-    if cl["pos_status"] != "paid":
-        missing.append("POS payment not completed")
     if cl["guardian_required"] == "required" and cl["guardian_status"] != "approved":
         missing.append("Guardian consent not approved")
     if cl["manager_approval_status"] not in ("not_required", "approved"):
         missing.append("Manager approval pending")
     return missing
+
+
+def _outstanding_followups(cl) -> list[dict]:
+    """DebiCheck, ID, and the registration fee — required for a complete
+    membership, but not for the Itensity push itself (see _is_ready_to_push).
+    Purely informational: the application page shows these as parallel
+    tasks rather than a blocking checklist."""
+    if cl is None:
+        return []
+    return [
+        {"label": "DebiCheck mandate approved", "done": cl["debit_check_status"] == "approved"},
+        {"label": "ID copy uploaded", "done": cl["id_copy_status"] in ("uploaded", "verified")},
+        {"label": "Registration fee paid", "done": cl["pos_status"] == "paid"},
+    ]
 
 
 def _derive_status(cl, analysis=None) -> str:
@@ -357,6 +370,22 @@ def application_detail(aid: int):
         if checklist else False
     )
 
+    documents = []
+    if app["member_id"]:
+        import json as _json
+        raw_docs = db.execute(
+            """SELECT d.*, u.full_name AS uploader
+               FROM member_documents d
+               LEFT JOIN users u ON d.uploaded_by = u.id
+               WHERE d.member_id = ? AND d.document_type IN ('Signed Contract', 'Bank Statement', 'SA ID Copy')
+               ORDER BY d.uploaded_at DESC""",
+            (app["member_id"],),
+        ).fetchall()
+        for d in raw_docs:
+            row = dict(d)
+            row["analysis"] = _json.loads(d["analysis_json"]) if d["analysis_json"] else None
+            documents.append(row)
+
     return render_template(
         "applications/detail.html",
         app=app,
@@ -366,6 +395,9 @@ def application_detail(aid: int):
         trail=trail,
         ready_to_push=ready,
         missing_items=_missing_requirements(checklist, analysis) if checklist else [],
+        followups=_outstanding_followups(checklist),
+        documents=documents,
+        doc_types=["Signed Contract", "Bank Statement", "SA ID Copy"],
         is_manager=session.get("role") in MANAGER_ROLES,
         contract_statuses=CONTRACT_STATUSES,
         debit_statuses=DEBIT_STATUSES,

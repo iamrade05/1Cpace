@@ -1,0 +1,45 @@
+{# Manager-only: a package that is not one of the standard tariffs - a different
+   agreement, or a family package. Expects `cp` (the panel's saved values) and
+   `custom_on` (whether Custom is the selected tariff). #}
+{% if session.get('role') in ('admin', 'manager') %}
+<div id="customPackagePanel" style="display:{{ 'block' if custom_on else 'none' }};background:#FFF8E6;
+     border:2px solid #E0A526;border-radius:10px;padding:16px 20px;margin-bottom:18px;">
+  <div style="font-size:0.72rem;color:#8a5a00;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">
+    Custom package &mdash; manager only
+  </div>
+  <p style="font-size:0.8rem;color:#6b7280;margin:6px 0 12px;">
+    For a member on a different agreement, or a family package. What you enter here replaces
+    the standard tariff and is recorded on the member.
+  </p>
+  <div class="form-grid-2">
+    <div class="form-group">
+      <label class="form-label">Package name *</label>
+      <input type="text" name="custom_name" class="form-control" maxlength="120"
+             placeholder="e.g. Family - Smith (4 members)" value="{{ cp.get('custom_name', '') }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Reason *</label>
+      <select name="custom_type" class="form-control">
+        {% for t in ['Family package', 'Different agreement', 'Other'] %}
+        <option value="{{ t }}" {% if cp.get('custom_type') == t %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Monthly amount (R) *</label>
+      <input type="number" name="custom_amount" class="form-control" min="0" max="99999.99" step="0.01"
+             value="{{ cp.get('custom_amount', '') }}">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Contract length (months) *</label>
+      <input type="number" name="custom_months" class="form-control" min="1" max="120" step="1"
+             value="{{ cp.get('custom_months', '') }}">
+    </div>
+  </div>
+  <div class="form-group">
+    <label class="form-label">What was agreed *</label>
+    <textarea name="custom_note" class="form-control" rows="2" maxlength="500"
+              placeholder="Who is covered and what was agreed">{{ cp.get('custom_note', '') }}</textarea>
+  </div>
+</div>
+{% endif %}

@@ -141,11 +141,9 @@
     </table>
   </div>
 </details>
-{% endblock %}
-
 <script>
 async function startPbxCall(phone) {
-  const token = document.querySelector('input[name="csrf_token"]')?.value || '';
+  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   try {
     const r = await fetch('{{ url_for("pbx.dial") }}', {
       method:'POST',
@@ -158,3 +156,4 @@ async function startPbxCall(phone) {
   } catch (e) { alert(e.message); }
 }
 </script>
+{% endblock %}

@@ -11,12 +11,16 @@ from werkzeug.utils import secure_filename
 from .auth import permission_required, roles_required
 from .database import get_db, member_activity
 from .collections_engine import (
+    apply_manager_exception,
     calculate_realistic_recovery_plan,
     create_collection_exception,
     evaluate_collection_case,
     evaluate_member_access,
+    evaluate_ptp,
     get_collection_rules,
+    grant_exception_access,
     record_access_decision,
+    settle_exception_for_arrangement,
     sync_collection_case,
 )
 
@@ -505,18 +509,24 @@ def _run_collections_automations(db, today: str, dry_run: bool = False) -> dict:
     before staff confirm the real run."""
     broken_count = expired_count = restricted_count = inactive_count = 0
 
-    # Mark broken PTPs: promise date past, still pending, no verified receipt
-    overdue = db.execute("""
-        SELECT id, member_id, auto_block_if_failed
+    # Mark broken PTPs: the per-row BROKEN/ACTIVE/PAID call is evaluate_ptp()'s
+    # job (collections_engine.py) - this query only fetches what it needs to
+    # decide, one row of overdue-by-itself pending PTPs would previously have
+    # decided in raw SQL.
+    candidates = db.execute("""
+        SELECT id, member_id, auto_block_if_failed, promise_date,
+               EXISTS (
+                   SELECT 1 FROM ptp_receipts r
+                   WHERE r.ptp_id = ptp_agreements.id
+                     AND r.verification_status = 'verified'
+               ) AS has_verified_payment
         FROM ptp_agreements
         WHERE ptp_status = 'pending'
-          AND promise_date < ?
-          AND NOT EXISTS (
-              SELECT 1 FROM ptp_receipts r
-              WHERE r.ptp_id = ptp_agreements.id
-                AND r.verification_status = 'verified'
-          )
-    """, (today,)).fetchall()
+    """).fetchall()
+    overdue = [
+        ptp for ptp in candidates
+        if evaluate_ptp(ptp["promise_date"], bool(ptp["has_verified_payment"]), today=today) == "BROKEN"
+    ]
 
     for ptp in overdue:
         if not dry_run:
@@ -576,6 +586,7 @@ def _run_collections_automations(db, today: str, dry_run: bool = False) -> dict:
             oldest_arrears_month=oldest,
             today=today,
         )
+        decision = apply_manager_exception(db, member["id"], decision, today=today)
         should_restrict = (
             decision["access"] == "BLOCKED"
             and member["gym_access_status"] != "blocked"
@@ -820,7 +831,9 @@ def ptp_create(mid: int):
     # recorded and escalated to the management exception queue rather than
     # quietly accepted.
     escalated = False
-    if policy.get("status") == "THREE_PLUS_NO_DEBICHECK":
+    # An approved exception covers the arrangement it was raised for, not
+    # whatever is filed next - so a live one still escalates a new request.
+    if policy.get("status") in ("THREE_PLUS_NO_DEBICHECK", "THREE_PLUS_MANAGER_EXCEPTION"):
         already_open = db.execute(
             """SELECT 1 FROM collection_exceptions
                WHERE member_id = ? AND status = 'pending' AND reason = ?
@@ -836,6 +849,7 @@ def ptp_create(mid: int):
         if not already_open:
             create_collection_exception(
                 db, mid, RULE_7_EXCEPTION_REASON,
+                ptp_id=ptp_id,
                 requested_action=(
                     f"R{float(promise_amount):,.2f} by {promise_date} via "
                     f"{payment_method} ({arrangement_type})"
@@ -857,7 +871,9 @@ def ptp_create(mid: int):
                 (unblock_until, mid),
             )
             access_granted = True
-        else:
+        elif policy.get("status") != "THREE_PLUS_MANAGER_EXCEPTION":
+            # A live exception keeps the access the manager already approved;
+            # only the new request waits for its own decision.
             db.execute(
                 "UPDATE members SET gym_access_status='blocked', access_blocked_until=NULL, access_block_reason=? WHERE id=?",
                 ("ptp_pending_approval" if mgr_status == "pending" else "arrears_no_arrangement", mid),
@@ -1110,6 +1126,11 @@ def ptp_approve(mid: int, ptp_id: int):
             approval_notes=?, updated_at=datetime('now','localtime')
         WHERE id=? AND member_id=?
     """, (decision, session.get("user_id"), notes, ptp_id, mid))
+
+    # The same request raised a Rule §7 exception; the manager has now decided it.
+    settle_exception_for_arrangement(db, ptp_id, decision, session.get("user_id"), notes)
+    if decision == "approved" and grant_exception_access(db, mid):
+        member_activity(db, mid, "Access granted under manager exception until the promise date.")
 
     member_activity(
         db, mid,

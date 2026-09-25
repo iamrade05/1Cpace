@@ -82,6 +82,13 @@ DEPARTMENT_DEFAULT_PERMISSIONS = {
         "all_members", "add_member", "daily_queries", "verification",
         "communications_hub", "pbx_call",
     },
+    # Reception had zero default permissions before this - no individual
+    # user_permissions grants exist for them either (checked against the real
+    # database), so they could not even open a member's or prospect's profile
+    # page, let alone use the "Call" button on it. permission_required has no
+    # JSON failure mode - a redirect - so this looked exactly like the button
+    # silently doing nothing rather than an access error.
+    "Reception": {"dashboard", "all_members", "view_leads", "pbx_call"},
 }
 
 ROLE_DEFAULT_PERMISSIONS = {

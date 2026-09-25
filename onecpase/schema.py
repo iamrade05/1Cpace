@@ -450,6 +450,18 @@ CREATE TABLE IF NOT EXISTS contract_share_tokens (
 );
 CREATE INDEX IF NOT EXISTS idx_contract_share_token_hash ON contract_share_tokens(token_hash);
 
+CREATE TABLE IF NOT EXISTS contract_signatures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    member_id INTEGER NOT NULL,
+    signer_role TEXT NOT NULL,
+    image_filename TEXT NOT NULL,
+    signed_by INTEGER,
+    signed_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+    FOREIGN KEY (signed_by) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_contract_signatures_member ON contract_signatures(member_id, signer_role);
+
 CREATE TABLE IF NOT EXISTS report_definitions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
@@ -1540,6 +1552,18 @@ CREATE TABLE IF NOT EXISTS contract_share_tokens (
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
 CREATE INDEX IF NOT EXISTS idx_contract_share_token_hash ON contract_share_tokens(token_hash);
+
+CREATE TABLE IF NOT EXISTS contract_signatures (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL,
+    signer_role TEXT NOT NULL,
+    image_filename TEXT NOT NULL,
+    signed_by INTEGER,
+    signed_at TIMESTAMPTZ DEFAULT NOW(),
+    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+    FOREIGN KEY (signed_by) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_contract_signatures_member ON contract_signatures(member_id, signer_role);
 
 CREATE TABLE IF NOT EXISTS report_definitions (
     id SERIAL PRIMARY KEY,

@@ -61,6 +61,48 @@ def index():
     return render_template("debicheck/index.html", mandates=decrypted, counts=counts, search=q)
 
 
+@debicheck_bp.get("/coverage")
+@permission_required("debicheck_mandates")
+def coverage():
+    """Every Debit Order member split into has-a-mandate / no-mandate, so
+    staff can see the gap directly instead of only ever seeing the members
+    who already have one (the main index only ever lists mandate rows, so a
+    member with none never appears there at all)."""
+    q = request.args.get("q", "").strip()
+    status_filter = request.args.get("status", "").strip()
+
+    sql = """SELECT m.id, m.first_name, m.last_name, m.member_status, m.payment_type,
+                     m.debit_order_date, d.id AS mandate_id, d.status AS mandate_status
+              FROM members m
+              LEFT JOIN debicheck_mandates d ON d.member_id = m.id
+              WHERE m.payment_type = 'Debit Order'"""
+    params: list = []
+    if status_filter:
+        sql += " AND m.member_status = ?"
+        params.append(status_filter)
+    if q:
+        like = f"%{q}%"
+        sql += " AND (m.first_name LIKE ? OR m.last_name LIKE ? OR (m.first_name || ' ' || m.last_name) LIKE ?)"
+        params += [like, like, like]
+    sql += " ORDER BY m.first_name, m.last_name"
+    rows = get_db().execute(sql, params).fetchall()
+
+    with_mandate = [dict(r) for r in rows if r["mandate_id"] is not None]
+    without_mandate = [dict(r) for r in rows if r["mandate_id"] is None]
+    statuses = [r["member_status"] for r in get_db().execute(
+        "SELECT DISTINCT member_status FROM members WHERE payment_type='Debit Order' ORDER BY member_status"
+    ).fetchall()]
+
+    return render_template(
+        "debicheck/coverage.html",
+        with_mandate=with_mandate,
+        without_mandate=without_mandate,
+        search=q,
+        status_filter=status_filter,
+        statuses=statuses,
+    )
+
+
 def _submission_data(member, form):
     payer_type = form.get("payer_type", "self")
     return {
@@ -226,8 +268,26 @@ def edit(mandate_id):
     return render_template("debicheck/edit.html", mandate=mandate, banks=BANKS, today=date.today().isoformat())
 
 
+def _member_itensity_ref(db, member_id: int) -> str:
+    row = db.execute("SELECT itensity_ref FROM members WHERE id=?", (member_id,)).fetchone()
+    return str(row["itensity_ref"] or "").strip() if row else ""
+
+
 def _push(db, mandate_id, mandate: dict, member_id: int):
-    """Push a plaintext mandate dict to NuPay."""
+    """Push a plaintext mandate dict to NuPay.
+
+    Requires a real Itensity client reference first: NuPay's client_ref1 is
+    derived from it (see mandate_from_member), and pushing with the
+    placeholder FIT-<member_id> fallback would submit a mandate NuPay and
+    Itensity can never reconcile against each other.
+    """
+    if not _member_itensity_ref(db, member_id):
+        flash(
+            "This member hasn't been pushed to Itensity yet. Push to Itensity "
+            "first so NuPay has a real client reference to use.",
+            "error",
+        )
+        return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
     try:
         success, message = push_mandate_to_nupay(mandate)
     except Exception as exc:
@@ -256,6 +316,13 @@ def push(mandate_id):
     if row is None:
         flash("DebiCheck mandate not found.", "warning")
         return redirect(url_for("debicheck.index"))
+    if not _member_itensity_ref(db, row["member_id"]):
+        flash(
+            "This member hasn't been pushed to Itensity yet. Push to Itensity "
+            "first so NuPay has a real client reference to use.",
+            "error",
+        )
+        return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
     mandate = decrypt_mandate(row)
     errors = validate_stored_mandate(mandate)
     if errors:
@@ -313,6 +380,13 @@ def review_on_nupay(mandate_id):
         return redirect(url_for("debicheck.index"))
     if row["status"] == "reviewing":
         flash("This mandate already has a NuPay review window open. Finish or close it first.", "warning")
+        return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
+    if not _member_itensity_ref(db, row["member_id"]):
+        flash(
+            "This member hasn't been pushed to Itensity yet. Push to Itensity "
+            "first so NuPay has a real client reference to use.",
+            "error",
+        )
         return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
 
     mandate = decrypt_mandate(row)

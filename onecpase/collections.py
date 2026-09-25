@@ -15,9 +15,13 @@ from .encryption import decrypt_member
 from .extensions import mail
 from .integrations import push_pos_payment_to_itensity
 from .collections_engine import (
+    calculate_daily_call_kpi,
     complete_call,
+    decide_collection_exception,
     get_collection_rule_int,
+    grant_exception_access,
     log_collection_communication,
+    next_communication,
     sync_collection_case,
 )
 
@@ -707,9 +711,19 @@ def record_call_result(task_id: int):
 def toggle_escalation(task_id: int):
     """WhatsApp/SMS stay staff-actioned — no provider integration exists, so
     this just records that a human sent one, same spirit as the WhatsApp
-    'copy message' helper already on the member page."""
+    'copy message' helper already on the member page.
+
+    'sent' and 'failed' are genuinely different outcomes: a message that was
+    sent is awaiting a reply or a later failure decision, so it stays on this
+    channel; only a recorded failure (no response / undeliverable) advances
+    to the next channel in the CALL->WHATSAPP->SMS->EMAIL sequence, via the
+    same next_communication() the CALL step already uses - so WHATSAPP_FAILED
+    /SMS_FAILED (collections_engine.py) drive a real event instead of being
+    unreachable constants.
+    """
     db = get_db()
     channel = request.form.get("channel", "")
+    result = request.form.get("result", "sent")
     column = {"whatsapp": "whatsapp_sent", "sms": "sms_sent"}.get(channel)
     if not column:
         flash("Unknown escalation channel.", "error")
@@ -722,7 +736,14 @@ def toggle_escalation(task_id: int):
     if required and required != channel.upper():
         flash(f"The next required contact method is {required}, not {channel.upper()}.", "error")
         return redirect(url_for("collections.call_profile", task_id=task_id))
-    next_channel = {"WHATSAPP": "SMS", "SMS": "EMAIL"}.get(channel.upper())
+
+    if result == "failed":
+        next_channel = next_communication(f"{channel.upper()}_FAILED")
+        status, outcome = "failed", f"{channel}_no_response"
+    else:
+        next_channel = task["next_channel"]  # stays on this channel, awaiting a reply or a later failure
+        status, outcome = "sent", None
+
     db.execute(
         f"UPDATE collection_call_tasks SET {column}=1, next_channel=?, next_action_at=CASE WHEN ? IS NULL THEN NULL ELSE date('now','+1 day') END WHERE id=?",
         (next_channel, next_channel, task_id),
@@ -739,12 +760,19 @@ def toggle_escalation(task_id: int):
         channel,
         case_id=case["id"] if case else None,
         task_id=task_id,
-        status="sent",
+        status=status,
+        outcome=outcome,
         created_by=session.get("user_id"),
     )
-    member_activity(db, task["member_id"], f"Collections escalation: {channel} sent.")
+    member_activity(
+        db, task["member_id"],
+        f"Collections escalation: {channel} {'sent' if status == 'sent' else 'failed / no response'}.",
+    )
     db.commit()
-    flash(f"Marked {channel} as sent.", "success")
+    if status == "sent":
+        flash(f"Marked {channel} as sent.", "success")
+    else:
+        flash(f"Marked {channel} as failed. Next required contact method is {next_channel or 'none'}.", "info")
     return redirect(url_for("collections.call_profile", task_id=task_id))
 
 
@@ -988,6 +1016,11 @@ def daily_call_progress(db, today: date | None = None) -> dict:
     calls = row["calls"] or 0
     contacts = row["contacts"] or 0
     daily_target = target_per_caller * caller_count
+    # calculate_daily_call_kpi (collections_engine.py) is the shared KPI
+    # calculation - pass the real team-wide target, not its own 40 default,
+    # and round its 2dp figures down to the 1dp this dashboard has always
+    # shown so the fix doesn't silently change the displayed precision.
+    kpi = calculate_daily_call_kpi(calls, target=daily_target, contacts=contacts, calls_attempted=calls)
     return {
         "task_date": task_date,
         "assigned": assigned,
@@ -996,8 +1029,8 @@ def daily_call_progress(db, today: date | None = None) -> dict:
         "caller_count": caller_count,
         "target_per_caller": target_per_caller,
         "daily_target": daily_target,
-        "target_progress_pct": round(calls / daily_target * 100, 1) if daily_target else 0.0,
-        "contact_rate_pct": round(contacts / calls * 100, 1) if calls else 0.0,
+        "target_progress_pct": round(kpi["completion_percentage"], 1),
+        "contact_rate_pct": round(kpi["contact_rate"], 1),
         "queue_counts": {
             item["queue_type"]: item["count"]
             for item in db.execute(
@@ -1098,20 +1131,13 @@ def exception_decide(exception_id: int):
         flash("Declining an exception requires a reason.", "error")
         return redirect(url_for("collections.exception_queue"))
 
-    row = db.execute(
-        "SELECT * FROM collection_exceptions WHERE id = ? AND status = 'pending'",
-        (exception_id,),
-    ).fetchone()
+    row = decide_collection_exception(db, exception_id, decision, session.get("user_id"), notes)
     if row is None:
         flash("That exception has already been decided.", "warning")
         return redirect(url_for("collections.exception_queue"))
 
-    db.execute(
-        """UPDATE collection_exceptions
-           SET status = ?, notes = ?, decided_by = ?, decided_at = datetime('now')
-           WHERE id = ?""",
-        (decision, notes or row["notes"], session.get("user_id"), exception_id),
-    )
+    if decision == "approved" and grant_exception_access(db, row["member_id"]):
+        member_activity(db, row["member_id"], "Access granted under manager exception until the promise date.")
     member_activity(
         db, row["member_id"],
         f"Collections exception #{exception_id} {decision} by manager. "

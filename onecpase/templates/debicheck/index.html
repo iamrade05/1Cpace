@@ -11,7 +11,10 @@
 <div class="card">
   <div class="card-header">
     <div><h2>Finance DebiCheck Mandates</h2><div style="font-size:.75rem;color:#6b7280;margin-top:3px;">NuPay debit-order authorization</div></div>
-    {% if has_perm('new_debicheck') %}<a href="{{ url_for('debicheck.add') }}" class="btn btn-primary btn-sm">+ New DebiCheck</a>{% endif %}
+    <div style="display:flex;gap:8px;">
+      <a href="{{ url_for('debicheck.coverage') }}" class="btn btn-ghost btn-sm">Mandate Coverage</a>
+      {% if has_perm('new_debicheck') %}<a href="{{ url_for('debicheck.add') }}" class="btn btn-primary btn-sm">+ New DebiCheck</a>{% endif %}
+    </div>
   </div>
   <div style="padding:12px 20px;border-bottom:1px solid #f3f4f6;">
     <form method="get" style="display:flex;gap:8px;align-items:center;max-width:420px;">

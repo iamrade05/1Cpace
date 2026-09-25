@@ -24,6 +24,15 @@
   h2 { font-size: 22px; font-weight: 700; color: #1A1A1A; margin-bottom: 8px; }
   p { font-size: 13px; color: #888; line-height: 1.6; }
   .motto-bar { color: #1B2B5E; font-size: 11px; margin-top: 24px; font-weight: 700; letter-spacing: .5px; }
+  .reg-number {
+    background: #1B2B5E; color: #fff; border-radius: 10px; padding: 10px 16px;
+    font-size: 14px; font-weight: 700; margin: 16px 0; display: inline-block;
+  }
+  .ticket-link {
+    display: block; margin-top: 18px; background: #E8920A; color: #fff;
+    text-decoration: none; font-weight: 700; font-size: 14px;
+    padding: 12px 18px; border-radius: 10px;
+  }
 </style>
 </head>
 <body>
@@ -35,6 +44,11 @@
   {% else %}
   <h2>You're Registered{{ ', ' ~ name if name }}!</h2>
   <p>Welcome to {{ event.name }}{% if event.event_date %} on {{ event.event_date }}{% endif %}. See you there!</p>
+  {% endif %}
+  {% if registration %}
+  <div class="reg-number">Registration #{{ registration.registration_number }}</div>
+  <p>We've sent your ticket by WhatsApp — you can also open it directly below. Show it or tap "I Am Here" when you arrive on the day.</p>
+  <a class="ticket-link" href="{{ url_for('events.ticket', slug=event.slug, token=registration.ticket_token) }}">View My Ticket</a>
   {% endif %}
   <div class="motto-bar">Elev8 Health &amp; Fitness</div>
 </div>

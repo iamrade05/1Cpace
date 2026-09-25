@@ -1,21 +1,29 @@
 {% extends "base.html" %}
-{% block title %}Create Event | 1Cpase{% endblock %}
-{% block page_title %}Create Event{% endblock %}
+{% block title %}{{ 'Edit Event' if event else 'Create Event' }} | 1Cpase{% endblock %}
+{% block page_title %}{{ 'Edit Event' if event else 'Create Event' }}{% endblock %}
 
 {% block content %}
 <div class="card" style="max-width:640px;">
   <div class="card-body" style="padding:20px;">
-    <form method="POST">
+    <form method="POST" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-group">
         <label class="form-label">Event Name *</label>
         <input name="name" class="form-control" required value="{{ form.get('name', '') }}" placeholder="Elev8 Your Heritage Fun Run">
       </div>
+      {% if event %}
+      <div class="form-group">
+        <label class="form-label">Registration link</label>
+        <input class="form-control" value="{{ url_for('events.register', slug=event.slug, _external=True) }}" readonly onclick="this.select()">
+        <small style="color:#6b7280;">Fixed once created — changing it would break a link already shared.</small>
+      </div>
+      {% else %}
       <div class="form-group">
         <label class="form-label">Registration link (leave blank to generate from the name)</label>
         <input name="slug" class="form-control" value="{{ form.get('slug', '') }}" placeholder="heritage-fun-run">
         <small style="color:#6b7280;">The public link will be <code>/events/&lt;this&gt;</code></small>
       </div>
+      {% endif %}
       <div class="form-group">
         <label class="form-label">Tagline</label>
         <input name="tagline" class="form-control" value="{{ form.get('tagline', '') }}" placeholder="Bring Your Energy, Bring a Friend!">
@@ -52,12 +60,21 @@
         <label class="form-label">Participation waiver text (leave blank to use the default)</label>
         <textarea name="waiver_text" class="form-control" rows="3" placeholder="I confirm that I am physically fit to participate...">{{ form.get('waiver_text', '') }}</textarea>
       </div>
-      <p style="font-size:0.78rem;color:#6b7280;margin-bottom:14px;">
-        To add a banner photo after creating this event, drop a JPEG at
-        <code>onecpase/static/images/events/&lt;registration link&gt;.jpg</code> — the page picks it up
-        automatically. Until then it shows a plain navy header with the event name, never a broken image.
-      </p>
-      <button class="btn btn-primary" type="submit">Create Event</button>
+      <div class="form-group">
+        <label class="form-label">Event Banner {% if not event %}(optional){% endif %}</label>
+        {% if event and event.banner_filename %}
+        <div style="margin-bottom:8px;">
+          <img src="{{ url_for('events.event_banner', slug=event.slug) }}" alt="Current banner"
+               style="max-width:100%;max-height:140px;border-radius:8px;display:block;">
+        </div>
+        {% endif %}
+        <input type="file" name="banner" class="form-control" accept=".jpg,.jpeg,.png,.webp">
+        <small style="color:#6b7280;">
+          JPG, PNG, or WEBP.
+          {% if event %}Leave blank to keep the current banner.{% else %}Optional — without one, the registration page shows a plain navy header with the event name instead.{% endif %}
+        </small>
+      </div>
+      <button class="btn btn-primary" type="submit">{{ 'Save Changes' if event else 'Create Event' }}</button>
       <a href="{{ url_for('admin_events.events_index') }}" class="btn btn-ghost">Cancel</a>
     </form>
   </div>

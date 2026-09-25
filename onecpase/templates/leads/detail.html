@@ -4,86 +4,14 @@
 
 {% block content %}
 {% set color = status_colors.get(lead.lead_status, '#6b7280') %}
+<div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+  <span style="background:{{ color }};color:#fff;padding:6px 14px;border-radius:20px;font-size:.78rem;font-weight:800;text-transform:uppercase;">{{ status_labels.get(lead.lead_status, lead.lead_status)|replace('_',' ') }}</span>
+  {% if lead.do_not_contact %}<span class="badge badge-danger">Marketing blocked</span>{% endif %}
+  {% if lead.converted_member_id %}<a href="{{ url_for('members.member_detail', mid=lead.converted_member_id) }}" class="btn btn-ghost btn-sm">Member #{{ lead.converted_member_id }}</a>{% endif %}
+</div>
+
 <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">
-  <section style="flex:0 1 370px;min-width:290px;">
-    <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <span style="background:{{ color }};color:#fff;padding:6px 14px;border-radius:20px;font-size:.78rem;font-weight:800;text-transform:uppercase;">{{ status_labels.get(lead.lead_status, lead.lead_status)|replace('_',' ') }}</span>
-      {% if lead.do_not_contact %}<span class="badge badge-danger">Marketing blocked</span>{% endif %}
-      {% if lead.converted_member_id %}<a href="{{ url_for('members.member_detail', mid=lead.converted_member_id) }}" class="btn btn-ghost btn-sm">Member #{{ lead.converted_member_id }}</a>{% endif %}
-    </div>
-
-    <div class="form-card" style="margin-bottom:16px;">
-      <h3 style="font-size:.82rem;color:#e94560;text-transform:uppercase;margin-bottom:12px;">Permanent Prospect Profile</h3>
-      <table style="width:100%;font-size:.83rem;">
-        <tr><td style="color:#6b7280;width:130px;padding:4px;">Phone</td><td><strong>{{ lead.phone or '—' }} {% if lead.phone %}<button type="button" onclick="startPbxCall('{{ lead.phone|e }}')">Call</button>{% endif %}</strong></td></tr>
-        <tr><td style="color:#6b7280;padding:4px;">Email</td><td>{{ lead.email or '—' }}</td></tr>
-        <tr><td style="color:#6b7280;padding:4px;">Original source</td><td><strong>{{ lead.original_source or lead.source or '—' }}</strong></td></tr>
-        <tr><td style="color:#6b7280;padding:4px;">Channel</td><td>{{ 'Outreach' if lead.lead_channel == 'outreach' else 'In-Reach' }}</td></tr>
-        <tr><td style="color:#6b7280;padding:4px;">Referrer</td><td>{{ lead.referrer or '—' }}</td></tr>
-        <tr><td style="color:#6b7280;padding:4px;">Campaign</td><td>{{ lead.campaign or '—' }}</td></tr>
-        <tr><td style="color:#6b7280;padding:4px;">Consultant</td><td>{{ lead.salesperson_name or 'Unassigned' }}</td></tr>
-        <tr><td style="color:#6b7280;padding:4px;">Package</td><td>{{ lead.interested_package or '—' }}</td></tr>
-        <tr><td style="color:#6b7280;padding:4px;">Consent</td><td>{{ 'Marketing permitted' if lead.marketing_consent and not lead.do_not_contact else 'No marketing' }}</td></tr>
-        <tr><td style="color:#6b7280;padding:4px;">Captured</td><td>{{ lead.created_at|string|truncate(16, true, '') }}</td></tr>
-      </table>
-      {% if lead.notes %}<div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px;font-size:.82rem;color:#4b5563;">{{ lead.notes }}</div>{% endif %}
-      {% if lead.closure_reason %}<div class="alert alert-warning" style="margin-top:12px;"><strong>Closure:</strong> {{ lead.closure_reason }}{% if lead.objection_reason %}<br><strong>Objection:</strong> {{ lead.objection_reason }}{% endif %}{% if lead.recycle_reason %}<br><strong>Recycle Reason:</strong> {{ recycle_reason_labels.get(lead.recycle_reason, lead.recycle_reason) }}{% endif %}{% if lead.recycle_due_at %}<br><strong>Automatic Recall:</strong> {{ lead.recycle_due_at }}{% endif %}</div>{% endif %}
-      {% if lead.duplicate_of_lead_id %}<div class="alert alert-info" style="margin-top:12px;">Duplicate of <a href="{{ url_for('leads.lead_detail', lid=lead.duplicate_of_lead_id) }}">{{ lead.duplicate_name or ('prospect #' ~ lead.duplicate_of_lead_id) }}</a></div>{% endif %}
-    </div>
-
-    <div class="form-card" style="margin-bottom:16px;border-left:4px solid #43d3e5;">
-      <h3 style="font-size:.82rem;color:#087f99;text-transform:uppercase;margin-bottom:8px;">Controlled Sales Stage</h3>
-      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px;"><strong>{{ sales_pipeline.stage_label }}</strong><span style="font-size:.72rem;color:#6b7280;">{{ sales_pipeline.stage }}</span></div>
-      {% if sales_pipeline.next_stages and has_perm('capture_leads') %}
-      <form method="POST" action="{{ url_for('sales_pipeline.transition_stage', lead_id=lead.id) }}">
-        <div class="form-group"><label class="form-label">Move to next controlled stage</label><select name="new_stage" class="form-control">{% for stage in sales_pipeline.next_stages %}<option value="{{ stage }}">{{ stage|replace('_',' ')|title }}</option>{% endfor %}</select></div>
-        <div class="form-group"><label class="form-label">Reason / notes</label><textarea name="notes" class="form-control" rows="2" placeholder="Why is this stage changing?"></textarea></div>
-        <button class="btn btn-secondary btn-sm" type="submit">Record controlled transition</button>
-      </form>
-      {% elif not sales_pipeline.next_stages %}<div style="font-size:.78rem;color:#6b7280;">This is a terminal stage.</div>{% endif %}
-      {% if sales_pipeline.history %}<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:.78rem;font-weight:700;">Stage audit history</summary><div style="margin-top:9px;max-height:190px;overflow:auto;">{% for event in sales_pipeline.history %}<div style="padding:7px 0;border-bottom:1px solid #edf2f7;font-size:.75rem;"><strong>{{ event.from_stage or 'Start' }}</strong> → <strong>{{ event.to_stage }}</strong><br><span style="color:#6b7280;">{{ event.changed_at }}{% if event.reason %} · {{ event.reason }}{% endif %}</span></div>{% endfor %}</div></details>{% endif %}
-    </div>
-
-    {% if lead.lead_status in active_statuses and lead.lead_status != 'show' %}
-    <div class="form-card" style="margin-bottom:16px;border-left:4px solid #f59e0b;">
-      <h3 style="font-size:.82rem;margin-bottom:8px;">Required Next Action</h3>
-      <strong>{{ lead.next_action or 'Not set' }}</strong>
-      <div style="font-size:.8rem;color:#6b7280;margin-top:3px;">{{ lead.next_action_at or 'Follow-up date required' }}</div>
-    </div>
-    {% endif %}
-
-    {% if lead.lead_status == 'hot_prospect_7day' %}
-    <div class="form-card" style="margin-bottom:16px;border-left:4px solid #10b981;">
-      <h3 style="font-size:.82rem;color:#047857;">Decision Follow-Up – 5 Working Days</h3>
-      <div style="font-size:.83rem;">{{ lead.decision_start_date }} → <strong>{{ lead.decision_date }}</strong></div>
-      <div style="font-size:.78rem;margin-top:4px;color:{% if decision_days_remaining is not none and decision_days_remaining <= 1 %}#dc2626{% else %}#047857{% endif %};">{% if decision_days_remaining is not none %}{{ decision_days_remaining }} day{{ 's' if decision_days_remaining != 1 }} remaining{% endif %}</div>
-    </div>
-    {% endif %}
-
-    {% if has_perm('capture_leads') %}
-    <div class="form-card" style="margin-bottom:16px;">
-      <h3 style="font-size:.82rem;color:#e94560;text-transform:uppercase;margin-bottom:12px;">Profile Actions</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-        <a href="{{ url_for('leads.lead_edit', lid=lead.id) }}" class="btn btn-secondary btn-sm">Edit Profile</a>
-        {% if application %}<a href="{{ url_for('applications.application_detail', aid=application.id) }}" class="btn btn-primary btn-sm">Application #{{ application.id }}</a>{% endif %}
-      </div>
-      <details>
-        <summary style="cursor:pointer;font-weight:700;font-size:.82rem;">Change lifecycle / close record</summary>
-        <form method="POST" action="{{ url_for('leads.update_status', lid=lead.id) }}" style="margin-top:12px;">
-          <div class="form-group"><label class="form-label">Lifecycle Stage</label><select name="status" id="lifecycleStatus" class="form-control" onchange="onLifecycleChange()">{% for key,label in statuses %}{% if key != 'joined' %}<option value="{{ key }}" {% if lead.lead_status == key %}selected{% endif %}>{{ label }}</option>{% endif %}{% endfor %}</select></div>
-          <div class="form-group" id="recycleReasonGroup"><label class="form-label">Recycle Reason *</label><select name="recycle_reason" class="form-control">{% for key,label in recycle_reasons %}<option value="{{ key }}" {% if lead.recycle_reason == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
-          <div class="form-group"><label class="form-label">Closure Note (optional)</label><input name="closure_reason" class="form-control" placeholder="Extra detail — required for Do Not Contact / Duplicate / Existing Member"></div>
-          <div class="form-group"><label class="form-label">Objection Detail (optional)</label><input name="objection_reason" class="form-control" placeholder="Price, timing, location, facilities…"></div>
-          <div class="form-group"><label class="form-label">Original Prospect ID (Duplicate)</label><input type="number" min="1" name="duplicate_of_lead_id" class="form-control"></div>
-          <div class="alert alert-info">The next action and follow-up time will be selected automatically for the new lifecycle stage.</div>
-          <button class="btn btn-secondary btn-sm" type="submit">Update Lifecycle</button>
-        </form>
-      </details>
-    </div>
-    {% endif %}
-  </section>
-
-  <section style="flex:1;min-width:330px;">
+  <section style="flex:2;min-width:290px;">
     {% if has_perm('capture_leads') %}
     <div class="form-card" style="margin-bottom:16px;border-left:4px solid var(--info);">
       {% if journey_step == 'contact' %}
@@ -145,6 +73,11 @@
       {% elif journey_step == 'membership' %}
       <h3 style="font-size:.9rem;color:var(--ok);text-transform:uppercase;margin-bottom:8px;">Membership Started</h3>
       <a href="{{ url_for('applications.application_detail', aid=application.id) }}" class="btn btn-primary">Open Membership Application #{{ application.id }}</a>
+
+      {% elif journey_step == 'convert_pending' %}
+      <h3 style="font-size:.9rem;color:var(--warn);text-transform:uppercase;margin-bottom:6px;">Membership Not Yet Started</h3>
+      <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">The client joined, but the membership application was never completed. Finish the conversion to create the member record.</p>
+      <a href="{{ url_for('leads.convert_lead', lid=lead.id) }}" class="btn btn-primary" style="background:var(--ok)!important;">Complete Membership Application</a>
       {% else %}
       <h3 style="font-size:.9rem;color:var(--t2);text-transform:uppercase;margin-bottom:8px;">Sales Journey Complete</h3>
       <p style="color:var(--t2);font-size:.8rem;">No further sales activity is required on this prospect.</p>
@@ -152,6 +85,79 @@
     </div>
     {% endif %}
 
+    <div class="form-card" style="margin-bottom:16px;">
+      <h3 style="font-size:.82rem;color:#e94560;text-transform:uppercase;margin-bottom:12px;">Permanent Prospect Profile</h3>
+      <table style="width:100%;font-size:.83rem;">
+        <tr><td style="color:#6b7280;width:130px;padding:4px;">Phone</td><td><strong>{{ lead.phone or '—' }} {% if lead.phone %}<button type="button" onclick="startPbxCall('{{ lead.phone|e }}')">Call</button>{% endif %}</strong></td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Email</td><td>{{ lead.email or '—' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Original source</td><td><strong>{{ lead.original_source or lead.source or '—' }}</strong></td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Channel</td><td>{{ 'Outreach' if lead.lead_channel == 'outreach' else 'In-Reach' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Referrer</td><td>{{ lead.referrer or '—' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Campaign</td><td>{{ lead.campaign or '—' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Consultant</td><td>{{ lead.salesperson_name or 'Unassigned' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Package</td><td>{{ lead.interested_package or '—' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Consent</td><td>{{ 'Marketing permitted' if lead.marketing_consent and not lead.do_not_contact else 'No marketing' }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Captured</td><td>{{ lead.created_at|string|truncate(16, true, '') }}</td></tr>
+      </table>
+      {% if lead.notes %}<div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px;font-size:.82rem;color:#4b5563;">{{ lead.notes }}</div>{% endif %}
+      {% if lead.closure_reason %}<div class="alert alert-warning" style="margin-top:12px;"><strong>Closure:</strong> {{ lead.closure_reason }}{% if lead.objection_reason %}<br><strong>Objection:</strong> {{ lead.objection_reason }}{% endif %}{% if lead.recycle_reason %}<br><strong>Recycle Reason:</strong> {{ recycle_reason_labels.get(lead.recycle_reason, lead.recycle_reason) }}{% endif %}{% if lead.recycle_due_at %}<br><strong>Automatic Recall:</strong> {{ lead.recycle_due_at }}{% endif %}</div>{% endif %}
+      {% if lead.duplicate_of_lead_id %}<div class="alert alert-info" style="margin-top:12px;">Duplicate of <a href="{{ url_for('leads.lead_detail', lid=lead.duplicate_of_lead_id) }}">{{ lead.duplicate_name or ('prospect #' ~ lead.duplicate_of_lead_id) }}</a></div>{% endif %}
+    </div>
+
+    <div class="form-card" style="margin-bottom:16px;border-left:4px solid #43d3e5;">
+      <h3 style="font-size:.82rem;color:#087f99;text-transform:uppercase;margin-bottom:8px;">Controlled Sales Stage</h3>
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px;"><strong>{{ sales_pipeline.stage_label }}</strong><span style="font-size:.72rem;color:#6b7280;">{{ sales_pipeline.stage }}</span></div>
+      {% if sales_pipeline.next_stages and session.get('role') in ('admin', 'manager') %}
+      <form method="POST" action="{{ url_for('sales_pipeline.transition_stage', lead_id=lead.id) }}">
+        <div class="form-group"><label class="form-label">Move to next controlled stage</label><select name="new_stage" class="form-control">{% for stage in sales_pipeline.next_stages %}<option value="{{ stage }}">{{ stage|replace('_',' ')|title }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label class="form-label">Reason / notes</label><textarea name="notes" class="form-control" rows="2" placeholder="Why is this stage changing?"></textarea></div>
+        <button class="btn btn-secondary btn-sm" type="submit">Record controlled transition</button>
+      </form>
+      {% elif not sales_pipeline.next_stages %}<div style="font-size:.78rem;color:#6b7280;">This is a terminal stage.</div>
+      {% else %}<div style="font-size:.78rem;color:#6b7280;">Only a manager can move this stage manually.</div>{% endif %}
+      {% if sales_pipeline.history %}<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:.78rem;font-weight:700;">Stage audit history</summary><div style="margin-top:9px;max-height:190px;overflow:auto;">{% for event in sales_pipeline.history %}<div style="padding:7px 0;border-bottom:1px solid #edf2f7;font-size:.75rem;"><strong>{{ event.from_stage or 'Start' }}</strong> → <strong>{{ event.to_stage }}</strong><br><span style="color:#6b7280;">{{ event.changed_at }}{% if event.reason %} · {{ event.reason }}{% endif %}</span></div>{% endfor %}</div></details>{% endif %}
+    </div>
+
+    {% if lead.lead_status in active_statuses and lead.lead_status != 'show' %}
+    <div class="form-card" style="margin-bottom:16px;border-left:4px solid #f59e0b;">
+      <h3 style="font-size:.82rem;margin-bottom:8px;">Required Next Action</h3>
+      <strong>{{ lead.next_action or 'Not set' }}</strong>
+      <div style="font-size:.8rem;color:#6b7280;margin-top:3px;">{{ lead.next_action_at or 'Follow-up date required' }}</div>
+    </div>
+    {% endif %}
+
+    {% if lead.lead_status == 'hot_prospect_7day' %}
+    <div class="form-card" style="margin-bottom:16px;border-left:4px solid #10b981;">
+      <h3 style="font-size:.82rem;color:#047857;">Decision Follow-Up – 5 Working Days</h3>
+      <div style="font-size:.83rem;">{{ lead.decision_start_date }} → <strong>{{ lead.decision_date }}</strong></div>
+      <div style="font-size:.78rem;margin-top:4px;color:{% if decision_days_remaining is not none and decision_days_remaining <= 1 %}#dc2626{% else %}#047857{% endif %};">{% if decision_days_remaining is not none %}{{ decision_days_remaining }} day{{ 's' if decision_days_remaining != 1 }} remaining{% endif %}</div>
+    </div>
+    {% endif %}
+
+    {% if has_perm('capture_leads') %}
+    <div class="form-card" style="margin-bottom:16px;">
+      <h3 style="font-size:.82rem;color:#e94560;text-transform:uppercase;margin-bottom:12px;">Profile Actions</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+        <a href="{{ url_for('leads.lead_edit', lid=lead.id) }}" class="btn btn-secondary btn-sm">Edit Profile</a>
+        {% if application %}<a href="{{ url_for('applications.application_detail', aid=application.id) }}" class="btn btn-primary btn-sm">Application #{{ application.id }}</a>{% endif %}
+      </div>
+      <details>
+        <summary style="cursor:pointer;font-weight:700;font-size:.82rem;">Change lifecycle / close record</summary>
+        <form method="POST" action="{{ url_for('leads.update_status', lid=lead.id) }}" style="margin-top:12px;">
+          <div class="form-group"><label class="form-label">Lifecycle Stage</label><select name="status" id="lifecycleStatus" class="form-control" onchange="onLifecycleChange()">{% for key,label in statuses %}{% if key != 'joined' %}<option value="{{ key }}" {% if lead.lead_status == key %}selected{% endif %}>{{ label }}</option>{% endif %}{% endfor %}</select></div>
+          <div class="form-group" id="recycleReasonGroup"><label class="form-label">Recycle Reason *</label><select name="recycle_reason" class="form-control">{% for key,label in recycle_reasons %}<option value="{{ key }}" {% if lead.recycle_reason == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+          <div class="form-group"><label class="form-label">Closure Note (optional)</label><input name="closure_reason" class="form-control" placeholder="Extra detail — required for Do Not Contact / Duplicate / Existing Member"></div>
+          <div class="form-group"><label class="form-label">Objection Detail (optional)</label><input name="objection_reason" class="form-control" placeholder="Price, timing, location, facilities…"></div>
+          <div class="form-group"><label class="form-label">Original Prospect ID (Duplicate)</label><input type="number" min="1" name="duplicate_of_lead_id" class="form-control"></div>
+          <div class="alert alert-info">The next action and follow-up time will be selected automatically for the new lifecycle stage.</div>
+          <button class="btn btn-secondary btn-sm" type="submit">Update Lifecycle</button>
+        </form>
+      </details>
+    </div>
+    {% endif %}
+  </section>
+
+  <section style="flex:1;min-width:290px;">
     <div class="form-card">
       <h3 style="font-size:.85rem;color:#e94560;text-transform:uppercase;margin-bottom:14px;">Chronological Sales Timeline</h3>
       {% for activity in activities %}
@@ -196,11 +202,9 @@ function onLifecycleChange() {
 }
 onLifecycleChange();
 </script>
-{% endblock %}
-
 <script>
 async function startPbxCall(phone) {
-  const token = document.querySelector('input[name="csrf_token"]')?.value || '';
+  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   try {
     const r = await fetch('{{ url_for("pbx.dial") }}', {
       method: 'POST',
@@ -213,3 +217,4 @@ async function startPbxCall(phone) {
   } catch (e) { alert(e.message); }
 }
 </script>
+{% endblock %}

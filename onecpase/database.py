@@ -166,6 +166,11 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpase") -> Non
             id BIGSERIAL PRIMARY KEY, event_key TEXT UNIQUE, event_type TEXT,
             received_at TIMESTAMPTZ DEFAULT NOW(), payload TEXT NOT NULL
         )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS pbx_account_codes (
+            id BIGSERIAL PRIMARY KEY, code TEXT NOT NULL UNIQUE, label TEXT NOT NULL,
+            user_id BIGINT, active INTEGER DEFAULT 1, created_at TIMESTAMPTZ DEFAULT NOW(),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )""")
     else:
         db.execute("""CREATE TABLE IF NOT EXISTS pbx_call_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT, external_call_id TEXT UNIQUE,
@@ -179,6 +184,11 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpase") -> Non
             id INTEGER PRIMARY KEY AUTOINCREMENT, event_key TEXT UNIQUE, event_type TEXT,
             received_at TEXT DEFAULT (datetime('now')), payload TEXT NOT NULL
         )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS pbx_account_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL UNIQUE, label TEXT NOT NULL,
+            user_id INTEGER, active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )""")
     db.commit()
     _ensure_column(db, backend, "pbx_call_logs", "collection_task_id", "INTEGER")
     _ensure_column(db, backend, "pbx_call_logs", "outcome", "TEXT")
@@ -187,6 +197,38 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpase") -> Non
     _ensure_column(db, backend, "pbx_call_logs", "follow_up_at", "TEXT")
     _ensure_column(db, backend, "pbx_call_logs", "outcome_recorded_at", "TEXT")
     _ensure_column(db, backend, "pbx_call_logs", "outcome_recorded_by", "INTEGER")
+    _ensure_column(db, backend, "pbx_call_logs", "account_code", "TEXT")
+
+    # Elev8 reception/sales share physical phones and identify themselves by
+    # PIN ("account code" in Yeastar's terms) rather than by extension. Only
+    # inserted if the code doesn't already exist, so an admin can rename a
+    # label or relink a user afterward without it being overwritten here.
+    # "Sales 1/2/3" were supplied as generic pool codes, not tied to one
+    # named person - left unlinked (user_id NULL) rather than guessed.
+    try:
+        for code, label, full_name_prefix in (
+            ("3074", "Entle", "mfundentle"),
+            ("5296", "Busi", "colin"),
+            ("1852", "Mvuleni", "mvuleni"),
+            ("1347", "Gugu", "gugulami"),
+            ("4496", "Thokozane", "thokozani"),
+        ):
+            user = db.execute(
+                "SELECT id FROM users WHERE LOWER(username) LIKE ?", (f"{full_name_prefix}%",)
+            ).fetchone()
+            db.execute(
+                "INSERT INTO pbx_account_codes (code, label, user_id) "
+                "SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM pbx_account_codes WHERE code=?)",
+                (code, label, user["id"] if user else None, code),
+            )
+        for code, label in (("7536", "Sales 1"), ("8624", "Sales 2"), ("9841", "Sales 3")):
+            db.execute(
+                "INSERT INTO pbx_account_codes (code, label, user_id) "
+                "SELECT ?, ?, NULL WHERE NOT EXISTS (SELECT 1 FROM pbx_account_codes WHERE code=?)",
+                (code, label, code),
+            )
+    except Exception:
+        db.rollback()
     _ensure_column(db, backend, "collections", "method", "TEXT DEFAULT 'cash'")
     _ensure_column(db, backend, "collections", "notes", "TEXT")
     _ensure_column(db, backend, "collections", "created_by", "INTEGER")
@@ -308,9 +350,23 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpase") -> Non
         ("joining_fee", "REAL DEFAULT 0"),
         ("member_addons", "TEXT"),
         ("witness_name", "TEXT"),
+        # Why a member is on a custom package (see CUSTOM_TARIFF)
+        ("custom_package_note", "TEXT"),
     ]:
         _ensure_column(db, backend, "members", col, defn)
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_members_member_ref ON members(member_ref)")
+
+    # One-time code a member must enter before approving a contract from the shared link
+    for col, defn in [
+        ("otp_hash",       "TEXT"),
+        ("otp_expires_at", "TEXT"),
+        ("otp_attempts",   "INTEGER DEFAULT 0"),
+        ("otp_sends",      "INTEGER DEFAULT 0"),
+        ("otp_sent_at",    "TEXT"),
+        ("otp_sent_to",    "TEXT"),
+        ("verified_at",    "TEXT"),
+    ]:
+        _ensure_column(db, backend, "contract_share_tokens", col, defn)
 
     for col, defn in [
         ("reg_no", "TEXT"),
@@ -570,6 +626,12 @@ _DEFAULT_TARIFFS = [
 ]
 
 
+# The tariff a manager sets for a member on a different agreement or a family
+# package. The package name, amount and duration live in the ordinary member
+# columns, so reports, applications and collections read them unchanged.
+CUSTOM_TARIFF = "Custom"
+
+
 def _seed_tariffs(db) -> None:
     for name, months, amount, order in _DEFAULT_TARIFFS:
         db.execute(
@@ -689,7 +751,7 @@ def default_sections_config() -> list:
             {"key": "emergency_contact_number", "label": "Contact Number", "enabled": True},
             {"key": "emergency_contact_relation", "label": "Relation", "enabled": True},
         ]},
-        {"key": "parq", "heading": "PAR-Q Health Screening", "enabled": True, "fields": []},
+        {"key": "parq", "heading": "PAR-Q Health Screening", "enabled": False, "fields": []},
         {"key": "signatures", "heading": "Signatures", "enabled": True, "fields": [
             {"key": "witness_name", "label": "Witness", "enabled": False},
         ]},

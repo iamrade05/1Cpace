@@ -70,10 +70,6 @@ def _authenticate(force=False):
                    "refresh_exp": now + int(data.get("refresh_token_expire_time", 86400))})
 
 
-def _normalise_phone(value):
-    return "".join(ch for ch in str(value or "") if ch.isdigit() or ch == "+")
-
-
 def _phone_variants(phone) -> list[str]:
     """The same number in both forms this app stores.
 
@@ -212,6 +208,19 @@ def _record_crm_outcome(call_row, outcome, notes="", next_action="", follow_up_a
     db.commit()
 
 
+def _resolve_account_code(db, code: str | None):
+    """Reception and sales share physical phones and identify themselves by
+    PIN ("account code" in Yeastar's terms) rather than by extension - this
+    is the only way to tell WHO actually made or took a shared-phone call.
+    Returns the linked user_id, or None if the code is unknown/unlinked."""
+    if not code:
+        return None
+    row = db.execute(
+        "SELECT user_id FROM pbx_account_codes WHERE code=? AND active=1", (str(code).strip(),)
+    ).fetchone()
+    return row["user_id"] if row else None
+
+
 def _save_call(data, commit=True):
     db = get_db(); ext_id = data.get("call_id") or data.get("uid") or data.get("cdrid")
     if not ext_id: return
@@ -225,15 +234,17 @@ def _save_call(data, commit=True):
     talk = int(float(data.get("talk_duration") or data.get("talkduration") or data.get("talkduraction") or 0))
     status = str(data.get("disposition") or data.get("status") or data.get("last_status") or "UNKNOWN").upper()
     recording = data.get("recording") or data.get("recordfile")
+    account_code = data.get("accountcode") or data.get("account_code") or data.get("pin") or data.get("pincode")
+    account_user_id = _resolve_account_code(db, account_code)
     payload = json.dumps(data, ensure_ascii=False)
     existing = db.execute("SELECT id FROM pbx_call_logs WHERE external_call_id = ?", (str(ext_id),)).fetchone()
     if existing:
-        db.execute("""UPDATE pbx_call_logs SET caller=?,callee=?,start_time=?,duration=?,talk_duration=?,status=?,call_type=?,recording=?,raw_json=?,updated_at=datetime('now') WHERE external_call_id=?""",
-                   (caller,callee,start,duration,talk,status,ctype,recording,payload,str(ext_id)))
+        db.execute("""UPDATE pbx_call_logs SET caller=?,callee=?,start_time=?,duration=?,talk_duration=?,status=?,call_type=?,recording=?,raw_json=?,account_code=?,user_id=COALESCE(user_id,?),updated_at=datetime('now') WHERE external_call_id=?""",
+                   (caller,callee,start,duration,talk,status,ctype,recording,payload,account_code,account_user_id,str(ext_id)))
     else:
-        db.execute("""INSERT INTO pbx_call_logs(external_call_id,lead_id,member_id,user_id,collection_task_id,direction,caller,callee,start_time,duration,talk_duration,status,call_type,recording,raw_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        db.execute("""INSERT INTO pbx_call_logs(external_call_id,lead_id,member_id,user_id,collection_task_id,direction,caller,callee,start_time,duration,talk_duration,status,call_type,recording,raw_json,account_code) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                    (str(ext_id), contact.get("lead_id") if contact else None, contact.get("member_id") if contact else None,
-                    session.get("user_id"),data.get("collection_task_id"),direction,caller,callee,start,duration,talk,status,ctype,recording,payload))
+                    session.get("user_id") or account_user_id,data.get("collection_task_id"),direction,caller,callee,start,duration,talk,status,ctype,recording,payload,account_code))
     if commit:
         db.commit()
 
@@ -242,8 +253,13 @@ def _save_call(data, commit=True):
 @login_required
 @permission_required("pbx_call")
 def dial():
+    from .leads import normalise_phone
+
     body = request.get_json(silent=True) or request.form
-    callee = _normalise_phone(body.get("phone") or body.get("callee"))
+    # Yeastar's outbound trunk routes on the international 27XXXXXXXXX form;
+    # a local 0XXXXXXXXX number doesn't match its dial pattern and never
+    # leaves the PBX, which sounds like a call that's ringing but going nowhere.
+    callee = normalise_phone(body.get("phone") or body.get("callee"))
     caller = str(body.get("caller") or _user_extension())
     if not caller or not callee: return jsonify(error="Caller extension and destination are required"), 400
     payload = {"caller": caller, "callee": callee, "auto_answer": str(body.get("auto_answer") or "no")}
@@ -258,6 +274,16 @@ def dial():
                    (str(cid), contact.get("lead_id") if contact else None, contact.get("member_id") if contact else None,
                     session.get("user_id"), body.get("collection_task_id") or None,
                     "outbound",caller,callee,"INITIATED","Outbound",json.dumps(result)))
+        # Record that the call was made even if staff never comes back to log
+        # an outcome — otherwise a call with no completed outcome leaves no
+        # trace on the lead/member's timeline at all.
+        if contact and contact.get("lead_id"):
+            from .leads import _add_activity
+            _add_activity(db, contact["lead_id"], "call", status="in_progress",
+                          notes=f"PBX call started to {callee}")
+        elif contact and contact.get("member_id"):
+            from .database import member_activity
+            member_activity(db, contact["member_id"], f"PBX call started to {callee}")
         db.commit()
         return jsonify(ok=True, call_id=cid, contact=contact)
     except Exception as exc:
@@ -351,7 +377,11 @@ def call_outcome(call_id):
 @pbx_bp.get("/calls")
 @login_required
 def calls():
-    rows = get_db().execute("SELECT * FROM pbx_call_logs ORDER BY COALESCE(start_time, created_at) DESC LIMIT 250").fetchall()
+    rows = get_db().execute(
+        """SELECT pcl.*, u.full_name AS staff_name
+           FROM pbx_call_logs pcl LEFT JOIN users u ON u.id = pcl.user_id
+           ORDER BY COALESCE(pcl.start_time, pcl.created_at) DESC LIMIT 250"""
+    ).fetchall()
     return render_template("pbx/calls.html", calls=rows, call_outcomes=CALL_OUTCOMES)
 
 

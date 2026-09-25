@@ -371,6 +371,11 @@ def _response(message: str, *, success: bool, status: int, lead_id: int):
 @sales_pipeline_bp.post("/leads/<int:lead_id>/stage")
 @permission_required("capture_leads")
 def transition_stage(lead_id: int):
+    if session.get("role") not in ("admin", "manager"):
+        return _response(
+            "Only a manager can manually move the controlled sales stage.",
+            success=False, status=403, lead_id=lead_id,
+        )
     data = _payload()
     try:
         lead = transition_sales_stage(
@@ -409,8 +414,12 @@ def save_qualification(lead_id: int):
                 qualified_at=excluded.qualified_at""",
             values,
         )
+        # Commit the qualification and the stage advance together: if the
+        # transition is rejected (e.g. the lead isn't at a stage QUALIFIED can
+        # follow), db.rollback() below must undo the qualification row too,
+        # not just leave it committed with no matching stage change.
+        lead = transition_sales_stage(db, lead_id, "QUALIFIED", _actor_id(), "Qualification completed", commit=False)
         db.commit()
-        lead = transition_sales_stage(db, lead_id, "QUALIFIED", _actor_id(), "Qualification completed")
         return _response(f"Sales stage updated to {SALES_STAGE_LABELS[lead['sales_stage']]}.", success=True, status=200, lead_id=lead_id)
     except (TypeError, ValueError) as exc:
         db.rollback()
@@ -430,10 +439,13 @@ def invite_to_application(lead_id: int):
                VALUES (?, ?, ?, ?, ?)""",
             (lead_id, _actor_id(), _utc_now(), data.get("membership_plan"), data.get("notes")),
         )
-        db.commit()
+        # See save_qualification above: commit the invitation and the stage
+        # advance together, so a rejected transition rolls back the
+        # invitation row too instead of leaving an orphan.
         lead = transition_sales_stage(
-            db, lead_id, "APPLICATION_INVITED", _actor_id(), "Application invitation issued"
+            db, lead_id, "APPLICATION_INVITED", _actor_id(), "Application invitation issued", commit=False
         )
+        db.commit()
         return _response(
             f"Sales stage updated to {SALES_STAGE_LABELS[lead['sales_stage']]}." ,
             success=True, status=200, lead_id=lead_id
@@ -457,8 +469,11 @@ def book_sales_appointment(lead_id: int):
             "INSERT INTO sales_appointments (lead_id, appointment_at, status, notes) VALUES (?, ?, 'BOOKED', ?)",
             (lead_id, appointment_at, data.get("notes")),
         )
+        # See save_qualification above: commit the appointment and the stage
+        # advance together, so a rejected transition rolls back the
+        # appointment row too instead of leaving an orphan.
+        lead = transition_sales_stage(db, lead_id, "APPOINTMENT_BOOKED", _actor_id(), "Appointment booked", commit=False)
         db.commit()
-        lead = transition_sales_stage(db, lead_id, "APPOINTMENT_BOOKED", _actor_id(), "Appointment booked")
         return _response(f"Sales stage updated to {SALES_STAGE_LABELS[lead['sales_stage']]}.", success=True, status=200, lead_id=lead_id)
     except (TypeError, ValueError) as exc:
         db.rollback()

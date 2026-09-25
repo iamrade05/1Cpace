@@ -23,7 +23,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from .database import next_member_ref
+from .database import CUSTOM_TARIFF, next_member_ref
 from .encryption import decrypt, encrypt_member, encryption_enabled, hash_for_lookup
 
 SOURCE_SQL = """
@@ -287,20 +287,40 @@ def sync_source_members(db, source_members: list[dict[str, Any]], tenant_name: s
             src["join_date"], src["member_status"], src["package"], src["package"],
             src["monthly_installment"], src["unique_ref"], "Elev8 dbo.Members",
         )
+        # A package a manager agreed with the member (a different agreement, or a
+        # family package) is not the source roster's to overwrite. Values 6-8 are
+        # package, tariff and monthly_installment.
+        custom = db.execute(
+            "SELECT tariff FROM members WHERE id=?", (local_id,)
+        ).fetchone()["tariff"] == CUSTOM_TARIFF
+        if custom:
+            before_values = before_values[:6] + before_values[9:]
+            after_values = after_values[:6] + after_values[9:]
         if before_values == after_values:
             unchanged += 1
             continue
-        db.execute(
-            """UPDATE members SET first_name=?, last_name=?, id_number=?,
-                   id_number_hash=?, contact=?, join_date=?, member_status=?,
-                   package=?, tariff=?, monthly_installment=?, itensity_ref=?,
-                   source=? WHERE id=?""",
-            (payload["first_name"], payload["last_name"], payload["id_number"],
-             id_hash, payload["contact"], payload["join_date"],
-             payload["member_status"], payload["package"], payload["package"],
-             payload["monthly_installment"], src["unique_ref"],
-             "Elev8 dbo.Members", local_id),
-        )
+        if custom:
+            db.execute(
+                """UPDATE members SET first_name=?, last_name=?, id_number=?,
+                       id_number_hash=?, contact=?, join_date=?, member_status=?,
+                       itensity_ref=?, source=? WHERE id=?""",
+                (payload["first_name"], payload["last_name"], payload["id_number"],
+                 id_hash, payload["contact"], payload["join_date"],
+                 payload["member_status"], src["unique_ref"],
+                 "Elev8 dbo.Members", local_id),
+            )
+        else:
+            db.execute(
+                """UPDATE members SET first_name=?, last_name=?, id_number=?,
+                       id_number_hash=?, contact=?, join_date=?, member_status=?,
+                       package=?, tariff=?, monthly_installment=?, itensity_ref=?,
+                       source=? WHERE id=?""",
+                (payload["first_name"], payload["last_name"], payload["id_number"],
+                 id_hash, payload["contact"], payload["join_date"],
+                 payload["member_status"], payload["package"], payload["package"],
+                 payload["monthly_installment"], src["unique_ref"],
+                 "Elev8 dbo.Members", local_id),
+            )
         updated += 1
 
     return {

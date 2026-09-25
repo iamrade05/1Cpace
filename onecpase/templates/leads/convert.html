@@ -28,20 +28,25 @@
   <form method="POST">
     <div class="form-group">
       <label class="form-label">Membership Package *</label>
-      <input type="text" name="package" class="form-control" required
-             value="{{ lead.interested_package or '' }}"
-             placeholder="e.g. Monthly Premium R499">
+      <select name="package" class="form-control" required>
+        <option value="" disabled {% if not lead.interested_package %}selected{% endif %}>Select a package…</option>
+        {% for t in tariffs %}
+        {% set label = t.name ~ " R" ~ "%.0f"|format(t.monthly_amount) %}
+        <option value="{{ label }}" {% if lead.interested_package == label or lead.interested_package == t.name %}selected{% endif %}>{{ t.name }} — R{{ "%.2f"|format(t.monthly_amount) }}/month ({{ t.duration_months }} months)</option>
+        {% endfor %}
+      </select>
+      <small style="color:#6b7280;">Managed under Admin → Membership Plans.</small>
     </div>
 
     <div class="form-grid-2">
       <div class="form-group">
         <label class="form-label">SA ID Number *</label>
-        <input type="text" name="id_number" class="form-control" required
+        <input type="text" name="id_number" id="idField" class="form-control" required
                placeholder="13-digit SA ID">
       </div>
       <div class="form-group">
         <label class="form-label">Date of Birth <span style="color:#9ca3af;">(optional)</span></label>
-        <input type="date" name="date_of_birth" class="form-control">
+        <input type="date" name="date_of_birth" id="dobField" class="form-control">
         <small style="font-size:0.74rem; color:#9ca3af;">
           Normally read from the ID number automatically. Only fill this in if
           the ID number is a passport or foreign document.
@@ -58,4 +63,11 @@
     </div>
   </form>
 </div>
+<script src="{{ url_for('static', filename='js/sa_id.js') }}"></script>
+<script>
+  document.getElementById('idField').addEventListener('input', function () {
+    const iso = saIdBirthDate(this.value);
+    if (iso) saIdFillDob(document.getElementById('dobField'), iso, true);
+  });
+</script>
 {% endblock %}

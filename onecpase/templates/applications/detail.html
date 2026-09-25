@@ -115,14 +115,11 @@
       <div style="margin-top:14px; padding-top:14px; border-top:1px solid #f3f4f6;">
         {% set items = [
           ('Contract signed', checklist.contract_status == 'signed'),
-          ('DebiCheck approved', checklist.debit_check_status == 'approved'),
           ('Bank statement analyzed and qualified', checklist.bank_statement_status == 'analysed' and analysis and analysis.verification_qualified),
-          ('ID copy uploaded', checklist.id_copy_status in ('uploaded', 'verified')),
-          ('POS payment completed', checklist.pos_status == 'paid'),
           ('Manager approval resolved', checklist.manager_approval_status in ('not_required', 'approved')),
         ] %}
         <div style="font-size:0.75rem; font-weight:700; color:#6b7280; text-transform:uppercase;
-                    letter-spacing:0.5px; margin-bottom:8px;">Push Readiness</div>
+                    letter-spacing:0.5px; margin-bottom:8px;">Required to Push to Itensity</div>
         {% for label, done in items %}
         <div style="font-size:0.8rem; margin-bottom:4px;
                     color:{% if done %}#059669{% else %}#ef4444{% endif %};">
@@ -130,10 +127,102 @@
         </div>
         {% endfor %}
       </div>
+
+      <!-- Parallel tasks: don't block the Itensity push, still needed to finish the membership -->
+      {% if followups %}
+      <div style="margin-top:14px; padding-top:14px; border-top:1px solid #f3f4f6;">
+        <div style="font-size:0.75rem; font-weight:700; color:#6b7280; text-transform:uppercase;
+                    letter-spacing:0.5px; margin-bottom:8px;">Also Needed to Complete Membership</div>
+        {% for item in followups %}
+        <div style="font-size:0.8rem; margin-bottom:4px;
+                    color:{% if item.done %}#059669{% else %}#9ca3af{% endif %};">
+          {{ '✓' if item.done else '○' }} {{ item.label }}
+        </div>
+        {% endfor %}
+        {% if checklist.pos_status != 'paid' and app.member_id and has_perm('new_collection') %}
+        <a href="{{ url_for('collections.collections_add', member_id=app.member_id) }}"
+           class="btn btn-ghost btn-sm" style="margin-top:6px; font-size:0.76rem;">Record Registration Fee Payment</a>
+        {% endif %}
+      </div>
+      {% endif %}
       {% else %}
       <p style="font-size:0.83rem; color:#9ca3af;">No checklist created yet.</p>
       {% endif %}
     </div>
+
+    <!-- Documents: Contract, Bank Statement, ID -->
+    {% if app.member_id %}
+    <div class="form-card" style="margin-bottom:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h3 style="font-size:0.85rem; font-weight:700; color:#e94560; text-transform:uppercase;
+                   letter-spacing:0.5px;">Documents</h3>
+        <a href="{{ url_for('contracts.view_contract', mid=app.member_id) }}"
+           class="btn btn-secondary btn-sm" style="font-size:0.78rem;">View / Sign Contract</a>
+      </div>
+
+      <form method="POST" action="{{ url_for('members.member_upload_doc', mid=app.member_id) }}"
+            enctype="multipart/form-data">
+        <input type="hidden" name="return_to" value="{{ url_for('applications.application_detail', aid=app.id) }}">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+          <div style="flex:0 0 180px;">
+            <label style="font-size:0.75rem;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Document Type</label>
+            <select name="document_type" class="form-control" style="font-size:0.8rem;">
+              {% for dt in doc_types %}
+              <option value="{{ dt }}">{{ dt }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div style="flex:1; min-width:180px;">
+            <label style="font-size:0.75rem;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">File</label>
+            <input type="file" name="document" required
+                   accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+                   style="display:block;width:100%;padding:7px 10px;border:1px solid #e5e7eb;
+                          border-radius:8px;font-size:0.8rem;">
+          </div>
+          <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">Upload</button>
+        </div>
+      </form>
+
+      {% if documents %}
+      <div style="margin-top:14px; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden;">
+        {% for doc in documents %}
+        {% set ext = doc.original_name.rsplit('.', 1)[-1].lower() if '.' in doc.original_name else '' %}
+        <div style="display:flex; align-items:center; gap:10px; padding:10px 14px;
+                    border-bottom:1px solid #f3f4f6; {% if loop.last %}border-bottom:none;{% endif %}">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:0.82rem; font-weight:600; color:#1a1a2e; white-space:nowrap;
+                        overflow:hidden; text-overflow:ellipsis;">{{ doc.original_name }}</div>
+            <div style="font-size:0.72rem; color:#9ca3af; margin-top:2px;">
+              <span style="background:#EEF4FA;color:#185FA5;padding:1px 6px;border-radius:4px;font-weight:600;">{{ doc.document_type }}</span>
+              {{ doc.uploader or 'Unknown' }} · {{ doc.uploaded_at[:16].replace('T',' ') if doc.uploaded_at else '' }}
+              {% if doc.analysis and doc.analysis.rating %} · {{ doc.analysis.rating|title }}{% endif %}
+            </div>
+          </div>
+          <div style="display:flex; gap:6px; flex-shrink:0;">
+            <a href="{{ url_for('members.member_download_doc', mid=app.member_id, doc_id=doc.id) }}"
+               class="btn btn-ghost btn-sm" style="font-size:0.74rem;">Download</a>
+            {% if ext == 'pdf' and doc.document_type == 'Bank Statement' %}
+            <form method="POST" action="{{ url_for('members.member_analyse_doc', mid=app.member_id, doc_id=doc.id) }}" style="margin:0;">
+              <input type="hidden" name="return_to" value="{{ url_for('applications.application_detail', aid=app.id) }}">
+              <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.74rem;">
+                {{ 'Re-analyse' if doc.analysis else 'Analyse' }}
+              </button>
+            </form>
+            {% endif %}
+            <form method="POST" action="{{ url_for('members.member_delete_doc', mid=app.member_id, doc_id=doc.id) }}"
+                  onsubmit="return confirm('Delete this document?');" style="margin:0;">
+              <input type="hidden" name="return_to" value="{{ url_for('applications.application_detail', aid=app.id) }}">
+              <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.74rem; color:#ef4444;">Delete</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p style="font-size:0.8rem; color:#9ca3af; margin-top:12px;">No documents uploaded yet.</p>
+      {% endif %}
+    </div>
+    {% endif %}
 
     <!-- Bank Statement Analysis -->
     <div class="form-card">

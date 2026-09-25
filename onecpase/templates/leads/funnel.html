@@ -36,6 +36,20 @@
   <div style="margin-top:12px;font-size:.83rem;"><strong>Total monthly sales value:</strong> R{{ '%.2f'|format(overall.sales_value) }}</div>
 </div>
 
+<div class="form-card" style="margin-bottom:18px;">
+  <h3 style="margin-bottom:12px;">Calls Made</h3>
+  <div style="display:flex;gap:8px;">
+    <div style="flex:1;background:#eff6ff;padding:14px 8px;text-align:center;border-radius:8px;">
+      <div style="font-size:.7rem;text-transform:uppercase;color:#64748b;font-weight:700;">Sales</div>
+      <div style="font-size:1.6rem;font-weight:800;color:#1e3a8a;">{{ sales_calls_made }}</div>
+    </div>
+    <div style="flex:1;background:#eff6ff;padding:14px 8px;text-align:center;border-radius:8px;">
+      <div style="font-size:.7rem;text-transform:uppercase;color:#64748b;font-weight:700;">Collections</div>
+      <div style="font-size:1.6rem;font-weight:800;color:#1e3a8a;">{{ collections_calls_made }}</div>
+    </div>
+  </div>
+</div>
+
 {{ report_table(groups.consultants, 'Consultant') }}
 {{ report_table(groups.sources, 'Original Source') }}
 {{ report_table(groups.channels, 'Lead Channel') }}

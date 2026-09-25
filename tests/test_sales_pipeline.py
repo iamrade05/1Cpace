@@ -5,6 +5,22 @@ from onecpase.sales_pipeline import (
 )
 
 
+def _login(client, role, department="Sales"):
+    with client.session_transaction() as session:
+        session["user_id"] = 1
+        session["role"] = role
+        session["permissions"] = ["capture_leads"]
+    with client.application.app_context():
+        db = get_db()
+        db.execute(
+            """INSERT OR IGNORE INTO users
+               (id, username, password_hash, full_name, role, department, active)
+               VALUES (1, 'pipeline-actor', 'x', 'Pipeline Actor', ?, ?, 1)""",
+            (role, department),
+        )
+        db.commit()
+
+
 def _user(db, username="pipeline-test"):
     db.execute(
         "INSERT INTO users (username, password_hash, full_name) VALUES (?, ?, ?)",
@@ -111,3 +127,146 @@ def test_canonical_transition_also_writes_stage_event(app):
             (lead_id,),
         ).fetchone()
         assert tuple(event) == ("sales_stage", "CAPTURED", "ASSIGNED", user_id)
+
+
+# ── Manual stage moves are a manager action, not a consultant one ────────────
+# capture_leads is granted to every Sales department member, consultants
+# included, so the permission check alone does not stop a consultant from
+# manually overriding the controlled stage. Only the role check in the
+# transition_stage view does.
+
+def test_consultant_cannot_manually_move_the_stage(client):
+    _login(client, "staff")
+    with client.application.app_context():
+        db = get_db()
+        lead_id = _lead(db, 1)
+        db.commit()
+
+    response = client.post(f"/sales/leads/{lead_id}/stage", json={"new_stage": "LOST"})
+    assert response.status_code == 403
+
+    with client.application.app_context():
+        lead = get_db().execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
+    assert current_sales_stage(lead) == "CAPTURED"
+
+
+def test_manager_can_manually_move_the_stage(client):
+    _login(client, "manager")
+    with client.application.app_context():
+        db = get_db()
+        lead_id = _lead(db, 1)
+        db.commit()
+
+    response = client.post(f"/sales/leads/{lead_id}/stage", json={"new_stage": "LOST"})
+    assert response.status_code == 200
+
+    with client.application.app_context():
+        lead = get_db().execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
+    assert current_sales_stage(lead) == "LOST"
+
+
+# ── Atomic compound endpoints (qualify / invite / book) ──────────────────────
+#
+# save_qualification, invite_to_application and book_sales_appointment each
+# insert an evidence row (qualification / invitation / appointment) and then
+# advance the canonical stage. Both used to commit separately: if the stage
+# advance was rejected, the endpoint's `except: db.rollback()` had nothing
+# left to undo, so the evidence row survived with no matching stage change -
+# and every retry inserted (or upserted onto) it again. The fix commits the
+# evidence and the stage advance together via transition_sales_stage(...,
+# commit=False), so a rejected transition rolls back the evidence row too.
+
+def test_a_rejected_qualification_leaves_no_orphan_row(client):
+    """A lead still at CAPTURED cannot be QUALIFIED (only CONTACTED can be) -
+    the qualification endpoint must reject it and leave no trace."""
+    _login(client, "manager")
+    with client.application.app_context():
+        db = get_db()
+        lead_id = _lead(db, 1)
+        db.commit()
+
+    response = client.post(
+        f"/sales/leads/{lead_id}/qualification",
+        json={"interested": "1", "needs_identified": "1"},
+    )
+    assert response.status_code == 400
+
+    with client.application.app_context():
+        db = get_db()
+        orphan = db.execute(
+            "SELECT id FROM lead_qualifications WHERE lead_id=?", (lead_id,)
+        ).fetchone()
+        assert orphan is None, "a rejected qualification must not leave a row behind"
+        stage = db.execute("SELECT sales_stage FROM leads WHERE id=?", (lead_id,)).fetchone()
+        assert stage["sales_stage"] != "QUALIFIED"
+
+
+def test_a_rejected_application_invitation_leaves_no_orphan_row(client):
+    """APPLICATION_INVITED requires SHOW/CONSULTATION/DECISION_FOLLOW_UP - a
+    lead still at CAPTURED cannot reach it."""
+    _login(client, "manager")
+    with client.application.app_context():
+        db = get_db()
+        lead_id = _lead(db, 1)
+        db.commit()
+
+    response = client.post(f"/sales/leads/{lead_id}/application-invitation", json={})
+    assert response.status_code == 400
+
+    with client.application.app_context():
+        db = get_db()
+        orphan = db.execute(
+            "SELECT id FROM application_invitations WHERE lead_id=?", (lead_id,)
+        ).fetchone()
+        assert orphan is None, "a rejected invitation must not leave a row behind"
+
+
+def test_a_rejected_appointment_booking_leaves_no_orphan_row(client):
+    """APPOINTMENT_BOOKED is only reachable from INVITED - a lead still at
+    CAPTURED cannot reach it."""
+    _login(client, "manager")
+    with client.application.app_context():
+        db = get_db()
+        lead_id = _lead(db, 1)
+        db.commit()
+
+    response = client.post(
+        f"/sales/leads/{lead_id}/appointment",
+        json={"appointment_at": "2026-10-01T10:00:00"},
+    )
+    assert response.status_code == 400
+
+    with client.application.app_context():
+        db = get_db()
+        orphan = db.execute(
+            "SELECT id FROM sales_appointments WHERE lead_id=?", (lead_id,)
+        ).fetchone()
+        assert orphan is None, "a rejected appointment must not leave a row behind"
+
+
+def test_a_successful_qualification_still_commits_both_rows(client):
+    """The fix must not turn a legitimate qualification into a no-op - a lead
+    at CONTACTED really does end up QUALIFIED with its evidence saved."""
+    _login(client, "manager")
+    with client.application.app_context():
+        db = get_db()
+        lead_id = _lead(db, 1)
+        transition_sales_stage(db, lead_id, "ASSIGNED", 1)
+        transition_sales_stage(db, lead_id, "CONTACT_ATTEMPTED", 1)
+        transition_sales_stage(db, lead_id, "CONTACTED", 1)
+        db.commit()
+
+    response = client.post(
+        f"/sales/leads/{lead_id}/qualification",
+        json={"interested": "1", "needs_identified": "1"},
+    )
+    assert response.status_code == 200
+
+    with client.application.app_context():
+        db = get_db()
+        row = db.execute(
+            "SELECT interested FROM lead_qualifications WHERE lead_id=?", (lead_id,)
+        ).fetchone()
+        assert row is not None and row["interested"] == 1
+        stage = db.execute("SELECT sales_stage FROM leads WHERE id=?", (lead_id,)).fetchone()
+        assert stage["sales_stage"] == "QUALIFIED"

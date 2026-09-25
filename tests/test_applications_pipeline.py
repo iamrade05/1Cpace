@@ -198,3 +198,85 @@ def test_ready_to_push_requires_qualified_statement_analysis(app):
         }
         assert _is_ready_to_push(cl, analysis)
         assert _derive_status(cl, analysis) == "ready_to_push"
+
+
+# ── Itensity push no longer waits on DebiCheck, ID, or the registration fee ──
+# DebiCheck in particular needs the Itensity client reference the push itself
+# returns, so requiring DebiCheck approval before that push was unreachable.
+# Contract + a qualified bank statement (+ guardian/manager approval where
+# applicable) are now the only gate; DebiCheck/ID/reg-fee are tracked as
+# parallel follow-ups instead - see _outstanding_followups.
+
+def test_itensity_push_is_ready_with_only_contract_and_statement_done(app):
+    from onecpase.applications import _is_ready_to_push, _missing_requirements
+
+    with app.app_context():
+        db = get_db()
+        aid = db.execute(
+            "INSERT INTO membership_applications (application_status) VALUES ('verification')"
+        ).lastrowid
+        db.execute(
+            """INSERT INTO compliance_checklists
+               (application_id, contract_status, debit_check_status, bank_statement_status,
+                id_copy_status, pos_status, manager_approval_status)
+               VALUES (?, 'signed', 'pending', 'analysed', 'not_uploaded', 'pending', 'not_required')""",
+            (aid,),
+        )
+        cl = db.execute("SELECT * FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
+        analysis = {"verification_qualified": 1}
+
+        assert _is_ready_to_push(cl, analysis)
+        assert _missing_requirements(cl, analysis) == []
+
+
+def test_itensity_push_still_requires_the_contract_and_statement_themselves(app):
+    from onecpase.applications import _is_ready_to_push
+
+    with app.app_context():
+        db = get_db()
+        aid = db.execute(
+            "INSERT INTO membership_applications (application_status) VALUES ('awaiting_docs')"
+        ).lastrowid
+        db.execute(
+            """INSERT INTO compliance_checklists
+               (application_id, contract_status, debit_check_status, bank_statement_status,
+                id_copy_status, pos_status, manager_approval_status)
+               VALUES (?, 'pending', 'approved', 'not_uploaded', 'uploaded', 'paid', 'not_required')""",
+            (aid,),
+        )
+        cl = db.execute("SELECT * FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
+
+        assert not _is_ready_to_push(cl, None)
+
+
+def test_outstanding_followups_track_debicheck_id_and_reg_fee_separately(app):
+    from onecpase.applications import _outstanding_followups
+
+    with app.app_context():
+        db = get_db()
+        aid = db.execute(
+            "INSERT INTO membership_applications (application_status) VALUES ('verification')"
+        ).lastrowid
+        db.execute(
+            """INSERT INTO compliance_checklists
+               (application_id, contract_status, debit_check_status, bank_statement_status,
+                id_copy_status, pos_status, manager_approval_status)
+               VALUES (?, 'signed', 'pending', 'analysed', 'not_uploaded', 'pending', 'not_required')""",
+            (aid,),
+        )
+        cl = db.execute("SELECT * FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
+
+        followups = {f["label"]: f["done"] for f in _outstanding_followups(cl)}
+        assert followups["DebiCheck mandate approved"] is False
+        assert followups["ID copy uploaded"] is False
+        assert followups["Registration fee paid"] is False
+
+        db.execute(
+            """UPDATE compliance_checklists
+               SET debit_check_status='approved', id_copy_status='uploaded', pos_status='paid'
+               WHERE application_id=?""",
+            (aid,),
+        )
+        cl = db.execute("SELECT * FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
+        followups = {f["label"]: f["done"] for f in _outstanding_followups(cl)}
+        assert all(followups.values())

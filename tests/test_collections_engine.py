@@ -42,6 +42,50 @@ def test_three_month_rule_requires_debicheck_or_full_settlement():
     assert determine_access(3, 900, False) == "BLOCKED"
 
 
+def test_required_upfront_is_capped_at_the_configured_maximum():
+    # upfront_max_percent (Rule 6) used to be seeded but never read - only
+    # min_percent governed the required amount. If min is ever configured
+    # above max, the required amount must not exceed the ceiling: 50% of
+    # 1000 would be 500.00 uncapped, but the 40% ceiling caps it at 400.00.
+    rules = {"upfront_min_percent": "50", "upfront_max_percent": "40"}
+    decision = evaluate_collection_case(2, 1000, False, rules=rules)
+    assert decision["required_upfront_amount"] == Decimal("400.00")
+
+
+def test_upfront_cap_is_a_no_op_for_the_seeded_defaults():
+    # Guards against the fix changing today's real behavior: with the actual
+    # seeded defaults (30/40), min is already below max, so nothing changes.
+    decision = evaluate_collection_case(2, 1000, False)
+    assert decision["required_upfront_amount"] == Decimal("300.00")
+
+
+def test_member_access_required_upfront_is_also_capped(app):
+    # The same cap must apply at evaluate_member_access's own read of the
+    # rule, not just evaluate_collection_case - prove it at that call site
+    # too, with the real DB-backed rules table.
+    from onecpase.collections_engine import evaluate_member_access
+
+    with app.app_context():
+        db = get_db()
+        db.execute(
+            """INSERT INTO members (member_ref, first_name, last_name, id_number, contact, member_status)
+               VALUES ('T-2', 'Test', 'Member', 'ID2', '0710000001', 'Active')"""
+        )
+        mid = db.execute("SELECT id FROM members WHERE member_ref='T-2'").fetchone()["id"]
+        db.execute(
+            """INSERT INTO collections (member_id, outstanding_balance, amount_paid, collection_date, status, notes)
+               VALUES (?, 1000, 0, '2026-07-01', 'failed', 'type=Recurring Fee'),
+                      (?, 1000, 0, '2026-08-01', 'failed', 'type=Recurring Fee')""",
+            (mid, mid),
+        )
+        db.execute(
+            "UPDATE collection_rules SET rule_value='50' WHERE rule_key='upfront_min_percent'"
+        )
+        db.commit()
+        decision = evaluate_member_access(db, mid)
+        assert decision["required_upfront_amount"] == Decimal("800.00")  # 40% of 2000, not 50%
+
+
 def test_debicheck_options_apply_minimum_arrears_component():
     assert calculate_arrears_installment(54, 3) == Decimal("30.00")
     options = calculate_debicheck_options(900, 300, 24)

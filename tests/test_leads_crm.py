@@ -642,6 +642,70 @@ def test_joined_lead_closes_when_the_application_was_declined(app):
     assert _lead_with_application(app, "declined") == "closed"
 
 
+def test_joined_lead_with_no_application_at_all_offers_to_complete_it(app):
+    """Client Joined -> Membership marks the lead joined immediately, then
+    hands off to convert_lead() to create the application. If that handoff
+    is abandoned, the lead must not silently close - the consultant needs a
+    way back to finish the conversion, not a dead 'Sales Journey Complete'."""
+    from onecpase.database import get_db as _get_db
+    from onecpase.leads import _journey_step
+
+    with app.app_context():
+        db = _get_db()
+        lead_id = db.execute(
+            """INSERT INTO leads (full_name, phone, phone_normalized, lead_status, sales_stage)
+               VALUES ('Orphaned Join', '082 999 1111', '27829991111', 'joined', 'APPLICATION_INVITED')"""
+        ).lastrowid
+        db.commit()
+        lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
+        assert _journey_step(db, lead) == "convert_pending"
+
+
+def test_convert_resumes_from_a_stage_a_manager_already_advanced(client):
+    """A manager can push the canonical sales stage straight to
+    APPLICATION_INVITED (Controlled Sales Stage) before convert_lead() ever
+    runs. Requiring an exact SHOW/CONSULTATION stage stranded that lead -
+    conversion must resume from wherever the manual move left it."""
+    _login_admin(client)
+    _create_prospect(client, phone="082 999 2222", name="Manually Advanced")
+    with client.application.app_context():
+        db = get_db()
+        lead_id = db.execute(
+            "SELECT id FROM leads WHERE full_name='Manually Advanced'"
+        ).fetchone()[0]
+        db.execute(
+            """INSERT INTO lead_activities (lead_id, activity_type, outcome, status, occurred_at)
+               VALUES (?, 'visit', 'joined', 'completed', datetime('now'))""",
+            (lead_id,),
+        )
+        db.execute(
+            "UPDATE leads SET lead_status='joined', sales_stage='APPLICATION_INVITED' WHERE id=?",
+            (lead_id,),
+        )
+        db.commit()
+
+    response = client.post(
+        f"/leads/{lead_id}/convert",
+        data={"package": "Premium 12", "id_number": "9001015009087"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    # Lands straight on the new application's document-upload step, not the
+    # member edit form - that's the "next step" the consultant needs.
+    assert "/applications/" in response.headers["Location"]
+    application_page = client.get(response.headers["Location"])
+    assert b"Documents" in application_page.data
+    assert b"Upload" in application_page.data
+    with client.application.app_context():
+        db = get_db()
+        application = db.execute(
+            "SELECT * FROM membership_applications WHERE lead_id=?", (lead_id,)
+        ).fetchone()
+        assert application is not None
+        lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
+        assert lead["converted_member_id"] is not None
+
+
 def test_pipeline_renders_as_a_vertical_accordion(client):
     """The board is a vertical list of collapsed stages, not a horizontal scroll.
 

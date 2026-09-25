@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}WhatsApp Web Sender | 1Cpase{% endblock %}
+{% block page_title %}WhatsApp Web Sender{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:520px;">
+  <div class="card-body" style="padding:20px;">
+    {% if not status.enabled %}
+    <div class="alert alert-warning">
+      WhatsApp Web sending is turned off (<code>WHATSAPP_WEB_ENABLED</code> is not set). No messages are being queued or sent.
+    </div>
+    {% elif status.logged_in %}
+    <div class="alert alert-success" style="margin-bottom:16px;">
+      ✅ Connected — a WhatsApp number is linked and sending.
+      {% if status.last_sent_at %}<br><small>Last message sent: {{ status.last_sent_at[:19].replace('T', ' ') }}</small>{% endif %}
+    </div>
+    {% elif status.pairing_code %}
+    <div class="alert alert-info" style="margin-bottom:16px;">
+      On the phone: open WhatsApp → <strong>Settings → Linked Devices → Link a Device</strong> →
+      <strong>Link with phone number instead</strong>, then type this code.
+    </div>
+    <div id="pairingCode" style="text-align:center;font-size:2.4rem;font-weight:700;letter-spacing:0.12em;margin:8px 0 16px;">
+      {{ status.pairing_code }}
+    </div>
+    <form method="post" action="{{ url_for('whatsapp_web.show_qr') }}" style="text-align:center;margin-bottom:16px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-secondary">Cancel and show the QR code instead</button>
+    </form>
+    {% else %}
+    <div class="alert alert-info" style="margin-bottom:16px;">
+      Not linked yet. Open WhatsApp on the phone you want to use →
+      <strong>Settings → Linked Devices → Link a Device</strong>, then scan this code.
+      It refreshes automatically every few seconds.
+    </div>
+    {% if status.pairing_status %}
+    <div class="alert alert-info" style="margin-bottom:16px;">{{ status.pairing_status }}…</div>
+    {% endif %}
+    <div style="text-align:center;margin-bottom:16px;">
+      {# WhatsApp's QR canvas has no quiet zone of its own (its page supplies a white card), so the
+         white padding here is what a phone camera needs to find the code's edges - without it the
+         code merges into the dark page and won't scan. Keep the img unrounded: clipping corners cuts
+         into the finder patterns. #}
+      <div id="qrFrame" style="display:inline-block;background:#fff;padding:24px;border-radius:12px;line-height:0;">
+        <img id="qrImage" src="{{ url_for('whatsapp_web.qr_image') }}?t={{ status.last_qr_at or '' }}"
+             alt="WhatsApp QR code" style="display:block;max-width:260px;"
+             onerror="document.getElementById('qrFrame').style.display='none';document.getElementById('qrMissing').style.display='block';">
+      </div>
+      <p id="qrMissing" style="display:none;color:#9ca3af;font-size:0.82rem;margin-top:8px;">
+        No QR code captured yet — the background session may still be starting up. This page refreshes automatically.
+      </p>
+    </div>
+    {% endif %}
+
+    {% if status.enabled and not status.logged_in and not status.pairing_code and link_blocked %}
+    <div class="alert alert-warning" style="margin-bottom:16px;">{{ link_blocked }}</div>
+    {% elif status.enabled and not status.logged_in and not status.pairing_code %}
+    <form method="post" action="{{ url_for('whatsapp_web.link_by_phone') }}" style="margin-bottom:16px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="linkPhone" style="display:block;font-size:0.83rem;color:#6b7280;margin-bottom:4px;">
+        Can't scan? Link with a code instead — the WhatsApp number of the phone to link:
+      </label>
+      <div style="display:flex;gap:8px;">
+        <input id="linkPhone" name="phone" type="tel" inputmode="tel" required placeholder="082 123 4567"
+               style="flex:1;padding:8px;">
+        <button type="submit" class="btn btn-primary">Get code</button>
+      </div>
+    </form>
+    {% endif %}
+
+    {% if status.last_error %}
+    <div class="alert alert-error" style="margin-bottom:16px;">⚠ {{ status.last_error }}</div>
+    {% endif %}
+
+    <table style="width:100%;font-size:0.83rem;">
+      <tr><td style="color:#6b7280;padding:4px;">Background session running</td><td>{{ 'Yes' if status.started else 'No' }}</td></tr>
+      <tr><td style="color:#6b7280;padding:4px;">Messages waiting to send</td><td>{{ status.queue_length }}</td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+// Refresh to pick up a new QR code / pairing code - but never while a number is being typed.
+setInterval(function () {
+  var box = document.getElementById('linkPhone');
+  if (box && (document.activeElement === box || box.value)) { return; }
+  window.location.reload();
+}, 6000);
+</script>
+{% endblock %}

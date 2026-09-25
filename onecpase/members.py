@@ -2,11 +2,12 @@ import os
 import time
 from collections import defaultdict
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, session, url_for
 from werkzeug.utils import secure_filename
 from .auth import permission_required
-from .database import current_tenant_name, get_db, member_activity, next_member_ref
+from .database import CUSTOM_TARIFF, current_tenant_name, get_db, member_activity, next_member_ref
 from .member_counts import get_member_counts
 from .elev8_data import get_elev8_member_count
 from .communication import collection_care_message
@@ -34,6 +35,17 @@ DOC_TYPES = [
 
 def _allowed(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _doc_return_to(mid: int) -> str:
+    """Document actions are posted from both the member page and the
+    application page — return to whichever one the form came from, rather
+    than always bouncing back to the member page. Restricted to a local
+    path (never an absolute/protocol-relative URL) to avoid an open redirect."""
+    target = request.form.get("return_to", "")
+    if target.startswith("/") and not target.startswith("//"):
+        return target
+    return url_for("members.member_detail", mid=mid) + "#docs"
 
 
 def _collection_note_parts(note: str | None) -> dict[str, str]:
@@ -257,6 +269,12 @@ def _get_form_data():
         entry_type          = f.get("entry_type", "appointment").strip(),
         tariff              = f.get("tariff", "").strip(),
         package             = f.get("package", "").strip(),
+        custom_name         = f.get("custom_name", "").strip(),
+        custom_amount       = f.get("custom_amount", "").strip(),
+        custom_months       = f.get("custom_months", "").strip(),
+        custom_type         = f.get("custom_type", "").strip(),
+        custom_note         = f.get("custom_note", "").strip(),
+        custom_package_note = "",
         contract_duration   = f.get("contract_duration", "").strip(),
         monthly_installment = f.get("monthly_installment", "0") or "0",
         uploaded_by_id      = f.get("uploaded_by_id", "") or None,
@@ -401,6 +419,98 @@ def _get_tariffs():
     ).fetchall()
 
 
+# ── Custom package (a manager's call) ─────────────────────────────────────────
+
+CUSTOM_PACKAGE_TYPES = ("Family package", "Different agreement", "Other")
+_CUSTOM_RAW_FIELDS = ("custom_name", "custom_amount", "custom_months", "custom_type", "custom_note")
+
+
+def _is_manager() -> bool:
+    return session.get("role") in {"admin", "manager"}
+
+
+def _apply_custom_package(d, existing=None):
+    """Enforce and resolve the custom-package part of a member form.
+
+    A custom package - a different agreement, or a family package - is a manager
+    decision. Returns an error message, or None once ``d`` holds the resolved
+    package name, amount, duration and reason. A non-manager can never set one,
+    and can neither change nor wipe one a manager already set.
+    """
+    was_custom = bool(existing) and existing.get("tariff") == CUSTOM_TARIFF
+    if not _is_manager():
+        if was_custom:
+            for field in ("tariff", "package", "contract_duration", "monthly_installment", "custom_package_note"):
+                d[field] = existing.get(field) or ("0" if field == "monthly_installment" else "")
+        elif d["tariff"] == CUSTOM_TARIFF:
+            return "Only a manager can set a custom package."
+        return None
+    if d["tariff"] != CUSTOM_TARIFF:
+        d["custom_package_note"] = ""
+        return None
+
+    try:
+        amount = Decimal(d["custom_amount"])
+    except InvalidOperation:
+        amount = None
+    if amount is None or not amount.is_finite() or amount < 0 or amount > Decimal("99999.99"):
+        return "A custom package needs a monthly amount between R0.00 and R99,999.99."
+    try:
+        months = int(d["custom_months"])
+    except ValueError:
+        months = 0
+    if not 1 <= months <= 120:
+        return "A custom package needs a contract length of 1 to 120 months."
+    if not d["custom_name"]:
+        return "A custom package needs a name, for example the family name."
+    if d["custom_type"] not in CUSTOM_PACKAGE_TYPES:
+        return "A custom package needs a reason type: family package, different agreement or other."
+    if not d["custom_note"]:
+        return "A custom package needs a note saying what was agreed."
+
+    d["package"] = d["custom_name"]
+    d["monthly_installment"] = f"{amount.quantize(Decimal('0.01')):.2f}"
+    d["contract_duration"] = f"{months} months"
+    d["custom_package_note"] = f"{d['custom_type']}: {d['custom_note']}"
+    for field in _CUSTOM_RAW_FIELDS:
+        d.pop(field, None)
+    return None
+
+
+def _custom_form_values(member):
+    """The stored custom package as the form's own fields, to pre-fill the manager panel."""
+    if member.get("tariff") != CUSTOM_TARIFF:
+        return {}
+    kind, _, note = (member.get("custom_package_note") or "").partition(": ")
+    months = (member.get("contract_duration") or "").split(" ")[0]
+    return {
+        "custom_name": member.get("package") or "",
+        "custom_amount": f"{float(member.get('monthly_installment') or 0):.2f}",
+        "custom_months": months if months.isdigit() else "",
+        "custom_type": kind,
+        "custom_note": note,
+    }
+
+
+def _custom_package_activity(before, d):
+    """The activity-log line for a change to a member's custom package, or None."""
+    was = bool(before) and before.get("tariff") == CUSTOM_TARIFF
+    if d["tariff"] != CUSTOM_TARIFF:
+        return f"Custom package removed; member moved to {d['tariff'] or 'no tariff'}." if was else None
+    unchanged = was and (
+        (before.get("package") or "") == d["package"]
+        and float(before.get("monthly_installment") or 0) == float(d["monthly_installment"])
+        and (before.get("contract_duration") or "") == d["contract_duration"]
+        and (before.get("custom_package_note") or "") == d["custom_package_note"]
+    )
+    if unchanged:
+        return None
+    return (
+        f"Custom package set: {d['package']}, R{float(d['monthly_installment']):.2f} a month, "
+        f"{d['contract_duration']}. {d['custom_package_note']}"
+    )
+
+
 @members_bp.route("/members/add", methods=["GET", "POST"])
 @permission_required("add_member")
 def members_add():
@@ -418,6 +528,14 @@ def members_add():
         push_nupay = request.form.get("submit_action") == "push_nupay"
         if not (d["first_name"] and d["last_name"] and d["id_number"] and d["contact"]):
             flash("First name, last name, ID number, and cell number are required.", "error")
+            from datetime import date
+            return render_template("members/add.html", d=d, tariffs=TARIFFS,
+                                   tariff_rows=tariff_rows, banks=BANKS,
+                                   consultants=consultants, today=date.today().isoformat())
+
+        custom_error = _apply_custom_package(d)
+        if custom_error:
+            flash(custom_error, "error")
             from datetime import date
             return render_template("members/add.html", d=d, tariffs=TARIFFS,
                                    tariff_rows=tariff_rows, banks=BANKS,
@@ -509,8 +627,8 @@ def members_add():
                     promotion, access_level, occupation,
                     emergency_contact_name, emergency_contact_number, emergency_contact_relation,
                     parq_q1, parq_q2, parq_q3, parq_q4, parq_q5,
-                    parq_q6, parq_q7, parq_q8, parq_q9, outcome)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    parq_q6, parq_q7, parq_q8, parq_q9, outcome, custom_package_note)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (member_ref, ed["first_name"], ed["last_name"], ed["id_number"], ed.get("id_number_hash"),
                  ed["contact"], ed["email"],
                  ed["date_of_birth"], ed["gender"], ed["join_date"], ed["member_status"],
@@ -525,12 +643,16 @@ def members_add():
                  ed["promotion"], ed["access_level"], ed["occupation"],
                  ed["emergency_contact_name"], ed["emergency_contact_number"], ed["emergency_contact_relation"],
                  ed["parq_q1"], ed["parq_q2"], ed["parq_q3"], ed["parq_q4"], ed["parq_q5"],
-                 ed["parq_q6"], ed["parq_q7"], ed["parq_q8"], ed["parq_q9"], "application"),
+                 ed["parq_q6"], ed["parq_q7"], ed["parq_q8"], ed["parq_q9"], "application",
+                 ed["custom_package_note"]),
             )
             mid = cursor.lastrowid
             from .applications import ensure_member_application
             ensure_member_application(db, mid, d["package"] or d["tariff"])
             member_activity(db, mid, "Member profile created")
+            custom_note = _custom_package_activity(None, d)
+            if custom_note:
+                member_activity(db, mid, custom_note)
             db.commit()
 
             if push_nupay:
@@ -785,10 +907,10 @@ def member_upload_doc(mid: int):
     doc_type = request.form.get("document_type", "Other")
     if not file or not file.filename:
         flash("No file selected.", "error")
-        return redirect(url_for("members.member_detail", mid=mid) + "#docs")
+        return redirect(_doc_return_to(mid))
     if not _allowed(file.filename):
         flash("File type not allowed. Use PDF, JPG, PNG, DOC, DOCX, XLS, XLSX.", "error")
-        return redirect(url_for("members.member_detail", mid=mid) + "#docs")
+        return redirect(_doc_return_to(mid))
 
     upload_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "members" / str(mid)
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -873,7 +995,7 @@ def member_upload_doc(mid: int):
         flash(f"'{file.filename}' uploaded and analyzed automatically.", "success")
     else:
         flash(f"'{file.filename}' uploaded successfully.", "success")
-    return redirect(url_for("members.member_detail", mid=mid) + "#docs")
+    return redirect(_doc_return_to(mid))
 
 
 @members_bp.route("/members/<int:mid>/documents/<int:doc_id>/download")
@@ -907,7 +1029,7 @@ def member_analyse_doc(mid: int, doc_id: int):
 
     if not doc:
         flash("Document not found.", "error")
-        return redirect(url_for("members.member_detail", mid=mid) + "#docs")
+        return redirect(_doc_return_to(mid))
 
     path = Path(current_app.config["UPLOAD_FOLDER"]) / "members" / str(mid) / doc["stored_name"]
     monthly = float(member["monthly_installment"] or 0) if member else 0.0
@@ -944,7 +1066,7 @@ def member_analyse_doc(mid: int, doc_id: int):
     else:
         flash("Statement analysed successfully.", "success")
 
-    return redirect(url_for("members.member_detail", mid=mid) + "#docs")
+    return redirect(_doc_return_to(mid))
 
 
 @members_bp.route("/members/<int:mid>/documents/<int:doc_id>/delete", methods=["POST"])
@@ -982,7 +1104,7 @@ def member_delete_doc(mid: int, doc_id: int):
         member_activity(db, mid, f"Deleted {doc['document_type']}: {doc['original_name']}")
         db.commit()
         flash("Document deleted.", "success")
-    return redirect(url_for("members.member_detail", mid=mid) + "#docs")
+    return redirect(_doc_return_to(mid))
 
 
 @members_bp.route("/members/<int:mid>/edit", methods=["GET", "POST"])
@@ -1002,6 +1124,7 @@ def member_edit(mid: int):
 
     if request.method == "POST":
         d = _get_form_data()
+        custom_error = _apply_custom_package(d, member)
         credential_conflict = None
         if d["access_credential"]:
             credential_conflict = db.execute(
@@ -1041,6 +1164,8 @@ def member_edit(mid: int):
                 f"(#{credential_conflict['id']}).",
                 "error",
             )
+        elif custom_error:
+            flash(custom_error, "error")
         else:
             # Lifecycle fields are controlled by the application/state machine.
             # Normal member editing may not promote, join, or backdate a member.
@@ -1066,7 +1191,8 @@ def member_edit(mid: int):
                        member_addons=?, witness_name=?,
                        emergency_contact_name=?, emergency_contact_number=?, emergency_contact_relation=?,
                        parq_q1=?, parq_q2=?, parq_q3=?, parq_q4=?, parq_q5=?,
-                       parq_q6=?, parq_q7=?, parq_q8=?, parq_q9=?
+                       parq_q6=?, parq_q7=?, parq_q8=?, parq_q9=?,
+                       custom_package_note=?
                        WHERE id=?""",
                     (ed["first_name"], ed["last_name"], ed["id_number"], ed.get("id_number_hash"),
                      ed["contact"], ed["email"],
@@ -1084,7 +1210,8 @@ def member_edit(mid: int):
                      ed["member_addons"], ed["witness_name"],
                      ed["emergency_contact_name"], ed["emergency_contact_number"], ed["emergency_contact_relation"],
                      ed["parq_q1"], ed["parq_q2"], ed["parq_q3"], ed["parq_q4"], ed["parq_q5"],
-                     ed["parq_q6"], ed["parq_q7"], ed["parq_q8"], ed["parq_q9"], mid),
+                     ed["parq_q6"], ed["parq_q7"], ed["parq_q8"], ed["parq_q9"],
+                     ed["custom_package_note"], mid),
                 )
                 changed = []
                 for field, value in d.items():
@@ -1098,6 +1225,9 @@ def member_edit(mid: int):
                     db, mid,
                     f"Updated member profile{': ' + detail if detail else ''}",
                 )
+                custom_note = _custom_package_activity(member, d)
+                if custom_note:
+                    member_activity(db, mid, custom_note)
                 db.commit()
                 flash(f"{d['first_name']} {d['last_name']} updated.", "success")
                 return redirect(url_for("members.member_detail", mid=mid))
@@ -1110,6 +1240,7 @@ def member_edit(mid: int):
         member=member,
         tariffs=TARIFFS,
         tariff_rows=tariff_rows,
+        custom_form=_custom_form_values(member),
         banks=BANKS,
         consultants=consultants,
     )

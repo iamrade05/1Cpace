@@ -188,6 +188,9 @@
     <div class="info-row"><span class="info-label">Email</span><span class="info-val">{{ member.email or '—' }}</span></div>
     <div class="info-row"><span class="info-label">Join Date</span><span class="info-val">{{ member.join_date or '—' }}</span></div>
     <div class="info-row"><span class="info-label">Package</span><span class="info-val">{{ member.package or member.tariff or '—' }}</span></div>
+    {% if member.tariff == 'Custom' and member.custom_package_note %}
+    <div class="info-row"><span class="info-label">Custom package</span><span class="info-val">{{ member.custom_package_note }}</span></div>
+    {% endif %}
     <div class="info-row">
       <span class="info-label">Last Visit</span>
       <span class="info-val">
@@ -275,7 +278,7 @@
          style="border:1px solid #e11d48;color:#e11d48;">PTP / Collection{% if arrears_info.total_arrears > 0 %} &bull; R{{ "%.0f"|format(arrears_info.total_arrears) }}{% endif %}</a>
       <a href="#queries" class="btn btn-ghost btn-sm profile-panel-toggle" data-panel="queries" aria-expanded="false"
          style="border:1px solid #7c3aed;color:#7c3aed;">🎫 Queries{% if open_queries_count %} &bull; {{ open_queries_count }} open{% endif %}</a>
-      <a href="{{ url_for('contracts.view_contract', mid=member.id) }}" class="btn btn-ghost btn-sm" target="_blank">Contract</a>
+      <a href="{{ url_for('contracts.view_contract', mid=member.id) }}" class="btn btn-ghost btn-sm">Contract</a>
       <form method="post" action="{{ url_for('contracts.share_contract', mid=member.id) }}" style="display:inline-flex;gap:6px;align-items:center;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="channel" class="form-control" style="width:auto;min-width:120px;" aria-label="Contract delivery method">
@@ -1369,12 +1372,9 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 </script>
-
-{% endblock %}
-
 <script>
 async function startPbxCall(phone) {
-  const token = document.querySelector('input[name="csrf_token"]')?.value || '';
+  const token = document.querySelector('meta[name="csrf-token"]')?.content || '';
   try {
     const r = await fetch('{{ url_for("pbx.dial") }}', {
       method: 'POST',
@@ -1387,3 +1387,4 @@ async function startPbxCall(phone) {
   } catch (e) { alert(e.message); }
 }
 </script>
+{% endblock %}

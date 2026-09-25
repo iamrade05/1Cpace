@@ -415,9 +415,15 @@ def init_scheduler(app) -> None:
             ", ".join(ITENSITY_SCRIPTS),
         )
     if itensity_ready:
+        # Runs a full hour and a half after ptp_automations (02:30) - the two
+        # write to the same per-tenant database, and the Itensity pull is a
+        # live network call to a third party with no guaranteed speed, so it
+        # gets real separation rather than trusting today's ~2min runtime to
+        # hold on a slower night. misfire_grace_time still covers a run that
+        # starts late for some other reason.
         scheduler.add_job(
             lambda: _job_itensity_member_import(app),
-            CronTrigger(hour=2, minute=0),
+            CronTrigger(hour=4, minute=0),
             id="itensity_member_import",
             replace_existing=True,
             misfire_grace_time=3600,
@@ -456,7 +462,7 @@ def init_scheduler(app) -> None:
     scheduler.start()
     _scheduler = scheduler
     app.logger.info(
-        "Scheduler started: itensity_member_import (02:00), "
+        "Scheduler started: itensity_member_import (04:00), "
         "ptp_automations (02:30), collections_workflow (every 15m), "
         "itensity_transactions_sweep (every 15m), sales_decision_followups (every 15m)"
     )

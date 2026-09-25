@@ -2,7 +2,7 @@ import random
 import time
 from functools import wraps
 
-from flask import (Blueprint, current_app, flash, g, redirect,
+from flask import (Blueprint, current_app, flash, g, jsonify, redirect,
                    render_template, request, session, url_for)
 from flask_mail import Message
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -63,15 +63,30 @@ def session_tenant_ok() -> bool:
     return session.get("tenant_slug") == g.get("tenant_slug")
 
 
+def _unauthenticated_response():
+    """A fetch()/JSON caller gets a 401 body it can parse, not the login
+    page's HTML — otherwise `r.json()` throws on the redirect target and the
+    caller never learns it just needs to sign in again."""
+    if request.is_json:
+        return jsonify(ok=False, error="Login required"), 401
+    return redirect(url_for("auth.login"))
+
+
+def _session_expired_response():
+    session.clear()
+    if request.is_json:
+        return jsonify(ok=False, error="Your session expired. Please sign in again."), 401
+    flash("Your session expired. Please sign in again.", "warning")
+    return redirect(url_for("auth.login"))
+
+
 def login_required(view):
     @wraps(view)
     def wrapped_view(**kwargs):
         if not session.get("user_id"):
-            return redirect(url_for("auth.login"))
+            return _unauthenticated_response()
         if not session_tenant_ok():
-            session.clear()
-            flash("Your session expired. Please sign in again.", "warning")
-            return redirect(url_for("auth.login"))
+            return _session_expired_response()
         # Force password change before accessing anything else
         if session.get("must_change_password") and request.endpoint != "auth.change_password":
             flash("You must change your password before continuing.", "warning")
@@ -107,17 +122,17 @@ def permission_required(perm: str):
         @wraps(view)
         def wrapped_view(**kwargs):
             if not session.get("user_id"):
-                return redirect(url_for("auth.login"))
+                return _unauthenticated_response()
             if not session_tenant_ok():
-                session.clear()
-                flash("Your session expired. Please sign in again.", "warning")
-                return redirect(url_for("auth.login"))
+                return _session_expired_response()
             if session.get("must_change_password") and request.endpoint != "auth.change_password":
                 flash("You must change your password before continuing.", "warning")
                 return redirect(url_for("auth.change_password"))
             if session.get("role") == "admin":
                 return view(**kwargs)
             if perm not in session.get("permissions", []):
+                if request.is_json:
+                    return jsonify(ok=False, error="You don't have permission to do that"), 403
                 flash("You don't have permission to access that page.", "warning")
                 return redirect(url_for("dashboard.dashboard"))
             return view(**kwargs)

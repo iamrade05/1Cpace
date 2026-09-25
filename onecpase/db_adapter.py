@@ -26,9 +26,20 @@ _TRANSLATIONS = [
     (re.compile(r"datetime\(\s*'now'\s*,\s*'utc'\s*\)", re.IGNORECASE), "NOW()"),
     (re.compile(r"datetime\(\s*'now'\s*\)", re.IGNORECASE), "NOW()"),
 
-    # date('now', '+N day') → (CURRENT_DATE + INTERVAL 'N day')
-    (re.compile(r"date\(\s*'now'\s*,\s*'\+(\d+)\s+day'\s*\)", re.IGNORECASE),
-     r"(CURRENT_DATE + INTERVAL '\1 day')"),
+    # date('now', '+N day(s)'/'-N month(s)'/etc) → (CURRENT_DATE + INTERVAL '...')
+    # datetime(...) equivalent → (NOW() + INTERVAL '...')
+    # date(?, '...') equivalent, where the first argument is a bound parameter
+    # rather than the literal 'now' → (%s::date + INTERVAL '...'); the '?' is
+    # left in place here so the later `?` -> `%s` pass still converts it.
+    # Postgres INTERVAL accepts singular or plural units and a signed number
+    # inside the literal, so plus/minus and day/days/month/months are all one
+    # pattern rather than needing separate rules for each.
+    (re.compile(r"\bdate\(\s*'now'\s*,\s*'([+-]?\d+)\s+(days?|months?)'\s*\)", re.IGNORECASE),
+     r"(CURRENT_DATE + INTERVAL '\1 \2')"),
+    (re.compile(r"\bdatetime\(\s*'now'\s*,\s*'([+-]?\d+)\s+(days?|months?)'\s*\)", re.IGNORECASE),
+     r"(NOW() + INTERVAL '\1 \2')"),
+    (re.compile(r"\bdate\(\s*\?\s*,\s*'([+-]?\d+)\s+(days?|months?)'\s*\)", re.IGNORECASE),
+     r"(?::date + INTERVAL '\1 \2')"),
 
     # date('now') → CURRENT_DATE
     (re.compile(r"date\(\s*'now'\s*\)", re.IGNORECASE), "CURRENT_DATE"),

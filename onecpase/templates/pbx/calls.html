@@ -4,12 +4,17 @@
   <h1>PBX Call Log</h1>
   <p>Calls are automatically linked to leads or members by phone number. Record the outcome to complete the CRM timeline.</p>
   <table>
-    <thead><tr><th>Time</th><th>Direction</th><th>Contact</th><th>Status</th><th>Talk</th><th>Outcome / Next action</th></tr></thead>
+    <thead><tr><th>Time</th><th>Direction</th><th>Staff</th><th>Contact</th><th>Status</th><th>Talk</th><th>Outcome / Next action</th></tr></thead>
     <tbody>
     {% for c in calls %}
       <tr>
         <td>{{ c.start_time or c.created_at }}</td>
         <td>{{ c.direction }}</td>
+        <td>
+          {% if c.staff_name %}{{ c.staff_name }}
+          {% elif c.account_code %}Unknown code {{ c.account_code }}
+          {% else %}{{ c.caller }}{% endif %}
+        </td>
         <td>
           {% if c.lead_id %}<a href="{{ url_for('leads.lead_detail', lid=c.lead_id) }}">Lead #{{ c.lead_id }}</a>
           {% elif c.member_id %}<a href="{{ url_for('members.member_detail', mid=c.member_id) }}">Member #{{ c.member_id }}</a>
@@ -37,7 +42,7 @@
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="6">No PBX calls recorded.</td></tr>
+      <tr><td colspan="7">No PBX calls recorded.</td></tr>
     {% endfor %}
     </tbody>
   </table>

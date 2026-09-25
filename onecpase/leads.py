@@ -342,6 +342,13 @@ def _journey_step(db, lead) -> str:
     # application is precisely the work still outstanding.
     if application_open:
         return "membership"
+    # "Client Joined -> Membership" marks the lead joined immediately (so the
+    # attendance is never lost) and hands off to convert_lead() to actually
+    # create the application. If that handoff is abandoned partway, the lead
+    # is stuck joined with no application - closing the journey here would
+    # strand the consultant with no way back to finish the conversion.
+    if lead["lead_status"] == "joined" and application is None:
+        return "convert_pending"
     if lead["lead_status"] in FINAL_STATUSES:
         return "closed"
     if lead["entry_path"] == "direct_show" and lead["lead_status"] == "show":
@@ -1340,6 +1347,16 @@ def funnel_report():
         if prospect["lead_status"] == "recycle" and prospect["recycle_reason"]
     ).most_common()
 
+    # PBX calls made, split Sales (against a lead) vs Collections (against a
+    # collections task) — logged at dial time so a call counts even if staff
+    # never records an outcome for it.
+    call_counts = db.execute(
+        """SELECT
+             SUM(CASE WHEN lead_id IS NOT NULL THEN 1 ELSE 0 END) AS sales_calls,
+             SUM(CASE WHEN collection_task_id IS NOT NULL THEN 1 ELSE 0 END) AS collections_calls
+           FROM pbx_call_logs WHERE direction='outbound'"""
+    ).fetchone()
+
     return render_template(
         "leads/funnel.html",
         overall=overall,
@@ -1348,6 +1365,8 @@ def funnel_report():
         stage_keys=stage_keys,
         rejection_reasons=rejection_reasons,
         recycle_reason_counts=recycle_reason_counts,
+        sales_calls_made=call_counts["sales_calls"] or 0,
+        collections_calls_made=call_counts["collections_calls"] or 0,
     )
 
 
@@ -1383,13 +1402,17 @@ def convert_lead(lid: int):
         )
         return redirect(url_for("leads.lead_detail", lid=lid))
 
+    tariffs = db.execute(
+        "SELECT * FROM tariffs WHERE active=1 ORDER BY sort_order, name"
+    ).fetchall()
+
     if request.method == "POST":
         package = request.form.get("package", lead["interested_package"] or "").strip()
         id_number = request.form.get("id_number", "").strip()
         date_of_birth = request.form.get("date_of_birth", "")
         if not id_number:
             flash("ID number is required to create a member record.", "error")
-            return render_template("leads/convert.html", lead=lead)
+            return render_template("leads/convert.html", lead=lead, tariffs=tariffs)
 
         id_hash = hash_for_lookup(id_number)
         if id_hash:
@@ -1405,7 +1428,7 @@ def convert_lead(lid: int):
                 f"A member with that ID number already exists (member #{duplicate['id']}). Link or close this prospect as Existing Member.",
                 "error",
             )
-            return render_template("leads/convert.html", lead=lead)
+            return render_template("leads/convert.html", lead=lead, tariffs=tariffs)
 
         if not sa_id_luhn_valid(id_number):
             flash(
@@ -1462,18 +1485,22 @@ def convert_lead(lid: int):
             )
             from .sales_pipeline import current_sales_stage, transition_sales_stage
             stage = current_sales_stage(lead)
-            if stage == "SHOW":
+            if stage in ("SHOW", "CONSULTATION"):
                 transition_sales_stage(db, lid, "APPLICATION_INVITED", session.get("user_id"),
                                        reason="Membership application initiated", commit=False)
                 transition_sales_stage(db, lid, "APPLICATION_STARTED", session.get("user_id"),
                                        reason="Membership application created", commit=False)
-            elif stage == "CONSULTATION":
-                transition_sales_stage(db, lid, "APPLICATION_INVITED", session.get("user_id"),
-                                       reason="Membership application initiated", commit=False)
+            elif stage == "APPLICATION_INVITED":
+                # A manager can move the canonical stage straight to
+                # APPLICATION_INVITED (Controlled Sales Stage) before the
+                # actual application is created here - only one hop remains.
                 transition_sales_stage(db, lid, "APPLICATION_STARTED", session.get("user_id"),
                                        reason="Membership application created", commit=False)
-            else:
-                raise ValueError("Lead must be at SHOW or CONSULTATION before an application can be started.")
+            elif stage != "APPLICATION_STARTED":
+                raise ValueError(
+                    "Lead must be at SHOW, CONSULTATION, or already invited to "
+                    "apply before an application can be started."
+                )
             db.execute(
                 """UPDATE leads SET lead_status='joined', converted_member_id=?,
                    closure_reason=NULL, next_action='Complete membership application', next_action_at=datetime('now'),
@@ -1490,12 +1517,13 @@ def convert_lead(lid: int):
             )
             db.commit()
             flash(
-                f"Prospect converted — Application #{app_id} opened and the same journey is linked to member #{member_id}.",
+                f"Prospect converted — Application #{app_id} opened. Upload the signed "
+                "contract and bank statement to unlock the Itensity push.",
                 "success",
             )
-            return redirect(url_for("members.member_edit", mid=member_id))
+            return redirect(url_for("applications.application_detail", aid=app_id))
         except Exception as exc:
             db.rollback()
             flash(f"Error: {exc}", "error")
 
-    return render_template("leads/convert.html", lead=lead)
+    return render_template("leads/convert.html", lead=lead, tariffs=tariffs)
