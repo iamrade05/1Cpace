@@ -1,0 +1,20 @@
+{# A member-facing page for the shared contract link. Deliberately not the staff
+   layout: the person reading it is not signed in and must not see staff navigation. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}Contract{% endblock %}</title>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #f3f4f6; color: #1F2933; margin: 0; }
+    .box { max-width: 560px; margin: 60px auto; background: #fff; border-radius: 10px;
+           box-shadow: 0 4px 20px rgba(0,0,0,.1); padding: 32px 36px; }
+    h2 { margin: 0 0 12px; }
+    p  { line-height: 1.5; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="box">{% block content %}{% endblock %}</div>
+</body>
+</html>

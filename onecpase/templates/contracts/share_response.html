@@ -1,3 +1,7 @@
-{% extends "base.html" %}
-{% block title %}Contract Response | 1Cpase{% endblock %}
-{% block content %}<div class="card" style="max-width:600px;margin:60px auto;"><div class="card-body"><h2>{{ 'Contract approved' if approved else 'Contract declined' }}</h2><p>{{ 'Thank you. Elev8 Health and Fitness Gym has recorded your approval.' if approved else 'Your response has been recorded. The gym will contact you to discuss the contract.' }}</p></div></div>{% endblock %}
+{% extends "contracts/_public_page.html" %}
+{% set gym = (g.get('tenant') or {}).get('name') or 'The gym' %}
+{% block title %}Contract Response{% endblock %}
+{% block content %}
+<h2>{{ 'Contract approved' if approved else 'Contract declined' }}</h2>
+<p>{{ 'Thank you. ' ~ gym ~ ' has recorded your approval.' if approved else 'Your response has been recorded. ' ~ gym ~ ' will contact you to discuss the contract.' }}</p>
+{% endblock %}

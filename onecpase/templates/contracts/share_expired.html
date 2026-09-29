@@ -1,3 +1,7 @@
-{% extends "base.html" %}
-{% block title %}Contract Link Unavailable | 1Cpase{% endblock %}
-{% block content %}<div class="card" style="max-width:600px;margin:60px auto;"><div class="card-body"><h2>Contract link unavailable</h2><p>This contract link has expired, already been used, or has been replaced. Please contact Elev8 Health and Fitness Gym for a new link.</p></div></div>{% endblock %}
+{% extends "contracts/_public_page.html" %}
+{% set gym = (g.get('tenant') or {}).get('name') or 'the gym' %}
+{% block title %}Contract Link Unavailable{% endblock %}
+{% block content %}
+<h2>Contract link unavailable</h2>
+<p>This contract link has expired, already been used, or has been replaced. Please contact {{ gym }} for a new link.</p>
+{% endblock %}

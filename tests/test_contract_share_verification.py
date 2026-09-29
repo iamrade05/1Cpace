@@ -215,6 +215,45 @@ def test_no_code_is_issued_when_it_cannot_be_delivered(app, client):
     assert _token(app)["otp_hash"] is None
 
 
+def _approve(client, sent, path):
+    _act(client, path, action="send_code")
+    _act(client, path, action="verify_code", code=sent.code)
+    return _act(client, path, response="approved")
+
+
+def _shows_staff_navigation(page):
+    return "Sign Out" in page or "Dashboard" in page
+
+
+def test_the_confirmation_page_shows_a_member_no_staff_navigation(app, client, sent):
+    path = _share_link(client, _member(app))
+
+    page = _text(_approve(client, sent, path))
+
+    assert "Contract approved" in page
+    assert not _shows_staff_navigation(page)
+
+
+def test_the_declined_page_shows_a_member_no_staff_navigation(app, client):
+    path = _share_link(client, _member(app))
+
+    page = _text(_act(client, path, response="declined"))
+
+    assert "Contract declined" in page
+    assert not _shows_staff_navigation(page)
+
+
+def test_a_used_link_shows_a_member_no_staff_navigation(app, client, sent):
+    path = _share_link(client, _member(app))
+    _approve(client, sent, path)
+
+    response = client.get(path)
+
+    assert response.status_code == 410
+    assert "unavailable" in _text(response)
+    assert not _shows_staff_navigation(_text(response))
+
+
 def test_declining_needs_no_code(app, client):
     path = _share_link(client, _member(app))
 
