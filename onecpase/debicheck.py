@@ -170,7 +170,15 @@ def _undecrypted_fields_error(mandate: dict[str, Any]) -> str | None:
     )
 
 
+IMPORTED_MANDATE_MESSAGE = (
+    "This mandate was imported from NuPay - it is already live there, so it must not be "
+    "sent to NuPay again."
+)
+
+
 def push_mandate_to_nupay(mandate: dict[str, Any]) -> tuple[bool, str]:
+    if mandate.get("imported_from_nupay"):
+        return False, IMPORTED_MANDATE_MESSAGE
     error = _undecrypted_fields_error(mandate)
     if error:
         return False, error
@@ -182,6 +190,8 @@ def push_mandate_to_nupay_manual_review(mandate: dict[str, Any]) -> tuple[bool, 
     """Fill the mandate on NuPay in a visible browser and let a person handle
     Submit/CONFIRM/DONE themselves — see push_mandate_manual_review()'s
     docstring for why. Blocks until they finish (or close the window)."""
+    if mandate.get("imported_from_nupay"):
+        return False, IMPORTED_MANDATE_MESSAGE
     error = _undecrypted_fields_error(mandate)
     if error:
         return False, error
@@ -208,7 +218,7 @@ def record_push_result(db, mandate_id: int, success: bool, message: str) -> None
     db.execute(
         """UPDATE debicheck_mandates
            SET status = ?, submitted_at = ?, nupay_response = ?, updated_at = datetime('now')
-           WHERE id = ?""",
+           WHERE id = ? AND COALESCE(imported_from_nupay, 0) = 0""",
         ("submitted" if success else "failed",
          datetime.now().isoformat(timespec="seconds"), message, mandate_id),
     )

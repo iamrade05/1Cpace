@@ -13,6 +13,7 @@
     <div><h2>Finance DebiCheck Mandates</h2><div style="font-size:.75rem;color:#6b7280;margin-top:3px;">NuPay debit-order authorization</div></div>
     <div style="display:flex;gap:8px;">
       <a href="{{ url_for('debicheck.coverage') }}" class="btn btn-ghost btn-sm">Mandate Coverage</a>
+      <a href="{{ url_for('debicheck.sync_with_nupay') }}" class="btn btn-ghost btn-sm">Sync with NuPay</a>
       {% if has_perm('new_debicheck') %}<a href="{{ url_for('debicheck.add') }}" class="btn btn-primary btn-sm">+ New DebiCheck</a>{% endif %}
     </div>
   </div>

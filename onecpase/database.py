@@ -368,6 +368,15 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpase") -> Non
     ]:
         _ensure_column(db, backend, "contract_share_tokens", col, defn)
 
+    # DebiCheck mandates recorded from NuPay's own report rather than created here: they
+    # are already live at NuPay, so they carry NuPay's contract reference and are never
+    # sent to NuPay again.
+    for col, defn in [
+        ("contract_reference",  "TEXT"),
+        ("imported_from_nupay", "INTEGER DEFAULT 0"),
+    ]:
+        _ensure_column(db, backend, "debicheck_mandates", col, defn)
+
     for col, defn in [
         ("reg_no", "TEXT"),
         ("address", "TEXT"),

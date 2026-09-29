@@ -9,6 +9,7 @@
     <div><div style="font-size:.7rem;color:#9ca3af;text-transform:uppercase;font-weight:700;">{{ label }}</div><div style="margin-top:4px;font-weight:600;overflow-wrap:anywhere;">{{ value or '—' }}</div></div>
     {% endfor %}
   </div>
+  {% if mandate.imported_from_nupay %}<div style="margin:0 20px 20px;padding:14px;background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;border-radius:8px;font-size:.85rem;"><strong>Imported from NuPay</strong> &middot; contract {{ mandate.contract_reference or '—' }}. This mandate is already live at NuPay, so it is never sent again from here.</div>{% endif %}
   {% if mandate.nupay_response %}<div style="margin:0 20px 20px;padding:14px;background:#f3f4f6;border-radius:8px;font-size:.82rem;overflow-wrap:anywhere;"><strong>NuPay response:</strong> {{ mandate.nupay_response }}</div>{% endif %}
   <div style="padding:0 20px 20px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
     <a href="{{ url_for('debicheck.index') }}" class="btn btn-ghost">Back</a>
@@ -16,7 +17,7 @@
     {% if has_perm('debicheck_mandates') %}<form method="post" action="{{ url_for('debicheck.check_status', mandate_id=mandate.id) }}"><button class="btn btn-secondary">↻ Check NuPay Status</button></form>{% endif %}
     {% if mandate.status == 'reviewing' %}
       <span class="btn btn-ghost" style="cursor:default;">⏳ Waiting for you to finish in the NuPay browser window</span>
-    {% elif has_perm('new_debicheck') and mandate.status != 'active' %}
+    {% elif has_perm('new_debicheck') and mandate.status != 'active' and not mandate.imported_from_nupay %}
       <form method="post" action="{{ url_for('debicheck.review_on_nupay', mandate_id=mandate.id) }}">
         <button class="btn btn-primary">Review &amp; Submit on NuPay</button>
       </form>

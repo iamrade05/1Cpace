@@ -5,9 +5,11 @@ from datetime import date
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 
+from . import nupay_driver, nupay_sync
 from .auth import permission_required
 from .database import get_db, member_activity
 from .debicheck import (
+    IMPORTED_MANDATE_MESSAGE,
     check_mandate_status_on_nupay,
     insert_mandate,
     itensity_client_ref_number,
@@ -101,6 +103,41 @@ def coverage():
         status_filter=status_filter,
         statuses=statuses,
     )
+
+
+@debicheck_bp.route("/sync", methods=["GET", "POST"])
+@permission_required("debicheck_mandates")
+def sync_with_nupay():
+    """Log in to NuPay once and bring every mandate's status in line with its
+    Mandate Report, instead of checking members one at a time (each of those logs
+    in and downloads the whole report again). Preview changes nothing."""
+    result = None
+    if request.method == "POST":
+        action = request.form.get("action")
+        apply_changes = action == "apply"          # update the mandates V8 already has
+        record_missing = action == "import"        # record live NuPay mandates V8 lacks
+        rows, message = nupay_driver.fetch_mandate_report_rows()
+        if rows is None:
+            flash(message, "error")
+        else:
+            db = get_db()
+            result = nupay_sync.sync_from_report(
+                db, rows, apply=apply_changes, actor_id=session.get("user_id"),
+                import_missing=record_missing,
+            )
+            if apply_changes or record_missing:
+                db.commit()
+            if apply_changes:
+                flash(
+                    f"{result['updated']} mandate(s) updated from NuPay's report of "
+                    f"{result['report_rows']} rows.", "success",
+                )
+            if record_missing:
+                flash(
+                    f"{result['import']['recorded']} mandate(s) recorded from NuPay's report of "
+                    f"{result['report_rows']} rows.", "success",
+                )
+    return render_template("debicheck/sync.html", result=result)
 
 
 def _submission_data(member, form):
@@ -316,6 +353,9 @@ def push(mandate_id):
     if row is None:
         flash("DebiCheck mandate not found.", "warning")
         return redirect(url_for("debicheck.index"))
+    if row["imported_from_nupay"]:
+        flash(IMPORTED_MANDATE_MESSAGE, "error")
+        return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
     if not _member_itensity_ref(db, row["member_id"]):
         flash(
             "This member hasn't been pushed to Itensity yet. Push to Itensity "
@@ -378,6 +418,9 @@ def review_on_nupay(mandate_id):
     if row is None:
         flash("DebiCheck mandate not found.", "warning")
         return redirect(url_for("debicheck.index"))
+    if row["imported_from_nupay"]:
+        flash(IMPORTED_MANDATE_MESSAGE, "error")
+        return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
     if row["status"] == "reviewing":
         flash("This mandate already has a NuPay review window open. Finish or close it first.", "warning")
         return redirect(url_for("debicheck.detail", mandate_id=mandate_id))

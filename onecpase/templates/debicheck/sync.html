@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Sync with NuPay | 1Cpase{% endblock %}
+{% block page_title %}Sync with NuPay{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-header">
+    <div>
+      <h2>Bring every mandate in line with NuPay</h2>
+      <div style="font-size:.75rem;color:#6b7280;margin-top:3px;">
+        Logs in to NuPay once, reads the whole Mandate Report, and settles every mandate from it.
+        It only reads from NuPay. It takes about a minute.
+      </div>
+    </div>
+    <a href="{{ url_for('debicheck.index') }}" class="btn btn-ghost btn-sm">&larr; DebiCheck</a>
+  </div>
+  <div class="card-body" style="padding:16px 20px;">
+    <form method="post" style="display:flex;gap:10px;flex-wrap:wrap;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-secondary" name="action" value="preview" type="submit">Preview (no changes)</button>
+      <button class="btn btn-primary" name="action" value="apply" type="submit"
+              onclick="return confirm('Update mandate statuses from NuPay now?');">Apply status changes</button>
+      <button class="btn btn-primary" name="action" value="import" type="submit"
+              onclick="return confirm('Record the live NuPay mandates V8 does not have? Each is marked as imported and never sent to NuPay again.');">Record missing mandates</button>
+    </form>
+  </div>
+</div>
+
+{% if result %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-header">
+    <h2>{% if result.applied %}Applied{% else %}Preview{% endif %}
+      <span style="font-weight:400;color:#6b7280;font-size:.85rem;">&middot; NuPay's report has {{ result.report_rows }} rows</span></h2>
+  </div>
+  <div class="card-body" style="padding:16px 20px;">
+    <p style="margin:0 0 8px;">
+      NuPay's rows by status:
+      {% for status, count in result.report_by_status.items()|sort %}
+      <strong>{{ count }}</strong> {{ status }}{% if not loop.last %} &middot; {% endif %}
+      {% endfor %}
+    </p>
+    <p style="margin:0 0 8px;">
+      {{ result.mandates_checked }} mandate(s) in V8 were checked:
+      <strong>{{ result.updated }}</strong> {% if result.applied %}were updated{% else %}would be updated{% endif %},
+      {{ result.unchanged }} already agree,
+      {{ result.not_found }} are not in NuPay's report,
+      {{ result.no_reference }} have no reference to look up.
+    </p>
+
+    {% if result.changes %}
+    <table>
+      <thead><tr><th>Member</th><th>Mandate</th><th>Was</th><th>Now</th></tr></thead>
+      <tbody>
+        {% for change in result.changes[:200] %}
+        <tr>
+          <td><a href="{{ url_for('members.member_detail', mid=change.member_id) }}">{{ change.member }}</a></td>
+          <td><a href="{{ url_for('debicheck.detail', mandate_id=change.mandate_id) }}">#{{ change.mandate_id }}</a></td>
+          <td>{{ change.old }}</td><td><strong>{{ change.new }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if result.changes|length > 200 %}<p style="color:#6b7280;">Showing the first 200 of {{ result.changes|length }}.</p>{% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>Live at NuPay with no V8 record</h2></div>
+  <div class="card-body" style="padding:16px 20px;">
+    <p style="margin:0 0 8px;">
+      NuPay lists <strong>{{ result.unrecorded.live_without_local_record }}</strong> live mandate(s) that V8 has no record of.
+      <strong>{{ result.unrecorded.matched_to_member }}</strong> belong to members V8 knows
+      ({{ result.unrecorded.member_already_has_a_mandate }} of those already have a different mandate record),
+      and {{ result.unrecorded.no_member }} match nobody in V8.
+    </p>
+    <p style="margin:0 0 8px;color:#6b7280;">
+      Until a member's mandate is recorded in V8, the access rule sees them as having no DebiCheck.
+      The next card shows which of these can be recorded.
+    </p>
+    {% if result.unrecorded.examples %}
+    <table>
+      <thead><tr><th>Member</th><th>NuPay contract</th></tr></thead>
+      <tbody>
+        {% for example in result.unrecorded.examples %}
+        <tr>
+          <td><a href="{{ url_for('members.member_detail', mid=example.member_id) }}">{{ example.member }}</a></td>
+          <td>{{ example.contract_reference or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p style="color:#6b7280;">Showing the first {{ result.unrecorded.examples|length }}.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% set imp = result['import'] %}
+<div class="card" style="margin-top:16px;">
+  <div class="card-header"><h2>Recording them in V8</h2></div>
+  <div class="card-body" style="padding:16px 20px;">
+    <p style="margin:0 0 8px;">
+      <strong>{{ imp.to_record }}</strong> mandate(s) {% if imp.applied %}were recorded{% else %}would be recorded{% endif %},
+      one for each member whose Itensity number is in NuPay's client reference.
+      Recorded mandates are marked as imported, keep NuPay's contract reference, and are never sent to NuPay again.
+      Members' applications are not changed.
+    </p>
+    <p style="margin:0 0 8px;color:#6b7280;">
+      Held back: <strong>{{ imp.held_id_only }}</strong> matched only by the account holder's SA ID (that could be a parent paying for a child),
+      {{ imp.member_already_has_a_mandate }} for members who already have a mandate record,
+      {{ imp.superseded }} older duplicate(s) of a member's latest mandate,
+      {{ imp.no_member }} for nobody in V8.
+    </p>
+    {% if imp.examples %}
+    <table>
+      <thead><tr><th>Member</th><th>NuPay contract</th></tr></thead>
+      <tbody>
+        {% for example in imp.examples %}
+        <tr>
+          <td><a href="{{ url_for('members.member_detail', mid=example.member_id) }}">{{ example.member }}</a></td>
+          <td>{{ example.contract_reference or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p style="color:#6b7280;">Showing the first {{ imp.examples|length }}.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if result.missing_from_active_list.count %}
+<div class="card" style="margin-top:16px;">
+  <div class="card-header"><h2>V8 shows these as active, but NuPay's active list does not</h2></div>
+  <div class="card-body" style="padding:16px 20px;">
+    <p style="margin:0 0 8px;color:#6b7280;">
+      NuPay's report lists only active mandates, so these may have been cancelled at NuPay, or may simply not
+      match. Nothing has been changed &mdash; check them.
+    </p>
+    <table>
+      <thead><tr><th>Member</th><th>Mandate</th><th>V8 status</th></tr></thead>
+      <tbody>
+        {% for item in result.missing_from_active_list.examples %}
+        <tr>
+          <td><a href="{{ url_for('members.member_detail', mid=item.member_id) }}">{{ item.member }}</a></td>
+          <td><a href="{{ url_for('debicheck.detail', mandate_id=item.mandate_id) }}">#{{ item.mandate_id }}</a></td>
+          <td>{{ item.status }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if result.missing_from_active_list.count > result.missing_from_active_list.examples|length %}
+    <p style="color:#6b7280;">Showing the first {{ result.missing_from_active_list.examples|length }} of {{ result.missing_from_active_list.count }}.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -799,29 +799,22 @@ def _normalize_mandate_status(*values: Any) -> str | None:
     return None
 
 
-def refresh_mandate_status(mandate: dict[str, Any]) -> MandateStatusResult:
-    """Look up a mandate's live status via the new portal's Mandate Report
-    page (Alpine/Tabulator table embedded directly in the page HTML)."""
+def fetch_mandate_report_rows(
+    mandate: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]] | None, str]:
+    """Log in to NuPay once and read its whole Mandate Report.
+
+    Returns (rows, message); rows is None when the report could not be read. The
+    single-mandate check and the bulk sync both read it this way: the report
+    always holds every mandate, so looking up one member costs the same login
+    and download as looking up all of them."""
     missing = _require_creds()
     if missing:
-        return MandateStatusResult(False, "unknown", "Missing .env value(s): " + ", ".join(missing))
+        return None, "Missing .env value(s): " + ", ".join(missing)
 
-    merchant_id = str(mandate.get("merchant_id") or DEFAULT_ACCESS_ID)
+    merchant_id = str((mandate or {}).get("merchant_id") or DEFAULT_ACCESS_ID)
     access_id = _env("NUPAY_NEW_ACCESS_ID") or merchant_id or DEFAULT_ACCESS_ID
     headed = os.getenv("NUPAY_NEW_HEADED", "0") == "1"
-
-    # Match against the specific field each identifier corresponds to, not
-    # the whole row — and only when long enough to be reliably unique.
-    # client_ref2 (a 4-digit staff number) is deliberately excluded: it's
-    # far too short to avoid false positives across a report with thousands
-    # of rows (confirmed empirically — it collided with an unrelated
-    # mandate's employer_code on the very first real test).
-    contract_reference = str(mandate.get("contract_reference") or "").strip().lower()
-    client_ref1 = str(mandate.get("client_ref1") or "").strip().lower()
-    account_number = str(mandate.get("account_number") or "").strip().lower()
-    member_join_date = str(mandate.get("member_join_date") or "").strip()
-    if not (contract_reference or len(client_ref1) >= 6 or len(account_number) >= 6):
-        return MandateStatusResult(False, "unknown", "No sufficiently specific reference available for NuPay lookup.")
 
     PLAYWRIGHT_LOCK.acquire()
     try:
@@ -862,16 +855,44 @@ def refresh_mandate_status(mandate: dict[str, Any]) -> MandateStatusResult:
             finally:
                 browser.close()
     except Exception as exc:
-        return MandateStatusResult(False, "unknown", f"NuPay new portal status check failed: {exc}")
+        return None, f"NuPay new portal status check failed: {exc}"
     finally:
         PLAYWRIGHT_LOCK.release()
 
     if not raw:
-        return MandateStatusResult(False, "unknown", "Mandate report table not found on the new portal page.")
+        return None, "Mandate report table not found on the new portal page."
 
     rows = _parse_tabulator_rows(raw)
     if rows is None:
-        return MandateStatusResult(False, "unknown", "Could not parse the new portal's mandate report table.")
+        return None, "Could not parse the new portal's mandate report table."
+    return rows, f"{len(rows)} rows read"
+
+
+def _acceptance_key(row: dict[str, Any]) -> str:
+    # Full-precision timestamp when available ('2024-09-18 11:33:03.843'),
+    # else the plain created date - both sort correctly as ISO-ish strings,
+    # newest last.
+    return str(row.get("mandate_acceptance_date") or row.get("date_created") or "")
+
+
+def match_mandate_row(
+    rows: list[dict[str, Any]], mandate: dict[str, Any]
+) -> tuple[dict[str, Any] | None, bool]:
+    """Pick the report row that belongs to *mandate*.
+
+    Returns (row, pre_join_only). pre_join_only is True when the only rows found
+    were accepted before the member joined, so the row probably belongs to
+    someone else's earlier mandate and its status must not be applied."""
+    # Match against the specific field each identifier corresponds to, not
+    # the whole row — and only when long enough to be reliably unique.
+    # client_ref2 (a 4-digit staff number) is deliberately excluded: it's
+    # far too short to avoid false positives across a report with thousands
+    # of rows (confirmed empirically — it collided with an unrelated
+    # mandate's employer_code on the very first real test).
+    contract_reference = str(mandate.get("contract_reference") or "").strip().lower()
+    client_ref1 = str(mandate.get("client_ref1") or "").strip().lower()
+    account_number = str(mandate.get("account_number") or "").strip().lower()
+    member_join_date = str(mandate.get("member_join_date") or "").strip()
 
     def _field_match(value: str, row_value: Any) -> bool:
         if not value or len(value) < 6:
@@ -880,12 +901,6 @@ def refresh_mandate_status(mandate: dict[str, Any]) -> MandateStatusResult:
         if not row_str:
             return False
         return value in row_str or row_str.endswith(value)
-
-    def _acceptance_key(row: dict[str, Any]) -> str:
-        # Full-precision timestamp when available ('2024-09-18 11:33:03.843'),
-        # else the plain created date — both sort correctly as ISO-ish
-        # strings, newest last.
-        return str(row.get("mandate_acceptance_date") or row.get("date_created") or "")
 
     # Client reference is the definitive match — it's the identifier this
     # app itself assigns and controls, unlike contract_reference/account
@@ -929,6 +944,29 @@ def refresh_mandate_status(mandate: dict[str, Any]) -> MandateStatusResult:
     else:
         match = None
 
+    return match, stale_pre_join
+
+
+def refresh_mandate_status(mandate: dict[str, Any]) -> MandateStatusResult:
+    """Look up a mandate's live status via the new portal's Mandate Report
+    page (Alpine/Tabulator table embedded directly in the page HTML)."""
+    missing = _require_creds()
+    if missing:
+        return MandateStatusResult(False, "unknown", "Missing .env value(s): " + ", ".join(missing))
+
+    contract_reference = str(mandate.get("contract_reference") or "").strip().lower()
+    client_ref1 = str(mandate.get("client_ref1") or "").strip().lower()
+    account_number = str(mandate.get("account_number") or "").strip().lower()
+    member_join_date = str(mandate.get("member_join_date") or "").strip()
+    if not (contract_reference or len(client_ref1) >= 6 or len(account_number) >= 6):
+        return MandateStatusResult(False, "unknown", "No sufficiently specific reference available for NuPay lookup.")
+
+    rows, read_message = fetch_mandate_report_rows(mandate)
+    if rows is None:
+        return MandateStatusResult(False, "unknown", read_message)
+
+    match, stale_pre_join = match_mandate_row(rows, mandate)
+
     if match is None:
         return MandateStatusResult(
             False, "unknown",
@@ -963,3 +1001,153 @@ def wait_for_mandate_status(
     delay_seconds: int = 0,
 ) -> MandateStatusResult:
     return refresh_mandate_status(mandate)
+
+
+# ── Cancelling one mandate (Transaction Maintenance) ─────────────────────────
+#
+# Done by hand this way: Transaction Maintenance -> Mandate Maintenance (No
+# Authentication required) -> Change Type "CC" (cancellation) -> search by contract
+# reference -> CONTINUE lists the mandate -> tick the header checkbox, FILTER SELECTED,
+# tick again -> SUBMIT. That header checkbox selects EVERY listed row, so this only ever
+# goes ahead when exactly one mandate is listed and it is the one asked for.
+
+@dataclass
+class CancelResult:
+    ready: bool            # the guarded flow reached the point where SUBMIT could be pressed
+    submitted: bool        # SUBMIT was actually pressed (True also when the outcome is unknown)
+    message: str
+    ok: bool | None = None  # NuPay's reply read as success / failure / unclear (only after submitting)
+    evidence: str = ""      # screenshot of NuPay's reply, when a folder was given
+
+
+def check_cancellation_target(row_texts: list[str], contract_reference: str | None) -> str | None:
+    """Why NOT to go ahead, or None when exactly one mandate is listed and it is the target."""
+    target = " ".join(str(contract_reference or "").split()).lower()
+    if not target:
+        return "No contract reference given."
+    if not row_texts:
+        return ("NuPay lists no mandate for that contract reference - it may already be "
+                "cancelled, or is not open to cancellation.")
+    if len(row_texts) > 1:
+        return (f"NuPay listed {len(row_texts)} mandates; refusing to select them all. "
+                "Only a single mandate may be cancelled at a time.")
+    if target not in " ".join(row_texts[0].split()).lower():
+        return "The mandate NuPay listed is not the one asked for; refusing."
+    return None
+
+
+_REPLY_FAILURE_WORDS = ("error", "fail", "unable", "invalid", "reject", "not found", "could not")
+_REPLY_SUCCESS_WORDS = ("success", "submitted", "accepted", "processed", "completed")
+
+
+def read_maintenance_reply(texts: list[str]) -> bool | None:
+    """Read NuPay's reply page conservatively: any failure wording wins, and anything
+    unrecognised is None (unknown) rather than a guess at success."""
+    joined = " ".join(texts).lower()
+    if any(word in joined for word in _REPLY_FAILURE_WORDS):
+        return False
+    if any(word in joined for word in _REPLY_SUCCESS_WORDS):
+        return True
+    return None
+
+
+def extract_maintenance_result(body_text: str) -> str:
+    """The outcome of a Transaction Maintenance submission lives in the "Mandate
+    Maintenance Result" table's Result column - the maintenance-ws page has no
+    heading/alert/toast element carrying it. An earlier version of this driver
+    scraped `h1, h2, h3, [role='alert'], [role='status'], .alert, .toast` for the
+    reply and it kept matching an sr-only "Notifications" span for the header's
+    bell icon (present on every page) instead, so a real batch of 72 cancellations
+    on 2026-09-29 read back "NuPay says: Notifications" for 68 of them regardless
+    of the actual result. Reading the whole page body sidesteps guessing at
+    whichever container the result table happens to use."""
+    match = re.search(r"Mandate Maintenance Result(.*?)(?:Showing \d|$)", body_text, re.I | re.S)
+    return " ".join((match.group(1) if match else body_text).split())
+
+
+def cancel_mandate(
+    contract_reference: str | None, *, submit: bool = False, evidence_dir: str | None = None,
+) -> CancelResult:
+    """Cancel ONE mandate at NuPay. A dry run unless submit=True: it does every step
+    except pressing SUBMIT, so what would be cancelled can be checked first."""
+    reference = str(contract_reference or "").strip()
+    if not reference:
+        return CancelResult(False, False, "No contract reference given.")
+    missing = _require_creds()
+    if missing:
+        return CancelResult(False, False, "Missing .env value(s): " + ", ".join(missing))
+
+    access_id = _env("NUPAY_NEW_ACCESS_ID") or DEFAULT_ACCESS_ID
+    submit_pressed = False
+
+    def listed(page) -> list[str]:
+        return page.locator("#maintenance .tabulator-row").all_inner_texts()
+
+    def header_checkbox(page):
+        return page.locator("#maintenance .tabulator-header input[type='checkbox']").first
+
+    PLAYWRIGHT_LOCK.acquire()
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                page = browser.new_context(viewport={"width": 1500, "height": 1000}).new_page()
+                _login(page)
+                page.goto(f"{BASE}/debicheck/{access_id}/maintenance-search",
+                          wait_until="networkidle", timeout=45_000)
+                page.locator('select:has(option[value="MandateMaintenanceNoAuth"])').first \
+                    .select_option("MandateMaintenanceNoAuth")
+                page.wait_for_selector('select option[value="CC"]', state="attached", timeout=15_000)
+                page.locator('select:has(option[value="CC"])').first.select_option("CC")
+                page.locator('select:has(option[value="date_created"])').first.select_option("date_created")
+                page.locator('select:has(option[value="contract_reference"])').first \
+                    .select_option("contract_reference")
+                page.locator("#searchText").fill(reference)
+                _set_date(page, "#from_date", "2020-01-01")
+                _set_date(page, "#to_date", date.today().isoformat())
+                page.locator("#btnContinue").click(timeout=15_000)
+                page.wait_for_url("**/maintenance-results**", timeout=45_000)
+                page.wait_for_selector("#maintenance", timeout=45_000)
+                page.wait_for_timeout(1500)
+
+                reason = check_cancellation_target(listed(page), reference)
+                if reason:
+                    return CancelResult(False, False, reason)
+
+                header_checkbox(page).click()
+                page.get_by_role("button", name=re.compile("FILTER SELECTED", re.I)).click(timeout=15_000)
+                page.wait_for_timeout(1500)
+                reason = check_cancellation_target(listed(page), reference)     # again, after filtering
+                if reason:
+                    return CancelResult(False, False, reason)
+                selected = page.locator("#maintenance .tabulator-row.tabulator-selected")
+                if selected.count() == 0:
+                    header_checkbox(page).click()
+                    page.wait_for_timeout(500)
+                if page.locator("#maintenance .tabulator-row.tabulator-selected").count() != 1:
+                    return CancelResult(False, False,
+                                        "Could not confirm exactly one selected mandate; nothing was submitted.")
+
+                if not submit:
+                    return CancelResult(True, False,
+                                        "Dry run: exactly one mandate is listed and selected. Nothing was submitted.")
+
+                submit_pressed = True
+                page.locator("#btnMaintain").click(timeout=15_000)
+                page.wait_for_url("**/maintenance-ws**", timeout=60_000)
+                page.wait_for_timeout(1500)
+                summary = extract_maintenance_result(page.locator("body").inner_text(timeout=5_000))
+                evidence = ""
+                if evidence_dir:
+                    evidence = os.path.join(evidence_dir, f"cancel_{reference}.png")
+                    page.screenshot(path=evidence, full_page=True)
+                return CancelResult(True, True, "Submitted. NuPay says: " + summary[:300],
+                                    ok=read_maintenance_reply([summary]), evidence=evidence)
+            finally:
+                browser.close()
+    except Exception as exc:
+        state = ("SUBMIT had been pressed, so whether it went through is unknown - check NuPay. "
+                 if submit_pressed else "Nothing was submitted. ")
+        return CancelResult(False, submit_pressed, f"{state}Cancellation flow failed: {exc}")
+    finally:
+        PLAYWRIGHT_LOCK.release()
