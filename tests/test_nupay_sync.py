@@ -266,6 +266,20 @@ def test_a_member_named_only_by_the_account_holders_id_is_held_for_review(app):
     assert result["import"]["held_id_only"] == 1 and result["import"]["to_record"] == 0
 
 
+def test_a_client_reference_of_ref_concatenated_with_the_holders_id_is_recognised(app):
+    """The new portal sometimes writes client_reference as the Itensity ref glued
+    straight onto the account holder's 13-digit SA ID, with no separator
+    ('30000019001015009087' = ref '3000001' + ID '9001015009087') - this must be
+    read as a real match, not held back as if only the ID were known."""
+    _member(app, itensity_ref="EHF003000001")
+    rows = [_full_row(client_reference="30000019001015009087", debtor_id="9001015009087")]
+
+    result = _sync(app, rows, import_missing=True)
+
+    assert result["import"]["recorded"] == 1 and result["import"]["held_id_only"] == 0
+    assert _mandate_count(app) == 1
+
+
 def test_the_recorded_tracking_days_come_from_tracking_desc_not_the_yn_flag(app):
     """NuPay's `tracking` field is only a Y/N flag; the real day count is in
     `tracking_desc` ('5 Day Tracking'). Converted back to V8's own tracking code."""

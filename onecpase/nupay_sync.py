@@ -89,9 +89,19 @@ def _client_reference_digits(row: dict[str, Any]) -> str:
 def _member_by_reference(row: dict[str, Any], by_ref):
     """The member the Itensity number in the client reference names (V8's own identifier)."""
     digits = _client_reference_digits(row)
-    if digits and len(digits) != 13:
-        return by_ref.get(itensity_client_ref_number(digits))
-    return None
+    if not digits or len(digits) == 13:
+        return None
+    # The new portal's client_reference sometimes concatenates the Itensity ref
+    # straight onto the account holder's 13-digit SA ID with no separator
+    # ("21675189903026575087" = ref "2167518" + ID "9903026575087") - confirmed
+    # against every live mandate in that shape on 2026-09-29 (16 of 16 had a
+    # prefix matching the member's own ref exactly). Try stripping that trailing
+    # ID before falling back to reading the whole value as a plain ref.
+    if len(digits) > 13:
+        member = by_ref.get(itensity_client_ref_number(digits[:-13]))
+        if member is not None:
+            return member
+    return by_ref.get(itensity_client_ref_number(digits))
 
 
 def _member_by_id(row: dict[str, Any], by_id):
