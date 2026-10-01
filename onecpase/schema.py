@@ -43,6 +43,15 @@ CREATE TABLE IF NOT EXISTS user_permissions (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS login_otp_challenges (
+    challenge_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    code_hash TEXT NOT NULL,
+    expires_at REAL NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     member_ref TEXT UNIQUE,
@@ -1152,6 +1161,14 @@ CREATE TABLE IF NOT EXISTS user_permissions (
     permission TEXT NOT NULL,
     UNIQUE(user_id, permission),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS login_otp_challenges (
+    challenge_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    expires_at DOUBLE PRECISION NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS members (

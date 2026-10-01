@@ -88,6 +88,8 @@ def create_app(test_config: dict | None = None) -> Flask:
             raise RuntimeError("RATELIMIT_TRUSTED_PROXY_COUNT cannot be negative.")
         if not app.config.get("PBX_WEBHOOK_SECRET"):
             raise RuntimeError("PBX_WEBHOOK_SECRET must be explicitly configured in production.")
+        if not app.config.get("FB_APP_SECRET") or not str(app.config.get("FB_APP_SECRET")).strip():
+            raise RuntimeError("FB_APP_SECRET must be explicitly configured in production for Meta webhook verification.")
 
     # Validate an explicitly configured encryption key early. Do not silently
     # downgrade encryption because a malformed key was supplied.

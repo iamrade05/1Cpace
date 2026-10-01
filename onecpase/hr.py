@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import generate_password_hash
-from .auth import login_required, permission_required
+from .auth import login_required, permission_required, valid_email_address
 from .database import get_db
 from .permissions import MODULE_PERMISSIONS, ALL_PERMISSIONS
 
@@ -96,6 +96,8 @@ def staff_add():
 
         if not username or not full_name or not password:
             flash("Username, full name and password are required.", "error")
+        elif not valid_email_address(email):
+            flash("Enter a valid email address. Staff accounts need one for OTP sign-in.", "error")
         else:
             try:
                 cursor = db.execute(
@@ -155,33 +157,36 @@ def staff_edit(uid: int):
         must_change = 1 if request.form.get("must_change_password") else 0
         new_password = request.form.get("password", "").strip()
 
-        try:
-            if new_password:
-                db.execute(
-                    """UPDATE users SET full_name=?, role=?, department=?, contact=?, email=?,
-                       active=?, must_change_password=?, password_hash=? WHERE id=?""",
-                    (full_name, role, department, contact, email, active, must_change,
-                     generate_password_hash(new_password), uid),
-                )
-            else:
-                db.execute(
-                    """UPDATE users SET full_name=?, role=?, department=?, contact=?, email=?,
-                       active=?, must_change_password=? WHERE id=?""",
-                    (full_name, role, department, contact, email, active, must_change, uid),
-                )
+        if not valid_email_address(email):
+            flash("Enter a valid email address. Staff accounts need one for OTP sign-in.", "error")
+        else:
+            try:
+                if new_password:
+                    db.execute(
+                        """UPDATE users SET full_name=?, role=?, department=?, contact=?, email=?,
+                           active=?, must_change_password=?, password_hash=? WHERE id=?""",
+                        (full_name, role, department, contact, email, active, must_change,
+                         generate_password_hash(new_password), uid),
+                    )
+                else:
+                    db.execute(
+                        """UPDATE users SET full_name=?, role=?, department=?, contact=?, email=?,
+                           active=?, must_change_password=? WHERE id=?""",
+                        (full_name, role, department, contact, email, active, must_change, uid),
+                    )
 
-            # Replace permissions
-            selected = {k[5:] for k in request.form if k.startswith("perm_") and k[5:] in ALL_PERMISSIONS}
-            db.execute("DELETE FROM user_permissions WHERE user_id = ?", (uid,))
-            for perm in selected:
-                db.execute(
-                    "INSERT INTO user_permissions (user_id, permission) VALUES (?, ?)", (uid, perm)
-                )
-            db.commit()
-            flash("Staff record updated.", "success")
-            return redirect(url_for("hr.staff_index"))
-        except Exception as e:
-            flash(f"Error: {e}", "error")
+                # Replace permissions
+                selected = {k[5:] for k in request.form if k.startswith("perm_") and k[5:] in ALL_PERMISSIONS}
+                db.execute("DELETE FROM user_permissions WHERE user_id = ?", (uid,))
+                for perm in selected:
+                    db.execute(
+                        "INSERT INTO user_permissions (user_id, permission) VALUES (?, ?)", (uid, perm)
+                    )
+                db.commit()
+                flash("Staff record updated.", "success")
+                return redirect(url_for("hr.staff_index"))
+            except Exception as e:
+                flash(f"Error: {e}", "error")
 
     return render_template(
         "hr/edit.html",

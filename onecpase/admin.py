@@ -2,7 +2,7 @@ import json
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 from werkzeug.security import generate_password_hash
-from .auth import login_required, session_tenant_ok
+from .auth import login_required, session_tenant_ok, valid_email_address
 from .database import default_sections_config, default_terms_parts_config, get_db
 from .permissions import MODULE_PERMISSIONS, ALL_PERMISSIONS
 from .reports import AGG_FUNCS, FILTER_OPS, REPORT_TABLES
@@ -601,11 +601,13 @@ def users_index():
            WHERE COALESCE(is_platform_user, 0) = 0
            ORDER BY role, full_name"""
     ).fetchall()
+    users_needing_email = sum(not valid_email_address(user["email"]) for user in users)
     return render_template(
         "admin/users.html",
         users=users,
         protected_usernames=PROTECTED_USERNAMES,
         default_staff_password=DEFAULT_STAFF_PASSWORD,
+        users_needing_email=users_needing_email,
     )
 
 
@@ -634,6 +636,8 @@ def user_add():
         # Validate role against known values
         if role not in _VALID_ROLES:
             flash("Invalid role selected.", "error")
+        elif not valid_email_address(email):
+            flash("Enter a valid email address. Staff accounts need one for OTP sign-in.", "error")
         elif not (username and full_name and password):
             flash("Username, full name, and password are required.", "error")
         elif len(password) < 8:
@@ -720,6 +724,8 @@ def user_edit(uid: int):
 
         if role not in _VALID_ROLES:
             flash("Invalid role selected.", "error")
+        elif not valid_email_address(email):
+            flash("Enter a valid email address. Staff accounts need one for OTP sign-in.", "error")
         elif new_pass and len(new_pass) < 8:
             flash("New password must be at least 8 characters.", "error")
         elif is_sales_consultant and (sales_rotation_order is None or sales_rotation_order < 1):
@@ -827,13 +833,16 @@ def user_toggle(uid: int):
         return redirect(url_for("admin.users_index"))
     db = get_db()
     user = db.execute(
-        "SELECT is_platform_user FROM users WHERE id=?", (uid,)
+        "SELECT is_platform_user, active, email FROM users WHERE id=?", (uid,)
     ).fetchone()
     if not user:
         flash("User not found.", "warning")
         return redirect(url_for("admin.users_index"))
     if user["is_platform_user"]:
         flash("Platform power-user identities cannot be deactivated here.", "error")
+        return redirect(url_for("admin.users_index"))
+    if not user["active"] and not valid_email_address(user["email"]):
+        flash("Add a valid email address before enabling this account for OTP sign-in.", "error")
         return redirect(url_for("admin.users_index"))
     db.execute("UPDATE users SET active = 1 - active WHERE id=?", (uid,))
     db.commit()

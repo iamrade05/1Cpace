@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 from werkzeug.security import generate_password_hash  # noqa: E402
 
 from onecpase.admin import DEFAULT_STAFF_PASSWORD  # noqa: E402
+from onecpase.auth import valid_email_address  # noqa: E402
 
 # username -> department. Roles already match and are left alone.
 DEPARTMENT_FIXES = {
@@ -69,8 +70,23 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", type=Path, default=None)
     parser.add_argument("--tenant-slug", default="elev8")
+    parser.add_argument(
+        "--email", action="append", default=[], metavar="USERNAME=ADDRESS",
+        help="email address for a new account; repeat once per account being created",
+    )
     parser.add_argument("--commit", action="store_true", help="write the changes")
     args = parser.parse_args()
+
+    emails = {}
+    for item in args.email:
+        username, separator, address = item.partition("=")
+        username = username.strip().lower()
+        address = address.strip()
+        if not separator or not username or not valid_email_address(address):
+            raise SystemExit("Each --email must be USERNAME=valid-address.")
+        if username not in {staff[0] for staff in NEW_STAFF}:
+            raise SystemExit(f"--email username {username!r} is not in the new staff list.")
+        emails[username] = address
 
     if args.database is None:
         args.database = _active_tenant_database(args.tenant_slug)
@@ -99,13 +115,19 @@ def main() -> int:
 
         print("\nNew staff accounts")
         creates = []
+        missing_email = []
         for username, full_name, role, dept, contact, staff_id, consultant in NEW_STAFF:
             if db.execute("SELECT 1 FROM users WHERE username=?", (username,)).fetchone():
                 print(f"  {username:<12} already exists — skipped")
                 continue
             tag = " (sales rotation)" if consultant else ""
             print(f"  {username:<12} {full_name:<26} {role:<9} {dept}{tag}")
-            creates.append((username, full_name, role, dept, contact, staff_id, consultant))
+            email = emails.get(username, "")
+            if not valid_email_address(email):
+                print(f"  {username:<12} EMAIL REQUIRED — supply --email {username}=address")
+                missing_email.append(username)
+                continue
+            creates.append((username, full_name, role, dept, contact, email, staff_id, consultant))
 
         # Rotation positions continue after the existing consultants.
         next_position = (db.execute(
@@ -113,9 +135,13 @@ def main() -> int:
         ).fetchone()[0] or 0) + 1
 
         print(f"\n{len(updates)} departments to change, {len(creates)} accounts to create")
+        if missing_email:
+            print(f"{len(missing_email)} new account(s) still need email addresses.")
         if not args.commit:
             print("\nDRY RUN — nothing was changed. Re-run with --commit.")
             return 0
+        if missing_email:
+            raise SystemExit("No changes made. Supply real email addresses for every new account before --commit.")
 
         backup_dir = args.database.parent / "backups"
         backup_dir.mkdir(exist_ok=True)
@@ -126,19 +152,19 @@ def main() -> int:
         for department, uid in updates:
             db.execute("UPDATE users SET department=? WHERE id=?", (department, uid))
 
-        for username, full_name, role, dept, contact, staff_id, consultant in creates:
+        for username, full_name, role, dept, contact, email, staff_id, consultant in creates:
             position = None
             if consultant:
                 position = next_position
                 next_position += 1
             db.execute(
                 """INSERT INTO users
-                   (username, password_hash, full_name, role, department, contact,
+                   (username, password_hash, full_name, role, department, contact, email,
                     active, must_change_password, staff_id, is_sales_consultant,
                     sales_available, sales_rotation_order)
-                   VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?, 0, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, 0, ?)""",
                 (username, generate_password_hash(DEFAULT_STAFF_PASSWORD), full_name,
-                 role, dept, contact, staff_id, 1 if consultant else 0, position),
+                 role, dept, contact, email, staff_id, 1 if consultant else 0, position),
             )
         db.commit()
         print(f"Updated {len(updates)} departments, created {len(creates)} accounts.")

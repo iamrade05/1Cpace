@@ -8,6 +8,12 @@
   <a href="{{ url_for('admin.user_add') }}" class="btn btn-primary">+ Add User</a>
 </div>
 
+{% if users_needing_email %}
+<div class="alert alert-warning" role="status" style="margin-bottom:16px;">
+  {{ users_needing_email }} staff account{{ '' if users_needing_email == 1 else 's' }} need a valid email address before OTP sign-in can work. Edit each account and enter its real email address.
+</div>
+{% endif %}
+
 <div class="table-card">
   <table class="data-table">
     <thead>
@@ -47,7 +53,7 @@
           {% else %}—{% endif %}
           {% if u.is_collections_caller %}<br><span style="color:var(--info);">Collections caller</span>{% endif %}
         </td>
-        <td style="font-size:0.82rem;color:#6b7280;">{{ u.email or '—' }}</td>
+        <td style="font-size:0.82rem;color:#6b7280;">{{ u.email or 'Email required' }}</td>
         <td style="font-size:0.78rem;color:#9ca3af;">{{ u.last_login[:16] if u.last_login else 'Never' }}</td>
         <td>
           <span style="font-size:0.72rem;font-weight:600;padding:2px 8px;border-radius:10px;

@@ -123,17 +123,17 @@ def send_facebook_reply(recipient_psid: str, text: str) -> dict:
         return {"error": str(exc)}
 
 
-def verify_fb_signature(payload_bytes: bytes, sig_header: str) -> bool:
-    """Verify Meta's X-Hub-Signature-256 HMAC. Returns True (accepts the
-    webhook unverified) when FB_APP_SECRET isn't configured — matches the
-    permissive-when-unconfigured pattern used elsewhere in this app, but
-    means a deployment that skips setting the secret accepts unsigned
-    payloads. Set FB_APP_SECRET before exposing this webhook publicly."""
-    secret = current_app.config.get("FB_APP_SECRET", "")
+def verify_meta_signature(payload_bytes: bytes, sig_header: str) -> bool:
+    """Verify Meta's X-Hub-Signature-256 HMAC, failing closed without a secret."""
+    secret = str(current_app.config.get("FB_APP_SECRET", "") or "").strip()
     if not secret:
-        return True
+        return False
     expected = "sha256=" + hmac.new(secret.encode(), payload_bytes, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, sig_header or "")
+
+
+# Retain the previous helper name for internal callers that imported it.
+verify_fb_signature = verify_meta_signature
 
 
 # ── Webhooks (public, CSRF-exempt, no login) ──────────────────────────────────
@@ -149,6 +149,11 @@ def whatsapp_webhook():
         if mode == "subscribe" and verify_token and token == verify_token:
             return challenge, 200
         return "Forbidden", 403
+
+    raw_body = request.get_data()
+    sig = request.headers.get("X-Hub-Signature-256", "")
+    if not verify_meta_signature(raw_body, sig):
+        return "Unauthorized", 401
 
     data = request.get_json(silent=True) or {}
 
@@ -244,7 +249,7 @@ def facebook_webhook():
 
     raw_body = request.get_data()
     sig = request.headers.get("X-Hub-Signature-256", "")
-    if not verify_fb_signature(raw_body, sig):
+    if not verify_meta_signature(raw_body, sig):
         return "Unauthorized", 401
 
     data = request.get_json(silent=True) or {}

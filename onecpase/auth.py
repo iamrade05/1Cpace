@@ -1,4 +1,8 @@
 import random
+import hashlib
+import hmac
+import re
+import secrets
 import time
 from functools import wraps
 
@@ -13,6 +17,19 @@ from .extensions import mail, limiter
 auth_bp = Blueprint("auth", __name__, template_folder="templates/auth")
 
 _OTP_MAX_ATTEMPTS = 5
+_EMAIL_RE = re.compile(
+    r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@"
+    r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+)
+
+
+def valid_email_address(value: str | None) -> bool:
+    """Basic email syntax check; OTP delivery confirms mailbox access."""
+    email = str(value or "").strip()
+    if len(email) > 254 or ".." in email.split("@", 1)[0]:
+        return False
+    return bool(_EMAIL_RE.fullmatch(email))
 
 
 # ── Permission helpers ────────────────────────────────────────────────────────
@@ -146,6 +163,49 @@ def _generate_otp() -> str:
     return f"{random.SystemRandom().randint(0, 999999):06d}"
 
 
+def _challenge_hash(challenge_id: str) -> str:
+    return hashlib.sha256(challenge_id.encode("utf-8")).hexdigest()
+
+
+def _otp_hash(challenge_hash: str, code: str) -> str:
+    secret = current_app.config["SECRET_KEY"]
+    if isinstance(secret, str):
+        secret = secret.encode("utf-8")
+    return hmac.new(secret, f"{challenge_hash}:{code}".encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _clear_otp_challenge(*, delete: bool = True) -> None:
+    """Remove a pending challenge; the browser stores only its random handle."""
+    challenge_id = session.pop("_otp_challenge", None)
+    # Discard challenges issued by the old client-side implementation. Their
+    # contents are untrusted and must never be used to complete a login.
+    session.pop("_otp", None)
+    if delete and challenge_id:
+        db = get_db()
+        db.execute(
+            "DELETE FROM login_otp_challenges WHERE challenge_hash=?",
+            (_challenge_hash(challenge_id),),
+        )
+        db.commit()
+
+
+def _load_otp_challenge():
+    challenge_id = session.get("_otp_challenge")
+    if not challenge_id:
+        return None
+    return get_db().execute(
+        "SELECT * FROM login_otp_challenges WHERE challenge_hash=?",
+        (_challenge_hash(challenge_id),),
+    ).fetchone()
+
+
+def _masked_email(email: str) -> str:
+    local, separator, domain = email.partition("@")
+    if not separator:
+        return "your account email"
+    return f"{local[:3]}***@{domain}"
+
+
 def _send_otp_email(to_email: str, full_name: str, code: str) -> bool:
     """Returns True on success, False if mail is not configured or fails."""
     if not current_app.config.get("MAIL_USERNAME"):
@@ -204,6 +264,7 @@ def login():
         session.clear()  # stale session from a different tenant
 
     if request.method == "POST":
+        _clear_otp_challenge()
         username = str(request.form.get("username", "")).strip().lower()
         password = str(request.form.get("password", ""))
         db = get_db()
@@ -217,22 +278,30 @@ def login():
         if user and check_password_hash(user["password_hash"], password):
             otp_enabled = current_app.config.get("OTP_ENABLED", True)
 
-            if otp_enabled and user["email"]:
+            if otp_enabled:
+                if not valid_email_address(user["email"]):
+                    flash("An email address is required to sign in. Contact an administrator.", "error")
+                    return render_template("auth/login.html", tenant=g.tenant), 400
+
                 code = _generate_otp()
-                session["_otp"] = {
-                    "code":     code,
-                    "user_id":  user["id"],
-                    "expires":  time.time() + current_app.config["OTP_TTL"],
-                    "email":    user["email"],
-                    "attempts": 0,
-                }
+                challenge_id = secrets.token_urlsafe(32)
+                challenge_hash = _challenge_hash(challenge_id)
+                expires_at = time.time() + current_app.config["OTP_TTL"]
+                db.execute("DELETE FROM login_otp_challenges WHERE expires_at <= ?", (time.time(),))
+                db.execute(
+                    """INSERT INTO login_otp_challenges
+                       (challenge_hash, user_id, code_hash, expires_at, attempts)
+                       VALUES (?, ?, ?, ?, 0)""",
+                    (challenge_hash, user["id"], _otp_hash(challenge_hash, code), expires_at),
+                )
+                db.commit()
+                session["_otp_challenge"] = challenge_id
                 sent = _send_otp_email(user["email"], user["full_name"], code)
-                if sent:
-                    flash(f"A 6-digit code was sent to {user['email'][:3]}***{user['email'].split('@')[1]}. "
-                          "Enter it below.", "info")
-                else:
-                    _complete_login(user)
-                    return redirect(url_for("dashboard.dashboard"))
+                if not sent:
+                    _clear_otp_challenge()
+                    flash("We could not send your sign-in code. Please try again later or contact an administrator.", "error")
+                    return render_template("auth/login.html", tenant=g.tenant), 503
+                flash(f"A 6-digit code was sent to {_masked_email(user['email'])}. Enter it below.", "info")
                 return redirect(url_for("auth.verify_otp"))
             else:
                 _complete_login(user)
@@ -246,67 +315,107 @@ def login():
 @auth_bp.route("/login/verify", methods=["GET", "POST"])
 @limiter.limit("15 per minute")
 def verify_otp():
-    otp_data = session.get("_otp")
-    if not otp_data:
+    session.pop("_otp", None)
+    challenge_id = session.get("_otp_challenge")
+    otp_data = _load_otp_challenge()
+    if not challenge_id or not otp_data:
+        session.pop("_otp_challenge", None)
         return redirect(url_for("auth.login"))
 
-    if time.time() > otp_data["expires"]:
-        session.pop("_otp", None)
+    now = time.time()
+    challenge_hash = _challenge_hash(challenge_id)
+    if now >= otp_data["expires_at"]:
+        _clear_otp_challenge()
         flash("Your code expired. Please sign in again.", "error")
         return redirect(url_for("auth.login"))
 
     if request.method == "POST":
         entered = "".join(str(request.form.get("otp", "")).split())
-
-        if time.time() > otp_data["expires"]:
-            session.pop("_otp", None)
-            flash("Code expired. Please sign in again.", "error")
-            return redirect(url_for("auth.login"))
-
-        # Track failed attempts and lock out after max
-        otp_data["attempts"] = otp_data.get("attempts", 0) + 1
-        session["_otp"] = otp_data
-
-        if otp_data["attempts"] > _OTP_MAX_ATTEMPTS:
-            session.pop("_otp", None)
+        db = get_db()
+        updated = db.execute(
+            """UPDATE login_otp_challenges SET attempts=attempts+1
+               WHERE challenge_hash=? AND expires_at>? AND attempts<?""",
+            (challenge_hash, now, _OTP_MAX_ATTEMPTS),
+        )
+        if updated.rowcount != 1:
+            _clear_otp_challenge()
             flash("Too many failed attempts. Please sign in again.", "error")
             return redirect(url_for("auth.login"))
 
-        if entered == otp_data["code"]:
-            db = get_db()
-            user = db.execute("SELECT * FROM users WHERE id = ?", (otp_data["user_id"],)).fetchone()
-            session.pop("_otp", None)
+        otp_data = db.execute(
+            "SELECT * FROM login_otp_challenges WHERE challenge_hash=?",
+            (challenge_hash,),
+        ).fetchone()
+        if hmac.compare_digest(_otp_hash(challenge_hash, entered), otp_data["code_hash"]):
+            user = db.execute(
+                """SELECT * FROM users WHERE id=? AND active=1
+                   AND COALESCE(is_platform_user, 0)=0""",
+                (otp_data["user_id"],),
+            ).fetchone()
+            _clear_otp_challenge()
             if user:
                 _complete_login(user)
                 return redirect(url_for("dashboard.dashboard"))
+            flash("Your account is no longer available. Please sign in again.", "error")
+            return redirect(url_for("auth.login"))
         else:
             remaining_attempts = _OTP_MAX_ATTEMPTS - otp_data["attempts"]
+            if remaining_attempts <= 0:
+                _clear_otp_challenge()
+                flash("Too many failed attempts. Please sign in again.", "error")
+                return redirect(url_for("auth.login"))
+            db.commit()
             flash(f"Incorrect code. {remaining_attempts} attempt(s) remaining.", "error")
 
-    remaining = max(0, int(otp_data["expires"] - time.time()))
+    user = get_db().execute(
+        "SELECT email FROM users WHERE id=? AND active=1 AND COALESCE(is_platform_user, 0)=0",
+        (otp_data["user_id"],),
+    ).fetchone()
+    if not user:
+        _clear_otp_challenge()
+        return redirect(url_for("auth.login"))
+    remaining = max(0, int(otp_data["expires_at"] - time.time()))
     return render_template("auth/otp.html", remaining=remaining,
-                           masked_email=otp_data.get("email", ""))
+                           masked_email=_masked_email(user["email"] or ""))
 
 
 @auth_bp.post("/login/resend")
 @limiter.limit("3 per minute")
 def resend_otp():
-    otp_data = session.get("_otp")
-    if not otp_data:
+    session.pop("_otp", None)
+    challenge_id = session.get("_otp_challenge")
+    otp_data = _load_otp_challenge()
+    if not challenge_id or not otp_data:
+        session.pop("_otp_challenge", None)
         return redirect(url_for("auth.login"))
     db = get_db()
-    user = db.execute("SELECT * FROM users WHERE id = ?", (otp_data["user_id"],)).fetchone()
+    challenge_hash = _challenge_hash(challenge_id)
+    if time.time() >= otp_data["expires_at"]:
+        _clear_otp_challenge()
+        flash("Your code expired. Please sign in again.", "error")
+        return redirect(url_for("auth.login"))
+    user = db.execute(
+        """SELECT * FROM users WHERE id=? AND active=1
+           AND COALESCE(is_platform_user, 0)=0""",
+        (otp_data["user_id"],),
+    ).fetchone()
     if user and user["email"]:
         code = _generate_otp()
-        session["_otp"] = {
-            "code":     code,
-            "user_id":  user["id"],
-            "expires":  time.time() + current_app.config["OTP_TTL"],
-            "email":    user["email"],
-            "attempts": 0,
-        }
-        _send_otp_email(user["email"], user["full_name"], code)
+        db.execute(
+            """UPDATE login_otp_challenges SET code_hash=?, expires_at=?, attempts=0
+               WHERE challenge_hash=?""",
+            (_otp_hash(challenge_hash, code), time.time() + current_app.config["OTP_TTL"], challenge_hash),
+        )
+        db.commit()
+        if not _send_otp_email(user["email"], user["full_name"], code):
+            _clear_otp_challenge()
+            flash("We could not send your sign-in code. Please sign in again later.", "error")
+            return redirect(url_for("auth.login"))
         flash("A new code has been sent.", "success")
+    else:
+        _clear_otp_challenge()
+        flash("A valid email address is required to sign in. Contact an administrator.", "error")
+        return redirect(url_for("auth.login"))
     return redirect(url_for("auth.verify_otp"))
 
 
