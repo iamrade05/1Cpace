@@ -477,6 +477,40 @@ def evaluate_ptp(promised_date, payment_received, today=None):
     return "ACTIVE"
 
 
+def classify_ptp(promise_amount, verified_paid, promise_date, today=None):
+    """How a promise stands: ACTIVE before its date, DUE on the date, then
+    HONOURED / PARTIALLY_HONOURED / BROKEN from the verified payments."""
+    promised = money(promise_amount)
+    paid = money(verified_paid)
+    if promised > 0 and paid >= promised:
+        return "HONOURED"
+    promise = _parse_date(promise_date)
+    current = _parse_date(today) or date.today()
+    if promise and current <= promise:
+        return "DUE" if current == promise else "ACTIVE"
+    return "PARTIALLY_HONOURED" if paid > 0 else "BROKEN"
+
+
+def supersede_open_ptps(db, member_id, keep_ptp_id):
+    """A new promise replaces earlier open ones. The old rows are kept, marked
+    superseded, so history survives and the daily sweep cannot break them."""
+    cursor = db.execute(
+        """UPDATE ptp_agreements SET ptp_status='superseded', updated_at=datetime('now','localtime')
+           WHERE member_id=? AND id<>? AND ptp_status IN ('pending','partially_paid')""",
+        (member_id, keep_ptp_id),
+    )
+    return cursor.rowcount
+
+
+def refresh_member_cases(db, member_id, **kwargs):
+    """Recompute the workflow of every open case a member has."""
+    for case in db.execute(
+        "SELECT id FROM collections_cases WHERE member_id=? AND status IN ('open','active','pending')",
+        (member_id,),
+    ).fetchall():
+        refresh_case_workflow(db, case["id"], **kwargs)
+
+
 def evaluate_member_access(db, member_id: int, *, today=None) -> dict:
     """Evaluate a member's collections access from live account data.
 

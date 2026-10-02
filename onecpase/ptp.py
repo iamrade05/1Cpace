@@ -20,7 +20,9 @@ from .collections_engine import (
     get_collection_rules,
     grant_exception_access,
     record_access_decision,
+    refresh_member_cases,
     settle_exception_for_arrangement,
+    supersede_open_ptps,
     sync_collection_case,
 )
 
@@ -67,6 +69,7 @@ PTP_STATUSES = [
     ("rescheduled",     "Rescheduled"),
     ("cancelled",       "Cancelled"),
     ("escalated",       "Escalated"),
+    ("superseded",      "Superseded"),
 ]
 
 ALLOWED_RECEIPT_EXT = {"pdf", "jpg", "jpeg", "png"}
@@ -541,6 +544,8 @@ def _run_collections_automations(db, today: str, dry_run: bool = False) -> dict:
                 )
             member_activity(db, ptp["member_id"],
                             "PTP broken automatically: promise date passed without verified payment.")
+            refresh_member_cases(db, ptp["member_id"], source="ptp_monitor",
+                                 reason="Promise date passed without verified payment")
         broken_count += 1
 
     # Expire temp unblocks
@@ -794,6 +799,8 @@ def ptp_create(mid: int):
           float(recovery_plan["recovery_installment"]),
           int(recovery_plan["recovery_months"])))
     ptp_id = cursor.lastrowid
+    supersede_open_ptps(db, mid, ptp_id)
+    refresh_member_cases(db, mid, changed_by=session.get("user_id"), source="ptp", reason="New promise to pay recorded")
 
     # Surface the exact recovery calculation to the receptionist so the PTP
     # is based on the member's real monthly affordability.
@@ -1043,6 +1050,8 @@ def ptp_verify_receipt(mid: int, rid: int):
             if ptp:
                 new_ptp_status = "paid" if float(paid_for_ptp) >= float(ptp["promise_amount"] or 0) else "partially_paid"
                 db.execute("UPDATE ptp_agreements SET ptp_status=?, updated_at=datetime('now','localtime') WHERE id=?", (new_ptp_status, receipt["ptp_id"]))
+                refresh_member_cases(db, mid, changed_by=session.get("user_id"), source="payment",
+                                     reason=f"Verified payment: promise {new_ptp_status}")
 
         from .collections_engine import evaluate_member_access, record_access_decision
         access = evaluate_member_access(db, mid, today=date.today())
@@ -1064,7 +1073,8 @@ def ptp_verify_receipt(mid: int, rid: int):
 def ptp_update_status(mid: int, ptp_id: int):
     db         = get_db()
     new_status = (request.form.get("ptp_status") or "").strip()
-    valid      = {s for s, _ in PTP_STATUSES}
+    # "superseded" is set only when a newer promise replaces this one.
+    valid      = {s for s, _ in PTP_STATUSES} - {"superseded"}
 
     if new_status not in valid:
         flash("Invalid status.", "error")
@@ -1091,6 +1101,8 @@ def ptp_update_status(mid: int, ptp_id: int):
         )
 
     member_activity(db, mid, f"PTP #{ptp_id} status updated to: {new_status}.")
+    refresh_member_cases(db, mid, changed_by=session.get("user_id"), source="ptp",
+                         reason=f"Promise marked {new_status}")
     db.commit()
     flash(f"PTP status updated to {new_status}.", "success")
     return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
