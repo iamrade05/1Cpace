@@ -27,6 +27,36 @@ REASON_FIRST_MONTH = "FIRST_MONTH_FAILED_DEBIT"
 REASON_SECOND_MONTH = "SECOND_MONTH_ARREARS"
 REASON_STANDARD = "STANDARD_ARREARS"
 
+# Workflow stage is separate from ageing: a member can be 3 months owing and
+# have an active PTP. Precedence lives in determine_collection_stage.
+STAGE_CONTACT_REQUIRED = "CONTACT_REQUIRED"
+STAGE_CONTACTING = "CONTACTING"
+STAGE_CONTACTED = "CONTACTED"
+STAGE_ARRANGEMENT_REQUIRED = "ARRANGEMENT_REQUIRED"
+STAGE_PTP_ACTIVE = "PTP_ACTIVE"
+STAGE_PTP_DUE = "PTP_DUE"
+STAGE_PTP_BROKEN = "PTP_BROKEN"
+STAGE_APPROVAL_PENDING = "APPROVAL_PENDING"
+STAGE_ACCESS_RESTRICTED = "ACCESS_RESTRICTED"
+STAGE_INACTIVE = "INACTIVE"
+STAGE_RESOLVED = "RESOLVED"
+
+PRIORITY_CRITICAL, PRIORITY_HIGH, PRIORITY_NORMAL = 1, 2, 3
+
+NEXT_ACTION_BY_STAGE = {
+    STAGE_CONTACT_REQUIRED: "CALL_MEMBER",
+    STAGE_CONTACTING: "FOLLOW_UP",
+    STAGE_CONTACTED: "CREATE_PTP",
+    STAGE_ARRANGEMENT_REQUIRED: "CREATE_ARRANGEMENT",
+    STAGE_PTP_ACTIVE: "MONITOR_PTP",
+    STAGE_PTP_DUE: "VERIFY_PAYMENT",
+    STAGE_PTP_BROKEN: "FOLLOW_BROKEN_PTP",
+    STAGE_APPROVAL_PENDING: "MANAGER_REVIEW",
+    STAGE_ACCESS_RESTRICTED: "REVIEW_ACCESS",
+    STAGE_INACTIVE: "NO_ACTION",
+    STAGE_RESOLVED: "NO_ACTION",
+}
+
 COMMUNICATION_ORDER = ("CALL", "WHATSAPP", "SMS", "EMAIL")
 
 # Authoritative arrears settlement policy, used by both the PTP recovery plan
@@ -582,6 +612,13 @@ def _engine_table_statements(backend):
             transferred_by INTEGER, transferred_at {timestamp},
             FOREIGN KEY (case_id) REFERENCES collections_cases(id), FOREIGN KEY (member_id) REFERENCES members(id)
         )""",
+        f"""CREATE TABLE IF NOT EXISTS collection_stage_history (
+            id {id_type}, case_id INTEGER NOT NULL, member_id INTEGER NOT NULL,
+            from_stage TEXT, to_stage TEXT NOT NULL, reason TEXT,
+            changed_by INTEGER, source TEXT NOT NULL DEFAULT 'system', changed_at {timestamp},
+            FOREIGN KEY (case_id) REFERENCES collections_cases(id), FOREIGN KEY (member_id) REFERENCES members(id)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_collection_stage_case ON collection_stage_history(case_id, changed_at)",
         "CREATE INDEX IF NOT EXISTS idx_collections_cases_member_status ON collections_cases(member_id, status)",
         "CREATE INDEX IF NOT EXISTS idx_collection_assignment_case ON collection_assignment_history(case_id, transferred_at)",
         "CREATE INDEX IF NOT EXISTS idx_collection_communications_member ON collection_communications(member_id, created_at)",
@@ -601,6 +638,9 @@ def ensure_collections_engine_schema(db, backend="sqlite"):
     _ensure_column(db, backend, "collections_cases", "original_sales_consultant_id", "INTEGER")
     _ensure_column(db, backend, "collections_cases", "assignment_reason", "TEXT")
     _ensure_column(db, backend, "collections_cases", "assigned_at", "TEXT")
+    _ensure_column(db, backend, "collections_cases", "collection_stage", "TEXT")
+    _ensure_column(db, backend, "collections_cases", "priority", "INTEGER DEFAULT 3")
+    _ensure_column(db, backend, "collections_cases", "next_action", "TEXT")
     insert = "INSERT INTO collection_rules (rule_key, rule_value, value_type) VALUES (?, ?, ?)"
     if backend == "sqlite":
         insert = insert.replace("INSERT INTO", "INSERT OR IGNORE INTO")
@@ -666,6 +706,7 @@ def sync_collection_case(
             (*values, existing["id"]),
         )
         apply_case_ownership(db, existing["id"], months_owing=months_owing)
+        refresh_case_workflow(db, existing["id"], reason="Case refreshed")
         return existing["id"]
     cursor = db.execute(
         """INSERT INTO collections_cases
@@ -675,6 +716,7 @@ def sync_collection_case(
         (member_id, *values),
     )
     apply_case_ownership(db, cursor.lastrowid, months_owing=months_owing)
+    refresh_case_workflow(db, cursor.lastrowid, reason="Case opened")
     return cursor.lastrowid
 
 
@@ -786,6 +828,97 @@ def transfer_due_sales_cases(db, arrears_by_member=None):
     return moved
 
 
+def determine_collection_stage(
+    *, months_owing, contact_attempts=0, successful_contact=False, ptp_status=None,
+    ptp_due=False, approval_pending=False, access_status=None, inactive_after_months=6,
+    resolved=False,
+):
+    """The single place that decides which workflow stage a case is in."""
+    if resolved:
+        return STAGE_RESOLVED
+    if int(months_owing or 0) > int(inactive_after_months):
+        return STAGE_INACTIVE
+    if str(access_status or "").upper() in {"BLOCKED", "RESTRICTED"}:
+        return STAGE_ACCESS_RESTRICTED
+    if ptp_status == "broken":
+        return STAGE_PTP_BROKEN
+    if approval_pending:
+        return STAGE_APPROVAL_PENDING
+    if ptp_status in {"pending", "partially_paid"}:
+        return STAGE_PTP_DUE if ptp_due else STAGE_PTP_ACTIVE
+    if int(months_owing or 0) >= 2 and successful_contact:
+        return STAGE_ARRANGEMENT_REQUIRED
+    if successful_contact:
+        return STAGE_CONTACTED
+    if contact_attempts:
+        return STAGE_CONTACTING
+    return STAGE_CONTACT_REQUIRED
+
+
+def determine_priority(stage, months_owing):
+    if stage in {STAGE_PTP_BROKEN, STAGE_ACCESS_RESTRICTED}:
+        return PRIORITY_CRITICAL
+    if stage in {STAGE_INACTIVE, STAGE_RESOLVED}:
+        return PRIORITY_NORMAL
+    if stage in {STAGE_CONTACT_REQUIRED, STAGE_ARRANGEMENT_REQUIRED, STAGE_APPROVAL_PENDING,
+                 STAGE_PTP_DUE} or int(months_owing or 0) >= 2:
+        return PRIORITY_HIGH
+    return PRIORITY_NORMAL
+
+
+def determine_next_action(stage):
+    return NEXT_ACTION_BY_STAGE.get(stage, "NO_ACTION")
+
+
+def refresh_case_workflow(db, case_id, *, today=None, changed_by=None, source="system", reason=None):
+    """Recompute stage, priority and next action for one case from what is on
+    record, and log any stage change. Returns the stage."""
+    case = db.execute(
+        """SELECT id, member_id, status, months_owing, access_status, collection_stage
+           FROM collections_cases WHERE id=?""", (case_id,),
+    ).fetchone()
+    if case is None:
+        return None
+    today = _parse_date(today) or date.today()
+    comms = db.execute(
+        "SELECT outcome FROM collection_communications WHERE case_id=?", (case_id,)
+    ).fetchall()
+    ptp = db.execute(
+        """SELECT ptp_status, promise_date FROM ptp_agreements
+           WHERE member_id=? AND ptp_status IN ('pending','partially_paid','broken')
+           ORDER BY id DESC LIMIT 1""", (case["member_id"],),
+    ).fetchone()
+    promise = _parse_date(ptp["promise_date"]) if ptp else None
+    approval = db.execute(
+        """SELECT 1 FROM ptp_agreements WHERE member_id=? AND manager_approval_status='pending'
+           UNION ALL SELECT 1 FROM collection_exceptions WHERE case_id=? AND status='pending' LIMIT 1""",
+        (case["member_id"], case_id),
+    ).fetchone()
+    stage = determine_collection_stage(
+        months_owing=case["months_owing"],
+        contact_attempts=len(comms),
+        successful_contact=any(c["outcome"] in SUCCESSFUL_CALL_OUTCOMES for c in comms),
+        ptp_status=ptp["ptp_status"] if ptp else None,
+        ptp_due=bool(promise and promise <= today),
+        approval_pending=bool(approval),
+        access_status=case["access_status"],
+        inactive_after_months=get_collection_rule_int(db, "inactive_after_months", 6),
+        resolved=case["status"] in ("closed", "resolved"),
+    )
+    db.execute(
+        "UPDATE collections_cases SET collection_stage=?, priority=?, next_action=? WHERE id=?",
+        (stage, determine_priority(stage, case["months_owing"]), determine_next_action(stage), case_id),
+    )
+    if stage != case["collection_stage"]:
+        db.execute(
+            """INSERT INTO collection_stage_history
+               (case_id, member_id, from_stage, to_stage, reason, changed_by, source)
+               VALUES (?,?,?,?,?,?,?)""",
+            (case_id, case["member_id"], case["collection_stage"], stage, reason, changed_by, source),
+        )
+    return stage
+
+
 def log_collection_communication(
     db,
     member_id,
@@ -804,6 +937,8 @@ def log_collection_communication(
            VALUES (?,?,?,?,?,?,?,datetime('now','localtime'),?)""",
         (case_id, member_id, task_id, channel.upper(), status, outcome, notes, created_by),
     )
+    if case_id:
+        refresh_case_workflow(db, case_id, changed_by=created_by, reason=f"{channel.upper()} contact logged")
     return cursor.lastrowid
 
 
