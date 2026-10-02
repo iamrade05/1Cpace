@@ -18,6 +18,7 @@ from .collections_engine import (
     calculate_daily_call_kpi,
     complete_call,
     decide_collection_exception,
+    find_duplicate_collection,
     get_collection_rule_int,
     grant_exception_access,
     log_collection_communication,
@@ -928,6 +929,11 @@ def collections_add():
                 "collections/add.html", members=members, methods=PAYMENT_METHODS,
                 statuses=STATUSES, selected_member_id=selected_member_id,
             )
+
+        if find_duplicate_collection(db, int(member_id), collection_date, outstanding_balance,
+                                     amount_paid, method, status, notes):
+            flash("An identical collection record is already on file for this member.", "warning")
+            return redirect(url_for("collections.collections_index"))
 
         try:
             cursor = db.execute(

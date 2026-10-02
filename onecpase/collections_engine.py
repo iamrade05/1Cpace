@@ -739,6 +739,17 @@ def ensure_collections_engine_schema(db, backend="sqlite"):
     _ensure_column(db, backend, "collections_cases", "resolved_by", "INTEGER")
     _ensure_column(db, backend, "collections_cases", "resolution_balance", "REAL")
     _ensure_column(db, backend, "collections_cases", "resolution_notes", "TEXT")
+    # One open case per member, enforced by the database once existing data
+    # allows it (a database already holding duplicates keeps the app-level guard).
+    duplicated = db.execute(
+        """SELECT 1 FROM collections_cases WHERE status IN ('open','active','pending')
+           GROUP BY member_id HAVING COUNT(*) > 1 LIMIT 1"""
+    ).fetchone()
+    if not duplicated:
+        db.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS uq_collections_cases_open_member
+               ON collections_cases(member_id) WHERE status IN ('open','active','pending')"""
+        )
     insert = "INSERT INTO collection_rules (rule_key, rule_value, value_type) VALUES (?, ?, ?)"
     if backend == "sqlite":
         insert = insert.replace("INSERT INTO", "INSERT OR IGNORE INTO")
@@ -806,13 +817,23 @@ def sync_collection_case(
         apply_case_ownership(db, existing["id"], months_owing=months_owing)
         refresh_case_workflow(db, existing["id"], reason="Case refreshed")
         return existing["id"]
-    cursor = db.execute(
-        """INSERT INTO collections_cases
-           (member_id, collection_id, failed_debit_date, failure_reason, arrears_amount,
-            months_owing, monthly_installment, debicheck_status, access_status, assigned_to)
-           VALUES (?,?,?,?,?,?,?,?,?,?)""",
-        (member_id, *values),
-    )
+    try:
+        cursor = db.execute(
+            """INSERT INTO collections_cases
+               (member_id, collection_id, failed_debit_date, failure_reason, arrears_amount,
+                months_owing, monthly_installment, debicheck_status, access_status, assigned_to)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (member_id, *values),
+        )
+    except Exception:
+        # A concurrent request opened the case first; use that one.
+        winner = db.execute(
+            """SELECT id FROM collections_cases WHERE member_id=?
+               AND status IN ('open','active','pending') ORDER BY id DESC LIMIT 1""", (member_id,)
+        ).fetchone()
+        if winner is None:
+            raise
+        return winner["id"]
     apply_case_ownership(db, cursor.lastrowid, months_owing=months_owing)
     refresh_case_workflow(db, cursor.lastrowid, reason="Case opened")
     return cursor.lastrowid
@@ -1017,6 +1038,23 @@ def refresh_case_workflow(db, case_id, *, today=None, changed_by=None, source="s
     return stage
 
 
+def find_duplicate_collection(db, member_id, collection_date, outstanding_balance, amount_paid,
+                              method, status, notes):
+    """An identical payment/charge record already on file. Imports skip these by
+    the same key, so a double-clicked form cannot add what an import would not."""
+    try:
+        due, paid = round(float(outstanding_balance or 0), 2), round(float(amount_paid or 0), 2)
+    except (TypeError, ValueError):
+        return None   # invalid amounts are the caller's own validation to report
+    return db.execute(
+        """SELECT id FROM collections
+           WHERE member_id=? AND collection_date=? AND ROUND(COALESCE(outstanding_balance,0),2)=?
+             AND ROUND(COALESCE(amount_paid,0),2)=? AND COALESCE(method,'')=? AND status=?
+             AND COALESCE(notes,'')=? LIMIT 1""",
+        (member_id, collection_date, due, paid, method or "", status, notes or ""),
+    ).fetchone()
+
+
 def log_collection_communication(
     db,
     member_id,
@@ -1029,6 +1067,16 @@ def log_collection_communication(
     notes=None,
     created_by=None,
 ):
+    # A double-clicked form must not log the same contact twice.
+    repeat = db.execute(
+        """SELECT id FROM collection_communications
+           WHERE member_id=? AND COALESCE(case_id,0)=? AND channel=? AND COALESCE(outcome,'')=?
+             AND COALESCE(notes,'')=? AND COALESCE(created_by,0)=?
+             AND created_at >= datetime('now','localtime','-60 seconds') LIMIT 1""",
+        (member_id, case_id or 0, channel.upper(), outcome or "", notes or "", created_by or 0),
+    ).fetchone()
+    if repeat:
+        return repeat["id"]
     cursor = db.execute(
         """INSERT INTO collection_communications
            (case_id, member_id, task_id, channel, status, outcome, notes, sent_at, created_by)
