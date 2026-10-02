@@ -717,8 +717,16 @@
       <span>Collections</span><span class="nav-accordion-chevron">▸</span>
     </button>
     <div class="nav-accordion-panel" data-section-panel="connections" hidden>
+      <a href="{{ url_for('collections.dashboard') }}"
+         class="nav-item {% if request.endpoint == 'collections.dashboard' %}active{% endif %}">
+        <span class="icon">📊</span> Collections Dashboard
+      </a>
+      <a href="{{ url_for('collections.case_queue') }}"
+         class="nav-item {% if request.endpoint == 'collections.case_queue' %}active{% endif %}">
+        <span class="icon">🗂</span> Case Queue
+      </a>
       <a href="{{ url_for('collections.collections_index') }}"
-         class="nav-item {% if request.blueprint == 'collections' and request.endpoint != 'collections.call_queue' and request.endpoint != 'collections.call_profile' %}active{% endif %}">
+         class="nav-item {% if request.blueprint == 'collections' and request.endpoint not in ('collections.call_queue', 'collections.call_profile', 'collections.dashboard', 'collections.case_queue') %}active{% endif %}">
         <span class="icon">💳</span> Payment Records
       </a>
       <a href="{{ url_for('collections.call_queue') }}"

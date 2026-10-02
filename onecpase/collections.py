@@ -388,6 +388,43 @@ def collections_index():
     )
 
 
+@collections_bp.route("/dashboard")
+@permission_required("all_collections")
+def dashboard():
+    from . import collections_workspace as workspace
+
+    db = get_db()
+    transfer_due_sales_cases(db)
+    user_id = session.get("user_id")
+    return render_template(
+        "collections/dashboard.html",
+        metrics=workspace.dashboard_metrics(db, user_id=user_id),
+        progress=daily_call_progress(db),
+        counts=workspace.queue_counts(db, user_id=user_id),
+        filters=workspace.QUEUE_FILTERS,
+    )
+
+
+@collections_bp.route("/queue")
+@permission_required("all_collections")
+def case_queue():
+    from . import collections_workspace as workspace
+
+    db = get_db()
+    transfer_due_sales_cases(db)
+    user_id = session.get("user_id")
+    active = request.args.get("filter", "all")
+    if active not in workspace.QUEUE_FILTERS:
+        active = "all"
+    return render_template(
+        "collections/queue.html",
+        cases=workspace.case_queue(db, active, user_id=user_id),
+        counts=workspace.queue_counts(db, user_id=user_id),
+        filters=workspace.QUEUE_FILTERS,
+        active=active,
+    )
+
+
 @collections_bp.route("/call-queue")
 @permission_required("collections_call_queue")
 def call_queue():

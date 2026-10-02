@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Collection Queue · 1Cpase{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Collection Queue</h1>
+    <p class="page-sub">Open cases, most urgent first. Stage, owner and next action come from the collections rules.</p>
+  </div>
+  <a class="btn" href="{{ url_for('collections.dashboard') }}">Dashboard</a>
+</div>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+  {% for key, (label, _clause, _needs_user) in filters.items() %}
+  <a href="{{ url_for('collections.case_queue', filter=key) }}"
+     class="btn {% if key == active %}btn-primary{% endif %}">{{ label }} <strong>({{ counts.get(key, 0) }})</strong></a>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding:0;overflow-x:auto;">
+    {% if cases %}
+    <table class="table">
+      <thead>
+        <tr><th>Member</th><th>Balance</th><th>Age</th><th>Stage</th><th>Owner</th>
+            <th>Last contact</th><th>PTP</th><th>DebiCheck</th><th>Access</th><th>Next action</th></tr>
+      </thead>
+      <tbody>
+      {% for c in cases %}
+        <tr>
+          <td>
+            <a href="{{ url_for('members.member_detail', mid=c.member_id) }}">{{ c.first_name }} {{ c.last_name }}</a>
+            {% if c.priority == 1 %}<span class="badge badge-red">Critical</span>
+            {% elif c.priority == 2 %}<span class="badge badge-orange">High</span>{% endif %}
+            <div style="color:#6b7280;font-size:.8rem;">{{ c.contact or '' }}</div>
+          </td>
+          <td>R{{ '%.2f'|format(c.arrears_amount or 0) }}</td>
+          <td>{{ c.months_owing or 0 }} mo</td>
+          <td>{{ (c.collection_stage or 'CONTACT_REQUIRED')|replace('_', ' ')|title }}</td>
+          <td>{% if c.owner_type == 'SALES' %}Sales{% if c.owner_name %} · {{ c.owner_name }}{% endif %}{% else %}Reception{% endif %}</td>
+          <td>{{ c.last_contact_at or 'None' }}</td>
+          <td>{{ (c.ptp_summary or '—')|replace('_', ' ') }}</td>
+          <td>{{ (c.debicheck_status or 'unknown')|title }}</td>
+          <td>{{ (c.access_status or 'allowed')|title }}</td>
+          <td><strong>{{ (c.next_action or 'NO_ACTION')|replace('_', ' ')|title }}</strong></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="padding:20px;color:#4b5563;">No open cases in this queue.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

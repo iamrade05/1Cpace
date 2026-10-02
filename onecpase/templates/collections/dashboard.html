@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Collections Dashboard · 1Cpase{% endblock %}
+
+{% macro kpi(label, value, filter=None) %}
+  <div class="kpi-card">
+    <div class="kpi-label">{{ label }}</div>
+    <div class="kpi-value">{% if filter %}<a href="{{ url_for('collections.case_queue', filter=filter) }}">{{ value }}</a>{% else %}{{ value }}{% endif %}</div>
+  </div>
+{% endmacro %}
+
+{% block content %}
+{% set fin = metrics.financial %}
+{% set work = metrics.workload %}
+<div class="page-header">
+  <div>
+    <h1>Collections Dashboard</h1>
+    <p class="page-sub">Where the money stands, and the work that has to happen today.</p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('collections.case_queue') }}">Open the queue</a>
+</div>
+
+<h2 style="margin:8px 0;">Financial position</h2>
+<div class="kpi-grid">
+  {{ kpi('Total outstanding', 'R%.2f'|format(fin.total_outstanding), 'all') }}
+  {{ kpi('Members in arrears', fin.members_in_arrears, 'all') }}
+  {{ kpi('Failed debits', fin.failed_debits, 'all') }}
+  {{ kpi('Collected this month', 'R%.2f'|format(fin.collected_this_month)) }}
+  {{ kpi('Active PTPs', fin.active_ptps) }}
+  {{ kpi('Broken PTPs', fin.broken_ptps, 'broken_ptp') }}
+  {{ kpi('Pending approvals', fin.pending_approvals, 'pending_approval') }}
+  {{ kpi('Access restricted', fin.access_restricted, 'restricted') }}
+</div>
+
+<h2 style="margin:20px 0 8px;">Today's collection work</h2>
+<div class="kpi-grid">
+  {{ kpi('First-month failed debits (Sales)', work.first_month_sales, 'sales_first_debit') }}
+  {{ kpi('Calls due', work.calls_due) }}
+  {{ kpi('PTPs due today', work.ptps_due_today, 'ptp_due') }}
+  {{ kpi('No contact yet', counts.get('no_contact', 0), 'no_contact') }}
+  {{ kpi('Reception 2+ months', counts.get('reception_2plus', 0), 'reception_2plus') }}
+  {{ kpi('No DebiCheck', counts.get('no_debicheck', 0), 'no_debicheck') }}
+</div>
+
+<div class="card" style="margin-top:20px;">
+  <div class="card-header"><h2>What cases need next</h2></div>
+  <div class="card-body" style="padding:16px;">
+    {% if work.by_next_action %}
+      {% for action, n in work.by_next_action.items() %}
+        <span class="badge" style="margin:2px 6px 2px 0;">{{ action|replace('_', ' ')|title }}: <strong>{{ n }}</strong></span>
+      {% endfor %}
+    {% else %}<span style="color:#6b7280;">No open cases.</span>{% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:20px;">
+  <div class="card-header"><h2>Reception calls today</h2></div>
+  <div class="card-body" style="padding:16px;">
+    Target <strong>{{ progress.daily_target }}</strong> ·
+    Assigned <strong>{{ progress.assigned }}</strong> ·
+    Attempted <strong>{{ progress.calls }}</strong> ·
+    Successful contacts <strong>{{ progress.contacts }}</strong>
+    ({{ progress.contact_rate_pct }}% contact rate, {{ progress.target_progress_pct }}% of target)
+    <div style="color:#6b7280;font-size:.8rem;margin-top:6px;">First-month Sales-owned cases are not counted here until they transfer to Reception.</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:20px;">
+  <div class="card-header"><h2>My first-month failed debits (Sales)</h2></div>
+  <div class="card-body" style="padding:16px;">
+    Open <strong>{{ metrics.sales.open }}</strong> ·
+    Contacted today <strong>{{ metrics.sales.contacted_today }}</strong> ·
+    Recovered <strong>{{ metrics.sales.resolved }}</strong>
+    · <a href="{{ url_for('first_month_collections.index') }}">Open my queue</a>
+  </div>
+</div>
+
+<div class="card" style="margin-top:20px;">
+  <div class="card-header"><h2>Collection control</h2></div>
+  <div class="card-body" style="padding:16px;">
+    Open cases — Sales <strong>{{ metrics.manager.open_by_owner.get('SALES', 0) }}</strong>,
+    Reception <strong>{{ metrics.manager.open_by_owner.get('RECEPTION', 0) }}</strong><br>
+    Recovered this month — Sales <strong>{{ metrics.manager.recovered_this_month_by_owner.get('SALES', 0) }}</strong>,
+    Reception <strong>{{ metrics.manager.recovered_this_month_by_owner.get('RECEPTION', 0) }}</strong>
+  </div>
+</div>
+{% endblock %}
