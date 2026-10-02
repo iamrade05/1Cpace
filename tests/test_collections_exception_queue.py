@@ -569,3 +569,34 @@ def test_call_kpis_are_safe_with_no_callers_configured(app):
     assert progress["daily_target"] == 0
     assert progress["target_progress_pct"] == 0.0
     assert progress["contact_rate_pct"] == 0.0
+
+
+def test_discounted_promise_opens_a_discount_request_that_follows_the_manager(app, client):
+    member_id = _seed_arrears_member(app, 3)
+    _sign_in(client, role="reception", user_id=1, permissions=["all_collections"])
+    response = client.post(
+        f"/members/{member_id}/ptp/create",
+        data={"promise_amount": "300", "promise_date": "2026-10-01", "payment_method": "cash",
+              "arrangement_type": "partial", "notes": "R300 a month", "arrears_amount": "1500",
+              "discount_pct": "25"},
+    )
+    assert response.status_code == 302
+
+    with app.app_context():
+        db = get_db()
+        ptp = db.execute("SELECT * FROM ptp_agreements WHERE member_id=?", (member_id,)).fetchone()
+        assert float(ptp["discount_pct"] or 0) == 25
+        request_row = db.execute(
+            "SELECT * FROM collection_discount_requests WHERE ptp_id=?", (ptp["id"],)).fetchone()
+        assert request_row["status"] == "PENDING"
+        assert request_row["original_balance"] == ptp["arrears_amount"]
+        assert request_row["adjusted_balance"] == ptp["discounted_balance"]
+        exception_id = db.execute(
+            "SELECT id FROM collection_exceptions WHERE member_id=? AND status='pending'", (member_id,)).fetchone()["id"]
+
+    _sign_in(client, role="manager", user_id=2, permissions=["all_collections"])
+    client.post(f"/collections/exceptions/{exception_id}/decide", data={"decision": "approved", "notes": "OK"})
+    with app.app_context():
+        decided = get_db().execute(
+            "SELECT status, decision_reason FROM collection_discount_requests WHERE ptp_id=?", (ptp["id"],)).fetchone()
+        assert (decided["status"], decided["decision_reason"]) == ("APPROVED", "OK")

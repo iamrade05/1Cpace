@@ -211,7 +211,25 @@ def member_profile(db, member_id):
            LEFT JOIN users u ON u.id = h.changed_by
            WHERE h.member_id=? ORDER BY h.id""", (member_id,)).fetchall()
 
+    notes = db.execute(
+        """SELECT n.*, u.full_name AS staff FROM collection_notes n
+           LEFT JOIN users u ON u.id = n.staff_id WHERE n.member_id=? ORDER BY n.id DESC""", (member_id,)).fetchall()
+    discounts = db.execute(
+        """SELECT d.*, r.full_name AS requester, m.full_name AS decider
+           FROM collection_discount_requests d
+           LEFT JOIN users r ON r.id = d.requested_by LEFT JOIN users m ON m.id = d.decided_by
+           WHERE d.member_id=? ORDER BY d.id DESC""", (member_id,)).fetchall()
+
     events = []
+    for n in notes:
+        label = "System note" if n["staff_id"] is None else "Note"
+        events.append((_ts(n["created_at"]), f"{label} · {n['note_type'].title()}", n["note_text"], n["staff"] or "System"))
+    for d in discounts:
+        events.append((_ts(d["requested_at"]), "Discount requested",
+                       f"{d['requested_percentage']:g}% off R{float(d['original_balance'] or 0):.2f} "
+                       f"→ R{float(d['adjusted_balance'] or 0):.2f} ({d['status']})", d["requester"] or "System"))
+        if d["decided_at"]:
+            events.append((_ts(d["decided_at"]), f"Discount {d['status'].lower()}", d["decision_reason"] or "", d["decider"] or "System"))
     for c in cases:
         events.append((_ts(c["created_at"]), "Case opened", f"Failed debit R{float(c['arrears_amount'] or 0):.2f}", "System"))
         if c["closed_at"]:
@@ -250,6 +268,7 @@ def member_profile(db, member_id):
         "member": member, "case": current, "cases": cases, "timeline": events,
         "contacts": contacts, "ptps": ptps, "payments": payments, "exceptions": exceptions,
         "access": access, "assignments": assignments, "stages": stages,
+        "notes": notes, "discounts": discounts,
     }
 
 

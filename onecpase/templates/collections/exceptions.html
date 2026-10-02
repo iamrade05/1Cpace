@@ -52,9 +52,10 @@
                 <input type="hidden" name="return_to" value="exception_queue">
                 <input type="text" name="approval_notes" class="form-control"
                        style="font-size:.8rem;margin-bottom:6px;"
-                       placeholder="Condition or reason (required to decline)">
+                       placeholder="Condition or reason (required to decline or return)">
                 <button type="submit" name="decision" value="approved" class="btn btn-primary btn-sm">Approve</button>
                 <button type="submit" name="decision" value="declined" class="btn btn-danger btn-sm">Decline</button>
+                <button type="submit" name="decision" value="returned" class="btn btn-sm">Return for information</button>
               </form>
             </td>
           </tr>
@@ -101,9 +102,10 @@
                     action="{{ url_for('collections.exception_decide', exception_id=item.id) }}">
                 <input type="text" name="notes" class="form-control"
                        style="font-size:.8rem;margin-bottom:6px;"
-                       placeholder="Condition or reason (required to decline)">
+                       placeholder="Condition or reason (required to decline or return)">
                 <button type="submit" name="decision" value="approved" class="btn btn-primary btn-sm">Approve</button>
                 <button type="submit" name="decision" value="declined" class="btn btn-danger btn-sm">Decline</button>
+                <button type="submit" name="decision" value="returned" class="btn btn-sm">Return for information</button>
               </form>
             </td>
           </tr>

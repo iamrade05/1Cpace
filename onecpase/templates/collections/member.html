@@ -36,7 +36,7 @@
 
 <p style="margin-top:16px;">
   <a href="#timeline">Timeline</a> · <a href="#contacts">Contacts</a> · <a href="#ptp">PTP</a> ·
-  <a href="#payments">Payments</a> · <a href="#approvals">Approvals</a> · <a href="#access">Access</a> · <a href="#history">History</a>
+  <a href="#payments">Payments</a> · <a href="#notes">Notes</a> · <a href="#approvals">Approvals</a> · <a href="#access">Access</a> · <a href="#history">History</a>
 </p>
 
 {% call section('timeline', 'Timeline') %}
@@ -81,7 +81,44 @@
   {% else %}<p style="padding:20px;color:#4b5563;">No payment records.</p>{% endif %}
 {% endcall %}
 
-{% call section('approvals', 'Manager approvals and exceptions') %}
+{% call section('notes', 'Notes') %}
+  <form method="post" action="{{ url_for('collections.add_note', mid=p.member.id) }}"
+        style="display:flex;gap:8px;flex-wrap:wrap;padding:14px;">
+    <select name="note_type" class="form-control" style="width:auto;" aria-label="Note type">
+      {% for t in ('GENERAL','CONTACT','PAYMENT','PTP','ARRANGEMENT','DISPUTE','APPROVAL','ACCESS','HANDOVER') %}
+      <option value="{{ t }}">{{ t|title }}</option>{% endfor %}
+    </select>
+    <input name="note_text" class="form-control" style="flex:1;min-width:240px;" placeholder="Add a note" maxlength="1000" required>
+    <button class="btn btn-primary" type="submit">Add note</button>
+  </form>
+  {% if p.notes %}
+  <table class="table"><thead><tr><th>When</th><th>Type</th><th>Note</th><th>By</th></tr></thead><tbody>
+    {% for n in p.notes %}
+    <tr><td>{{ n.created_at }}</td>
+        <td>{% if n.staff_id is none %}<span class="badge">System</span> {% endif %}{{ n.note_type|title }}</td>
+        <td>{{ n.note_text }}</td><td>{{ n.staff or 'System' }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+  {% else %}<p style="padding:0 20px 20px;color:#4b5563;">No notes yet.</p>{% endif %}
+{% endcall %}
+
+{% call section('approvals', 'Discount requests, manager approvals and exceptions') %}
+  {% if p.discounts %}
+  <table class="table"><thead><tr><th>Requested</th><th>Original</th><th>Discount</th><th>Adjusted</th><th>Upfront</th><th>Status</th><th>Decision</th><th></th></tr></thead><tbody>
+    {% for d in p.discounts %}
+    <tr><td>{{ d.requested_at }}<div style="color:#6b7280;font-size:.8rem;">{{ d.requester or 'System' }}</div></td>
+        <td>R{{ '%.2f'|format(d.original_balance or 0) }}</td>
+        <td>{{ '%g'|format(d.requested_percentage or 0) }}% (R{{ '%.2f'|format(d.discount_amount or 0) }})</td>
+        <td>R{{ '%.2f'|format(d.adjusted_balance or 0) }}</td>
+        <td>R{{ '%.2f'|format(d.proposed_upfront or 0) }}</td>
+        <td><strong>{{ d.status|title }}</strong></td>
+        <td>{% if d.decided_at %}{{ d.decider or 'System' }} · {{ d.decided_at }}<div style="color:#6b7280;font-size:.8rem;">{{ d.decision_reason or '' }}</div>{% endif %}</td>
+        <td>{% if d.status == 'RETURNED' %}
+          <form method="post" action="{{ url_for('collections.resubmit_discount', request_id=d.id) }}">
+            <button class="btn btn-sm btn-primary" type="submit">Resubmit</button></form>{% endif %}</td></tr>
+    {% endfor %}
+  </tbody></table>
+  {% endif %}
   {% if p.exceptions %}
   <table class="table"><thead><tr><th>Requested</th><th>Reason</th><th>Status</th><th>Decided by</th><th>Notes</th></tr></thead><tbody>
     {% for x in p.exceptions %}

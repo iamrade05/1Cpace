@@ -24,6 +24,7 @@ from .collections_engine import (
     log_collection_communication,
     next_communication,
     reconcile_open_cases,
+    return_collection_exception,
     sync_collection_case,
     transfer_due_sales_cases,
 )
@@ -416,6 +417,41 @@ def member_profile(mid: int):
         flash("Member not found.", "warning")
         return redirect(url_for("collections.case_queue"))
     return render_template("collections/member.html", p=profile)
+
+
+@collections_bp.post("/member/<int:mid>/notes")
+@permission_required("all_collections")
+def add_note(mid: int):
+    from .collections_engine import NOTE_TYPES, add_collection_note
+
+    db = get_db()
+    note_type = request.form.get("note_type", "GENERAL").strip().upper()
+    try:
+        add_collection_note(db, mid, note_type, request.form.get("note_text", ""),
+                            staff_id=session.get("user_id"))
+        db.commit()
+        flash("Note added.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("collections.member_profile", mid=mid) + "#notes")
+
+
+@collections_bp.post("/discount-requests/<int:request_id>/resubmit")
+@permission_required("all_collections")
+def resubmit_discount(request_id: int):
+    from .collections_engine import resubmit_discount_request
+
+    db = get_db()
+    row = db.execute("SELECT member_id FROM collection_discount_requests WHERE id=?", (request_id,)).fetchone()
+    if row is None:
+        flash("Discount request not found.", "warning")
+        return redirect(url_for("collections.case_queue"))
+    if resubmit_discount_request(db, request_id, by=session.get("user_id")):
+        db.commit()
+        flash("Request resubmitted to the manager.", "success")
+    else:
+        flash("Only a returned request can be resubmitted.", "warning")
+    return redirect(url_for("collections.member_profile", mid=row["member_id"]) + "#approvals")
 
 
 @collections_bp.route("/reports")
@@ -1208,11 +1244,20 @@ def exception_decide(exception_id: int):
     db = get_db()
     decision = (request.form.get("decision") or "").strip().lower()
     notes = (request.form.get("notes") or "").strip()
-    if decision not in {"approved", "declined"}:
-        flash("A manager decision must be approved or declined.", "error")
+    if decision not in {"approved", "declined", "returned"}:
+        flash("A manager decision must be approved, declined or returned.", "error")
         return redirect(url_for("collections.exception_queue"))
-    if decision == "declined" and not notes:
-        flash("Declining an exception requires a reason.", "error")
+    if decision in {"declined", "returned"} and not notes:
+        flash(f"A {decision} decision requires a reason.", "error")
+        return redirect(url_for("collections.exception_queue"))
+    if decision == "returned":
+        row = return_collection_exception(db, exception_id, session.get("user_id"), notes)
+        if row is None:
+            flash("That exception has already been decided.", "warning")
+        else:
+            member_activity(db, row["member_id"], f"Collections exception #{exception_id} returned for information: {notes[:120]}")
+            db.commit()
+            flash("Exception returned for more information.", "success")
         return redirect(url_for("collections.exception_queue"))
 
     row = decide_collection_exception(db, exception_id, decision, session.get("user_id"), notes)

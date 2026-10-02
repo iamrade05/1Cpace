@@ -495,6 +495,10 @@ def resolve_case(db, case_id, resolution_type, *, resolved_by=None, notes=None, 
         db, case_id, changed_by=resolved_by, source="payment",
         reason=notes or f"Resolved: {resolution_type}",
     )
+    member = db.execute("SELECT member_id FROM collections_cases WHERE id=?", (case_id,)).fetchone()
+    if member:
+        add_collection_note(db, member["member_id"], "PAYMENT",
+                            f"Case resolved ({resolution_type}).", case_id=case_id)
 
 
 def reconcile_open_cases(db, member_ids=None, *, changed_by=None, source="payment"):
@@ -557,6 +561,11 @@ def supersede_open_ptps(db, member_id, keep_ptp_id):
     cursor = db.execute(
         """UPDATE ptp_agreements SET ptp_status='superseded', updated_at=datetime('now','localtime')
            WHERE member_id=? AND id<>? AND ptp_status IN ('pending','partially_paid')""",
+        (member_id, keep_ptp_id),
+    )
+    db.execute(
+        """UPDATE collection_discount_requests SET status='CANCELLED'
+           WHERE member_id=? AND ptp_id<>? AND status IN ('DRAFT','SUBMITTED','PENDING','RETURNED')""",
         (member_id, keep_ptp_id),
     )
     return cursor.rowcount
@@ -712,6 +721,22 @@ def _engine_table_statements(backend):
             changed_by INTEGER, source TEXT NOT NULL DEFAULT 'system', changed_at {timestamp},
             FOREIGN KEY (case_id) REFERENCES collections_cases(id), FOREIGN KEY (member_id) REFERENCES members(id)
         )""",
+        f"""CREATE TABLE IF NOT EXISTS collection_notes (
+            id {id_type}, case_id INTEGER, member_id INTEGER NOT NULL, staff_id INTEGER,
+            note_type TEXT NOT NULL DEFAULT 'GENERAL', note_text TEXT NOT NULL, created_at {timestamp},
+            FOREIGN KEY (member_id) REFERENCES members(id)
+        )""",
+        f"""CREATE TABLE IF NOT EXISTS collection_discount_requests (
+            id {id_type}, case_id INTEGER, member_id INTEGER NOT NULL, ptp_id INTEGER,
+            original_balance {real_type} DEFAULT 0, requested_percentage {real_type} DEFAULT 0,
+            discount_amount {real_type} DEFAULT 0, adjusted_balance {real_type} DEFAULT 0,
+            proposed_upfront {real_type} DEFAULT 0, debicheck_status TEXT, reason TEXT,
+            requested_by INTEGER, requested_at {timestamp}, status TEXT NOT NULL DEFAULT 'PENDING',
+            decided_by INTEGER, decided_at TEXT, decision_reason TEXT,
+            FOREIGN KEY (member_id) REFERENCES members(id)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_collection_notes_member ON collection_notes(member_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_collection_discount_member ON collection_discount_requests(member_id, status)",
         "CREATE INDEX IF NOT EXISTS idx_collection_stage_case ON collection_stage_history(case_id, changed_at)",
         "CREATE INDEX IF NOT EXISTS idx_collections_cases_member_status ON collections_cases(member_id, status)",
         "CREATE INDEX IF NOT EXISTS idx_collection_assignment_case ON collection_assignment_history(case_id, transferred_at)",
@@ -915,6 +940,11 @@ def apply_case_ownership(db, case_id, *, months_owing, failed_debit_date=None, t
            original_sales_consultant_id=?, assigned_at=datetime('now','localtime') WHERE id=?""",
         (owner, staff, reason, consultant, case_id),
     )
+    if assigned and case["owner_type"] == OWNER_SALES and owner == OWNER_RECEPTION:
+        add_collection_note(
+            db, case["member_id"], "HANDOVER",
+            "Collection ownership transferred from Sales to Reception because the account reached "
+            "the second-month arrears threshold.", case_id=case_id)
     db.execute(
         """INSERT INTO collection_assignment_history
            (case_id, member_id, from_owner_type, from_staff_id, to_owner_type, to_staff_id,
@@ -1142,6 +1172,7 @@ def decide_collection_exception(db, exception_id, decision, decided_by, notes=No
                WHERE id = ? AND manager_approval_status = 'pending'""",
             (decision, decided_by, notes or "", row["ptp_id"]),
         )
+        settle_discount_request(db, row["ptp_id"], decision, decided_by, notes)
     return row
 
 
@@ -1155,6 +1186,7 @@ def settle_exception_for_arrangement(db, ptp_id, decision, decided_by, notes=Non
            WHERE ptp_id = ? AND status = 'pending'""",
         (decision, notes or "", decided_by, ptp_id),
     )
+    settle_discount_request(db, ptp_id, decision, decided_by, notes)
 
 
 def apply_manager_exception(db, member_id, decision, *, today=None):
@@ -1208,3 +1240,154 @@ def grant_exception_access(db, member_id, *, today=None):
     )
     record_access_decision(db, member_id, "ALLOWED", decision["action"], source="manager_exception")
     return True
+
+
+# ── Notes ────────────────────────────────────────────────────────────────────
+
+NOTE_TYPES = (
+    "CONTACT", "PAYMENT", "PTP", "ARRANGEMENT", "DISPUTE", "APPROVAL",
+    "ACCESS", "HANDOVER", "GENERAL", "SYSTEM",
+)
+
+
+def add_collection_note(db, member_id, note_type, text, *, case_id=None, staff_id=None):
+    """A structured note on a member's collection. A note with no staff member is
+    a system note (shown as such, whatever its category); staff cannot write a
+    SYSTEM-type note, so one cannot be passed off as automatic."""
+    note_type = str(note_type or "").upper()
+    if note_type not in NOTE_TYPES or (staff_id is not None and note_type == "SYSTEM"):
+        if staff_id is None:
+            note_type = "SYSTEM"
+        else:
+            raise ValueError("Unknown note type.")
+    text = str(text or "").strip()
+    if not text:
+        raise ValueError("A note cannot be empty.")
+    if case_id is None:
+        row = db.execute(
+            "SELECT id FROM collections_cases WHERE member_id=? AND status IN ('open','active','pending') "
+            "ORDER BY id DESC LIMIT 1", (member_id,)).fetchone()
+        case_id = row["id"] if row else None
+    cursor = db.execute(
+        "INSERT INTO collection_notes (case_id, member_id, staff_id, note_type, note_text) VALUES (?,?,?,?,?)",
+        (case_id, member_id, staff_id, note_type, text),
+    )
+    return cursor.lastrowid
+
+
+# ── Discount requests ────────────────────────────────────────────────────────
+#
+# The original balance is never overwritten: a request records the original,
+# the discount and the adjusted balance side by side, and who decided and why.
+
+DISCOUNT_OPEN = ("DRAFT", "SUBMITTED", "PENDING", "RETURNED")
+_APPROVAL_TO_DISCOUNT = {
+    "pending": "PENDING", "approved": "APPROVED", "not_required": "APPROVED",
+    "declined": "REJECTED", "returned": "RETURNED",
+}
+
+
+def record_discount_request(db, ptp_id, requested_by=None):
+    """Open the audit record for a promise that carries a discount. Idempotent."""
+    existing = db.execute(
+        "SELECT id FROM collection_discount_requests WHERE ptp_id=?", (ptp_id,)).fetchone()
+    if existing:
+        return existing["id"]
+    ptp = db.execute("SELECT * FROM ptp_agreements WHERE id=?", (ptp_id,)).fetchone()
+    if ptp is None or float(ptp["discount_pct"] or 0) <= 0:
+        return None
+    case = db.execute(
+        "SELECT id, debicheck_status FROM collections_cases WHERE member_id=? "
+        "AND status IN ('open','active','pending') ORDER BY id DESC LIMIT 1", (ptp["member_id"],)).fetchone()
+    status = _APPROVAL_TO_DISCOUNT.get(ptp["manager_approval_status"] or "pending", "PENDING")
+    cursor = db.execute(
+        """INSERT INTO collection_discount_requests
+           (case_id, member_id, ptp_id, original_balance, requested_percentage, discount_amount,
+            adjusted_balance, proposed_upfront, debicheck_status, reason, requested_by, status)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (case["id"] if case else None, ptp["member_id"], ptp_id,
+         float(ptp["arrears_amount"] or 0), float(ptp["discount_pct"] or 0),
+         float(ptp["discount_amount"] or 0), float(ptp["discounted_balance"] or 0),
+         float(ptp["upfront_amount"] or 0), case["debicheck_status"] if case else None,
+         ptp["discount_basis"], requested_by or ptp["created_by"], status),
+    )
+    return cursor.lastrowid
+
+
+def _discount_decided(db, ptp_id, status, decided_by, reason):
+    placeholders = ",".join("?" for _ in DISCOUNT_OPEN)
+    cursor = db.execute(
+        f"""UPDATE collection_discount_requests
+            SET status=?, decided_by=?, decided_at=datetime('now','localtime'), decision_reason=?
+            WHERE ptp_id=? AND status IN ({placeholders})""",
+        (status, decided_by, reason or None, ptp_id, *DISCOUNT_OPEN),
+    )
+    return cursor.rowcount
+
+
+def settle_discount_request(db, ptp_id, decision, decided_by, reason=None):
+    """A manager approved or declined the arrangement that carries the discount."""
+    status = {"approved": "APPROVED", "declined": "REJECTED"}.get(str(decision).lower())
+    if status is None:
+        raise ValueError("decision must be approved or declined")
+    changed = _discount_decided(db, ptp_id, status, decided_by, reason)
+    if changed:
+        member = db.execute("SELECT member_id FROM ptp_agreements WHERE id=?", (ptp_id,)).fetchone()
+        if member:
+            add_collection_note(db, member["member_id"], "APPROVAL",
+                                f"Discount request {status.lower()}" + (f": {reason}" if reason else "."))
+    return changed
+
+
+def return_discount_request(db, ptp_id, decided_by, reason):
+    """Send a discount request back to the requester for more information."""
+    if not str(reason or "").strip():
+        raise ValueError("Returning a request needs a reason.")
+    changed = _discount_decided(db, ptp_id, "RETURNED", decided_by, reason)
+    if changed:
+        db.execute(
+            "UPDATE ptp_agreements SET manager_approval_status='returned', approval_notes=?, "
+            "updated_at=datetime('now','localtime') WHERE id=?", (reason, ptp_id))
+        db.execute(
+            "UPDATE collection_exceptions SET status='returned', notes=? "
+            "WHERE ptp_id=? AND status='pending'", (reason, ptp_id))
+        member = db.execute("SELECT member_id FROM ptp_agreements WHERE id=?", (ptp_id,)).fetchone()
+        if member:
+            add_collection_note(db, member["member_id"], "APPROVAL", f"Discount request returned: {reason}")
+    return changed
+
+
+def resubmit_discount_request(db, request_id, by=None):
+    """The requester answered a returned request; it goes back to the manager."""
+    row = db.execute(
+        "SELECT id, ptp_id, member_id FROM collection_discount_requests WHERE id=? AND status='RETURNED'",
+        (request_id,)).fetchone()
+    if row is None:
+        return False
+    db.execute(
+        "UPDATE collection_discount_requests SET status='PENDING', decided_by=NULL, decided_at=NULL, "
+        "decision_reason=NULL WHERE id=?", (request_id,))
+    db.execute(
+        "UPDATE ptp_agreements SET manager_approval_status='pending', updated_at=datetime('now','localtime') "
+        "WHERE id=? AND manager_approval_status='returned'", (row["ptp_id"],))
+    db.execute(
+        "UPDATE collection_exceptions SET status='pending' WHERE ptp_id=? AND status='returned'", (row["ptp_id"],))
+    add_collection_note(db, row["member_id"], "APPROVAL", "Discount request resubmitted to the manager.", staff_id=by)
+    return True
+
+
+def return_collection_exception(db, exception_id, decided_by, notes):
+    """A manager sends a pending exception back for more information. Returns the
+    row as it was, or None if it was not pending."""
+    if not str(notes or "").strip():
+        raise ValueError("Returning an exception needs a reason.")
+    row = db.execute(
+        "SELECT * FROM collection_exceptions WHERE id=? AND status='pending'", (exception_id,)).fetchone()
+    if row is None:
+        return None
+    db.execute(
+        """UPDATE collection_exceptions SET status='returned', notes=?, decided_by=?,
+           decided_at=datetime('now','localtime') WHERE id=?""", (notes, decided_by, exception_id))
+    if row["ptp_id"]:
+        return_discount_request(db, row["ptp_id"], decided_by, notes)
+    return row

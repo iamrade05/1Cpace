@@ -22,6 +22,8 @@ from .collections_engine import (
     record_access_decision,
     reconcile_open_cases,
     refresh_member_cases,
+    record_discount_request,
+    return_discount_request,
     settle_exception_for_arrangement,
     supersede_open_ptps,
     sync_collection_case,
@@ -947,6 +949,8 @@ def ptp_create(mid: int):
         f"{discount_note}{escalation_note} "
         f"Notes: {notes[:120]}",
     )
+    # Recorded last so it reflects any escalation to a manager above.
+    record_discount_request(db, ptp_id, requested_by=session.get("user_id"))
     db.commit()
     if escalated:
         flash(
@@ -1170,8 +1174,17 @@ def ptp_approve(mid: int, ptp_id: int):
     db       = get_db()
     decision = (request.form.get("decision", "approved") or "").strip().lower()
     notes    = (request.form.get("approval_notes") or "").strip()
-    if decision not in {"approved", "declined"}:
-        flash("Manager decision must be approved or declined.", "error")
+    if decision not in {"approved", "declined", "returned"}:
+        flash("Manager decision must be approved, declined or returned.", "error")
+        return _approval_redirect(mid)
+    if decision == "returned":
+        if not notes:
+            flash("Returning a request needs a reason.", "error")
+            return _approval_redirect(mid)
+        return_discount_request(db, ptp_id, session.get("user_id"), notes)
+        member_activity(db, mid, f"PTP #{ptp_id} returned to staff for information: {notes[:100]}")
+        db.commit()
+        flash("Request returned for more information.", "success")
         return _approval_redirect(mid)
 
     db.execute("""
