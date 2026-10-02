@@ -68,6 +68,11 @@ def test_daily_sweep_breaks_missed_promise_and_moves_the_case(app):
     with app.app_context():
         db = get_db()
         mid = _member(db, 3)
+        # A real unpaid charge: with nothing owed, the sweep would resolve the case.
+        db.execute(
+            """INSERT INTO collections (member_id, outstanding_balance, amount_paid,
+                   collection_date, status, notes)
+               VALUES (?, 500, 0, '2026-09-01', 'failed', 'type=Recurring Fee')""", (mid,))
         case_id = sync_collection_case(db, mid, failed_debit_date="2026-09-01",
                                        arrears_amount=500, months_owing=1)
         _ptp(db, mid, "2026-09-20")

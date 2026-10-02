@@ -477,6 +477,66 @@ def evaluate_ptp(promised_date, payment_received, today=None):
     return "ACTIVE"
 
 
+RESOLUTION_PAID_IN_FULL = "PAID_IN_FULL"
+RESOLUTION_ACCOUNT_CURRENT = "ACCOUNT_CURRENT"
+OPEN_CASE_STATUSES = ("open", "active", "pending")
+
+
+def resolve_case(db, case_id, resolution_type, *, resolved_by=None, notes=None, balance=0):
+    """Close a case without deleting it, recording why and with what balance."""
+    db.execute(
+        """UPDATE collections_cases
+           SET status='closed', closed_at=datetime('now','localtime'), resolution_type=?,
+               resolved_by=?, resolution_balance=?, resolution_notes=?, arrears_amount=?
+           WHERE id=? AND status IN ('open','active','pending')""",
+        (resolution_type, resolved_by, float(money(balance)), notes, float(money(balance)), case_id),
+    )
+    refresh_case_workflow(
+        db, case_id, changed_by=resolved_by, source="payment",
+        reason=notes or f"Resolved: {resolution_type}",
+    )
+
+
+def reconcile_open_cases(db, member_ids=None, *, changed_by=None, source="payment"):
+    """Recalculate every open case from the reconciled balance. A case whose
+    member no longer owes anything is resolved; one that still owes has its
+    balance, ageing, owner and workflow brought up to date. Returns how many
+    cases were resolved."""
+    from .ptp import bulk_member_arrears
+
+    query = "SELECT id, member_id, arrears_amount FROM collections_cases WHERE status IN ('open','active','pending')"
+    params = []
+    if member_ids is not None:
+        member_ids = list(member_ids)
+        if not member_ids:
+            return 0
+        query += f" AND member_id IN ({','.join('?' for _ in member_ids)})"
+        params = member_ids
+    cases = db.execute(query, params).fetchall()
+    if not cases:
+        return 0
+    arrears = bulk_member_arrears(db, {case["member_id"] for case in cases})
+    resolved = 0
+    for case in cases:
+        owed = arrears.get(case["member_id"], {})
+        total = float(owed.get("total_arrears", 0) or 0)
+        if total <= 0:
+            resolve_case(
+                db, case["id"], RESOLUTION_PAID_IN_FULL, resolved_by=changed_by,
+                notes="Outstanding balance cleared by payment", balance=0,
+            )
+            resolved += 1
+            continue
+        months = int(owed.get("months_in_arrears", 0) or 0)
+        db.execute(
+            "UPDATE collections_cases SET arrears_amount=?, months_owing=?, updated_at=datetime('now','localtime') WHERE id=?",
+            (float(money(total)), months, case["id"]),
+        )
+        apply_case_ownership(db, case["id"], months_owing=months)
+        refresh_case_workflow(db, case["id"], changed_by=changed_by, source=source, reason="Balance recalculated")
+    return resolved
+
+
 def classify_ptp(promise_amount, verified_paid, promise_date, today=None):
     """How a promise stands: ACTIVE before its date, DUE on the date, then
     HONOURED / PARTIALLY_HONOURED / BROKEN from the verified payments."""
@@ -675,6 +735,10 @@ def ensure_collections_engine_schema(db, backend="sqlite"):
     _ensure_column(db, backend, "collections_cases", "collection_stage", "TEXT")
     _ensure_column(db, backend, "collections_cases", "priority", "INTEGER DEFAULT 3")
     _ensure_column(db, backend, "collections_cases", "next_action", "TEXT")
+    _ensure_column(db, backend, "collections_cases", "resolution_type", "TEXT")
+    _ensure_column(db, backend, "collections_cases", "resolved_by", "INTEGER")
+    _ensure_column(db, backend, "collections_cases", "resolution_balance", "REAL")
+    _ensure_column(db, backend, "collections_cases", "resolution_notes", "TEXT")
     insert = "INSERT INTO collection_rules (rule_key, rule_value, value_type) VALUES (?, ?, ?)"
     if backend == "sqlite":
         insert = insert.replace("INSERT INTO", "INSERT OR IGNORE INTO")

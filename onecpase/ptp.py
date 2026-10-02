@@ -20,6 +20,7 @@ from .collections_engine import (
     get_collection_rules,
     grant_exception_access,
     record_access_decision,
+    reconcile_open_cases,
     refresh_member_cases,
     settle_exception_for_arrangement,
     supersede_open_ptps,
@@ -599,7 +600,7 @@ def _run_collections_automations(db, today: str, dry_run: bool = False) -> dict:
         should_restore = (
             decision["access"] == "ALLOWED"
             and member["gym_access_status"] == "blocked"
-            and str(member.get("access_block_reason") or "").startswith(("arrears_", "ptp_", "temp_unblock_"))
+            and str(member["access_block_reason"] or "").startswith(("arrears_", "ptp_", "temp_unblock_"))
         ) if str(member["access_block_reason"] or "").startswith(("arrears_", "ptp_", "temp_unblock_")) else False
         should_inactivate = (
             decision["status"] == "INACTIVE"
@@ -663,13 +664,18 @@ def _run_collections_automations(db, today: str, dry_run: bool = False) -> dict:
                     "Account flagged INACTIVE — outstanding balance unpaid for more than 6 months.",
                 )
 
+    cases_resolved = 0
     if not dry_run:
+        # Payments can arrive from imports and POS pushes, not only receipts,
+        # so every open case is re-checked against the reconciled balance.
+        cases_resolved = reconcile_open_cases(db, source="daily_sweep")
         db.commit()
     return {
         "broken_count": broken_count,
         "expired_count": expired_count,
         "restricted_count": restricted_count,
         "inactive_count": inactive_count,
+        "cases_resolved": cases_resolved,
     }
 
 
@@ -1052,6 +1058,7 @@ def ptp_verify_receipt(mid: int, rid: int):
                 db.execute("UPDATE ptp_agreements SET ptp_status=?, updated_at=datetime('now','localtime') WHERE id=?", (new_ptp_status, receipt["ptp_id"]))
                 refresh_member_cases(db, mid, changed_by=session.get("user_id"), source="payment",
                                      reason=f"Verified payment: promise {new_ptp_status}")
+                reconcile_open_cases(db, [mid], changed_by=session.get("user_id"))
 
         from .collections_engine import evaluate_member_access, record_access_decision
         access = evaluate_member_access(db, mid, today=date.today())

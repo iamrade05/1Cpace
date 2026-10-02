@@ -22,6 +22,7 @@ from .collections_engine import (
     grant_exception_access,
     log_collection_communication,
     next_communication,
+    reconcile_open_cases,
     sync_collection_case,
     transfer_due_sales_cases,
 )
@@ -903,6 +904,7 @@ def collections_add():
                 f"Added collection: R{float(amount_paid or 0):,.2f} paid, "
                 f"R{float(outstanding_balance or 0):,.2f} outstanding ({status})",
             )
+            reconcile_open_cases(db, [int(member_id)], changed_by=session.get("user_id"))
             _sync_application_payment(db, int(member_id))
             db.commit()
             flash("Collection record added successfully.", "success")
@@ -973,6 +975,7 @@ def collections_edit(cid: int):
                 col["member_id"],
                 f"Updated collection #{cid}: R{float(amount_paid or 0):,.2f} paid ({status})",
             )
+            reconcile_open_cases(db, [col["member_id"]], changed_by=session.get("user_id"))
             _sync_application_payment(db, col["member_id"])
             db.commit()
             flash("Collection updated.", "success")
