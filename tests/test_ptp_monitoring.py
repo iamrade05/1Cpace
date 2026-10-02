@@ -90,3 +90,56 @@ def test_daily_sweep_breaks_missed_promise_and_moves_the_case(app):
             "SELECT to_stage, source FROM collection_stage_history WHERE case_id=? ORDER BY id DESC LIMIT 1", (case_id,)
         ).fetchone()
         assert (history["to_stage"], history["source"]) == ("PTP_BROKEN", "ptp_monitor")
+
+
+def _owing_member_with_missed_promise(db, mid):
+    db.execute(
+        """INSERT INTO collections (member_id, outstanding_balance, amount_paid,
+               collection_date, status, notes)
+           VALUES (?, 500, 0, '2026-09-01', 'failed', 'type=Recurring Fee')""", (mid,))
+    db.execute(
+        """INSERT INTO ptp_agreements (member_id, promise_amount, promise_date, payment_method,
+               ptp_status, auto_block_if_failed)
+           VALUES (?, 500, '2026-09-20', 'eft', 'pending', 1)""", (mid,))
+    db.commit()
+
+
+def _access(db, mid):
+    row = db.execute("SELECT gym_access_status, access_block_reason FROM members WHERE id=?", (mid,)).fetchone()
+    return row["gym_access_status"], row["access_block_reason"]
+
+
+def test_broken_promise_keeps_access_blocked_even_at_one_month_owing(app):
+    with app.app_context():
+        db = get_db()
+        mid = _member(db, 10)
+        _owing_member_with_missed_promise(db, mid)
+        _run_collections_automations(db, "2026-10-05")
+        assert _access(db, mid) == ("blocked", "ptp_broken")
+        _run_collections_automations(db, "2026-10-06")   # stays blocked on later sweeps
+        assert _access(db, mid) == ("blocked", "ptp_broken")
+
+
+def test_honouring_a_later_promise_lifts_the_block(app):
+    with app.app_context():
+        db = get_db()
+        mid = _member(db, 11)
+        _owing_member_with_missed_promise(db, mid)
+        _run_collections_automations(db, "2026-10-05")
+        _ptp(db, mid, "2026-10-20", status="paid")
+        db.commit()
+        _run_collections_automations(db, "2026-10-06")
+        assert _access(db, mid) == ("allowed", None)
+
+
+def test_paying_the_balance_lifts_the_block(app):
+    with app.app_context():
+        db = get_db()
+        mid = _member(db, 12)
+        _owing_member_with_missed_promise(db, mid)
+        _run_collections_automations(db, "2026-10-05")
+        assert _access(db, mid)[0] == "blocked"
+        db.execute("UPDATE collections SET amount_paid=500, status='paid' WHERE member_id=?", (mid,))
+        db.commit()
+        _run_collections_automations(db, "2026-10-06")
+        assert _access(db, mid) == ("allowed", None)

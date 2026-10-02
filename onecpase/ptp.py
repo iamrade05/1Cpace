@@ -506,6 +506,23 @@ DEBICHECK_DISCOUNT_CEILING = 25   # Rule §9: DebiCheck + PTP, auto-approved up 
 CASH_UPFRONT_DISCOUNT_CEILING = 50  # cash paid in full upfront, auto-approved up to this %
 
 
+def _broken_promise_hold(db, member_id: int) -> bool:
+    """True while a broken promise still holds a member's access blocked: the
+    promise was broken and no later promise has been honoured (paid). The
+    member paying their balance also lifts it, but that is judged by the
+    caller, which knows whether anything is still owing."""
+    return db.execute(
+        """SELECT 1 FROM ptp_agreements b
+           WHERE b.member_id=? AND b.ptp_status='broken'
+             AND NOT EXISTS (
+                 SELECT 1 FROM ptp_agreements p
+                 WHERE p.member_id=b.member_id AND p.ptp_status='paid' AND p.id>b.id
+             )
+           LIMIT 1""",
+        (member_id,),
+    ).fetchone() is not None
+
+
 def _run_collections_automations(db, today: str, dry_run: bool = False) -> dict:
     """Sweep PTPs, temp unblocks, and arrears thresholds — used by the manual
     'Run Automations' button. With dry_run=True, only counts what *would*
@@ -601,7 +618,11 @@ def _run_collections_automations(db, today: str, dry_run: bool = False) -> dict:
             decision["access"] == "ALLOWED"
             and member["gym_access_status"] == "blocked"
             and str(member["access_block_reason"] or "").startswith(("arrears_", "ptp_", "temp_unblock_"))
-        ) if str(member["access_block_reason"] or "").startswith(("arrears_", "ptp_", "temp_unblock_")) else False
+            # A broken promise keeps access blocked until it is honoured or the
+            # member pays; the policy allowing access at low arrears is not enough.
+            and not (member["access_block_reason"] == "ptp_broken"
+                     and _broken_promise_hold(db, member["id"]))
+        )
         should_inactivate = (
             decision["status"] == "INACTIVE"
             and member["member_status"] not in ("Inactive", "Cancelled")
@@ -663,6 +684,21 @@ def _run_collections_automations(db, today: str, dry_run: bool = False) -> dict:
                     db, member["id"],
                     "Account flagged INACTIVE — outstanding balance unpaid for more than 6 months.",
                 )
+
+    # A member who has paid everything is no longer in the owing list above, so
+    # a broken-promise block would otherwise never be lifted for them.
+    owing_ids = {m["id"] for m in owing_members}
+    for held in db.execute(
+        "SELECT id FROM members WHERE gym_access_status='blocked' AND access_block_reason='ptp_broken'"
+    ).fetchall():
+        if held["id"] in owing_ids:
+            continue
+        if not dry_run:
+            db.execute(
+                "UPDATE members SET gym_access_status='allowed', access_blocked_until=NULL, access_block_reason=NULL WHERE id=?",
+                (held["id"],),
+            )
+            member_activity(db, held["id"], "ACCESS RESTORED automatically — the member has paid their balance.")
 
     cases_resolved = 0
     if not dry_run:
