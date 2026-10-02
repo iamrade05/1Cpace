@@ -725,8 +725,12 @@
          class="nav-item {% if request.endpoint == 'collections.case_queue' %}active{% endif %}">
         <span class="icon">🗂</span> Case Queue
       </a>
+      <a href="{{ url_for('collections.reports') }}"
+         class="nav-item {% if request.endpoint == 'collections.reports' %}active{% endif %}">
+        <span class="icon">📑</span> Collections Reports
+      </a>
       <a href="{{ url_for('collections.collections_index') }}"
-         class="nav-item {% if request.blueprint == 'collections' and request.endpoint not in ('collections.call_queue', 'collections.call_profile', 'collections.dashboard', 'collections.case_queue') %}active{% endif %}">
+         class="nav-item {% if request.blueprint == 'collections' and request.endpoint not in ('collections.call_queue', 'collections.call_profile', 'collections.dashboard', 'collections.case_queue', 'collections.reports') %}active{% endif %}">
         <span class="icon">💳</span> Payment Records
       </a>
       <a href="{{ url_for('collections.call_queue') }}"

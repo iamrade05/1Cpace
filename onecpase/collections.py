@@ -418,6 +418,22 @@ def member_profile(mid: int):
     return render_template("collections/member.html", p=profile)
 
 
+@collections_bp.route("/reports")
+@permission_required("all_collections")
+def reports():
+    from . import collections_workspace as workspace
+
+    db = get_db()
+    month = workspace.report_month(request.args.get("month"))
+    return render_template(
+        "collections/reports.html",
+        month=month,
+        financial=workspace.financial_report(db, month),
+        sales=workspace.sales_quality_report(db, month),
+        performance=workspace.performance_report(db, month),
+    )
+
+
 @collections_bp.route("/queue")
 @permission_required("all_collections")
 def case_queue():

@@ -251,3 +251,131 @@ def member_profile(db, member_id):
         "contacts": contacts, "ptps": ptps, "payments": payments, "exceptions": exceptions,
         "access": access, "assignments": assignments, "stages": stages,
     }
+
+
+# ── Reports ──────────────────────────────────────────────────────────────────
+
+def report_month(value=None):
+    """A YYYY-MM string; anything unreadable falls back to the current month."""
+    text = str(value or "")
+    if len(text) == 7 and text[4] == "-" and text[:4].isdigit() and text[5:].isdigit():
+        if 2000 <= int(text[:4]) <= 2100 and 1 <= int(text[5:]) <= 12:
+            return text
+    return date.today().strftime("%Y-%m")
+
+
+def financial_report(db, month):
+    """Money in and out of collections for one month, plus where it stands now.
+    There is no opening balance: balances are not snapshotted, so one would be invented."""
+    return {
+        "month": month,
+        "new_arrears": float(_scalar(
+            db, "SELECT SUM(arrears_amount) FROM collections_cases WHERE substr(created_at,1,7)=?", (month,))),
+        "collected": float(_scalar(
+            db, """SELECT SUM(amount_paid) FROM collections
+                   WHERE substr(collection_date,1,7)=? AND status IN ('paid','partial')""", (month,))),
+        "discounts_approved": float(_scalar(
+            db, """SELECT SUM(discount_amount) FROM ptp_agreements
+                   WHERE substr(created_at,1,7)=? AND COALESCE(discount_amount,0) > 0
+                     AND manager_approval_status IN ('approved','not_required')""", (month,))),
+        "cases_resolved": _scalar(
+            db, "SELECT COUNT(*) FROM collections_cases WHERE status='closed' AND substr(closed_at,1,7)=?", (month,)),
+        "remaining_outstanding": float(_scalar(
+            db, f"SELECT SUM(arrears_amount) FROM collections_cases WHERE status IN {OPEN}")),
+        "open_cases": _scalar(db, f"SELECT COUNT(*) FROM collections_cases WHERE status IN {OPEN}"),
+    }
+
+
+def sales_quality_report(db, month):
+    """Per consultant: new members, first-month failures, recoveries and
+    hand-overs to Reception, with the failure rate against new members."""
+    consultants = {}
+
+    def row(staff_id, name):
+        return consultants.setdefault(staff_id, {
+            "id": staff_id, "name": name or f"User {staff_id}", "new_members": 0,
+            "failed": 0, "recovered": 0, "transferred": 0, "unresolved": 0,
+        })
+
+    for r in db.execute(
+        """SELECT COALESCE(l.assigned_to, ma.created_by) AS staff_id, u.full_name AS name,
+                  COUNT(DISTINCT m.id) AS n
+           FROM members m
+           JOIN membership_applications ma ON ma.member_id = m.id
+           LEFT JOIN leads l ON l.id = ma.lead_id
+           LEFT JOIN users u ON u.id = COALESCE(l.assigned_to, ma.created_by)
+           WHERE substr(m.join_date,1,7)=? AND COALESCE(l.assigned_to, ma.created_by) IS NOT NULL
+           GROUP BY 1, 2""", (month,)).fetchall():
+        row(r["staff_id"], r["name"])["new_members"] = r["n"]
+
+    for r in db.execute(
+        """SELECT h.to_staff_id AS staff_id, u.full_name AS name, COUNT(*) AS n
+           FROM collection_assignment_history h LEFT JOIN users u ON u.id = h.to_staff_id
+           WHERE h.reason='FIRST_MONTH_FAILED_DEBIT' AND substr(h.transferred_at,1,7)=?
+           GROUP BY 1, 2""", (month,)).fetchall():
+        row(r["staff_id"], r["name"])["failed"] = r["n"]
+
+    for r in db.execute(
+        """SELECT h.from_staff_id AS staff_id, u.full_name AS name, COUNT(*) AS n
+           FROM collection_assignment_history h LEFT JOIN users u ON u.id = h.from_staff_id
+           WHERE h.reason='SECOND_MONTH_ARREARS' AND h.from_owner_type='SALES'
+             AND substr(h.transferred_at,1,7)=? GROUP BY 1, 2""", (month,)).fetchall():
+        row(r["staff_id"], r["name"])["transferred"] = r["n"]
+
+    # Recovered by Sales: a first-month case paid in full without ever leaving Sales.
+    for r in db.execute(
+        """SELECT c.original_sales_consultant_id AS staff_id, u.full_name AS name, COUNT(*) AS n
+           FROM collections_cases c LEFT JOIN users u ON u.id = c.original_sales_consultant_id
+           WHERE c.status='closed' AND c.resolution_type='PAID_IN_FULL' AND substr(c.closed_at,1,7)=?
+             AND c.original_sales_consultant_id IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM collection_assignment_history h
+                              WHERE h.case_id=c.id AND h.to_owner_type='RECEPTION' AND h.from_owner_type='SALES')
+             AND EXISTS (SELECT 1 FROM collection_assignment_history h
+                          WHERE h.case_id=c.id AND h.reason='FIRST_MONTH_FAILED_DEBIT')
+           GROUP BY 1, 2""", (month,)).fetchall():
+        row(r["staff_id"], r["name"])["recovered"] = r["n"]
+
+    for r in db.execute(
+        f"""SELECT c.owner_staff_id AS staff_id, u.full_name AS name, COUNT(*) AS n
+            FROM collections_cases c LEFT JOIN users u ON u.id = c.owner_staff_id
+            WHERE c.owner_type='SALES' AND c.status IN {OPEN} GROUP BY 1, 2""").fetchall():
+        row(r["staff_id"], r["name"])["unresolved"] = r["n"]
+
+    rows = sorted(consultants.values(), key=lambda r: (-r["failed"], r["name"]))
+    for r in rows:
+        r["failure_rate"] = round(100.0 * r["failed"] / r["new_members"], 1) if r["new_members"] else None
+    return {"month": month, "rows": rows}
+
+
+def performance_report(db, month):
+    """Reception and collections activity for one month."""
+    callers = db.execute(
+        """SELECT t.assigned_to AS staff_id, u.full_name AS name, COUNT(*) AS assigned,
+                  SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS calls,
+                  SUM(CASE WHEN t.successful_contact=1 THEN 1 ELSE 0 END) AS contacts
+           FROM collection_call_tasks t LEFT JOIN users u ON u.id = t.assigned_to
+           WHERE substr(t.task_date,1,7)=? GROUP BY 1, 2 ORDER BY calls DESC, name""", (month,)).fetchall()
+    totals = {
+        "calls": sum(c["calls"] or 0 for c in callers),
+        "contacts": sum(c["contacts"] or 0 for c in callers),
+        "ptps_created": _scalar(db, "SELECT COUNT(*) FROM ptp_agreements WHERE substr(created_at,1,7)=?", (month,)),
+        "ptps_honoured": _scalar(
+            db, "SELECT COUNT(*) FROM ptp_agreements WHERE ptp_status='paid' AND substr(updated_at,1,7)=?", (month,)),
+        "ptps_broken": _scalar(
+            db, "SELECT COUNT(*) FROM ptp_agreements WHERE ptp_status='broken' AND substr(updated_at,1,7)=?", (month,)),
+        "arrangements": _scalar(
+            db, """SELECT COUNT(*) FROM ptp_agreements
+                   WHERE substr(created_at,1,7)=? AND COALESCE(arrangement_type,'full') <> 'full'""", (month,)),
+        "debichecks": _scalar(
+            db, "SELECT COUNT(*) FROM debicheck_mandates WHERE substr(created_at,1,7)=?", (month,)),
+        "amount_collected": float(_scalar(
+            db, """SELECT SUM(amount_paid) FROM collections
+                   WHERE substr(collection_date,1,7)=? AND status IN ('paid','partial')""", (month,))),
+        "discount_requests": _scalar(
+            db, """SELECT COUNT(*) FROM ptp_agreements
+                   WHERE substr(created_at,1,7)=? AND COALESCE(discount_pct,0) > 0""", (month,)),
+        "access_restrictions": _scalar(
+            db, "SELECT COUNT(*) FROM access_decisions WHERE access_status='BLOCKED' AND substr(evaluated_at,1,7)=?", (month,)),
+    }
+    totals["contact_rate"] = round(100.0 * totals["contacts"] / totals["calls"], 1) if totals["calls"] else None
+    return {"month": month, "callers": callers, "totals": totals}

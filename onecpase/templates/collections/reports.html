@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Collections Reports · 1Cpase{% endblock %}
+
+{% macro stat(label, value) %}
+  <div class="kpi-card"><div class="kpi-label">{{ label }}</div><div class="kpi-value">{{ value }}</div></div>
+{% endmacro %}
+
+{% block content %}
+{% set fin = financial %}
+{% set tot = performance.totals %}
+<div class="page-header">
+  <div>
+    <h1>Collections Reports</h1>
+    <p class="page-sub">Financial position, sales quality and collections performance for {{ month }}.</p>
+  </div>
+  <form method="get" style="display:flex;gap:8px;align-items:center;">
+    <input type="month" name="month" value="{{ month }}" class="form-control" aria-label="Month">
+    <button class="btn btn-primary" type="submit">Show</button>
+  </form>
+</div>
+
+<h2 style="margin:8px 0;">Financial</h2>
+<div class="kpi-grid">
+  {{ stat('New arrears', 'R%.2f'|format(fin.new_arrears)) }}
+  {{ stat('Collections received', 'R%.2f'|format(fin.collected)) }}
+  {{ stat('Discounts approved', 'R%.2f'|format(fin.discounts_approved)) }}
+  {{ stat('Cases resolved', fin.cases_resolved) }}
+  {{ stat('Remaining outstanding (now)', 'R%.2f'|format(fin.remaining_outstanding)) }}
+  {{ stat('Open cases (now)', fin.open_cases) }}
+</div>
+<p style="color:#6b7280;font-size:.8rem;">Balances are not snapshotted, so there is no opening-balance figure; "remaining" is today's position.</p>
+
+<h2 style="margin:20px 0 8px;">Sales quality — first-month failed debits</h2>
+<div class="card"><div class="card-body" style="padding:0;overflow-x:auto;">
+  {% if sales.rows %}
+  <table class="table">
+    <thead><tr><th>Consultant</th><th>New members</th><th>First-month failures</th><th>Failure rate</th>
+               <th>Recovered by Sales</th><th>Transferred to Reception</th><th>Still with Sales</th></tr></thead>
+    <tbody>
+    {% for r in sales.rows %}
+      <tr><td>{{ r.name }}</td><td>{{ r.new_members }}</td><td>{{ r.failed }}</td>
+          <td>{% if r.failure_rate is none %}—{% else %}{{ r.failure_rate }}%{% endif %}</td>
+          <td>{{ r.recovered }}</td><td>{{ r.transferred }}</td><td>{{ r.unresolved }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p style="padding:20px;color:#4b5563;">No sales activity for this month.</p>{% endif %}
+</div></div>
+
+<h2 style="margin:20px 0 8px;">Collections performance</h2>
+<div class="kpi-grid">
+  {{ stat('Reception calls', tot.calls) }}
+  {{ stat('Successful contacts', tot.contacts) }}
+  {{ stat('Contact rate', '—' if tot.contact_rate is none else '%s%%'|format(tot.contact_rate)) }}
+  {{ stat('PTPs created', tot.ptps_created) }}
+  {{ stat('PTPs honoured', tot.ptps_honoured) }}
+  {{ stat('PTPs broken', tot.ptps_broken) }}
+  {{ stat('Arrangements', tot.arrangements) }}
+  {{ stat('DebiChecks', tot.debichecks) }}
+  {{ stat('Amount collected', 'R%.2f'|format(tot.amount_collected)) }}
+  {{ stat('Discount requests', tot.discount_requests) }}
+  {{ stat('Access restrictions', tot.access_restrictions) }}
+</div>
+
+<div class="card" style="margin-top:16px;"><div class="card-body" style="padding:0;overflow-x:auto;">
+  {% if performance.callers %}
+  <table class="table">
+    <thead><tr><th>Caller</th><th>Assigned</th><th>Calls made</th><th>Successful contacts</th></tr></thead>
+    <tbody>
+    {% for c in performance.callers %}
+      <tr><td>{{ c.name or 'Unassigned' }}</td><td>{{ c.assigned }}</td><td>{{ c.calls or 0 }}</td><td>{{ c.contacts or 0 }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p style="padding:20px;color:#4b5563;">No call tasks for this month.</p>{% endif %}
+</div></div>
+{% endblock %}
