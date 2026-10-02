@@ -122,6 +122,9 @@ def test_member_counts_remain_local_when_itensity_differs(app, monkeypatch):
         captured[template_name] = context
         return "ok"
 
+    # A dev machine can reach the Elev8 SQL Server; the test is about local counts.
+    monkeypatch.setattr("onecpase.dashboard.get_elev8_member_count", lambda: None)
+    monkeypatch.setattr("onecpase.members.get_elev8_member_count", lambda: None)
     monkeypatch.setattr("onecpase.dashboard.render_template", capture)
     monkeypatch.setattr("onecpase.members.render_template", capture)
     monkeypatch.setattr("onecpase.reports.render_template", capture)

@@ -625,6 +625,10 @@
          class="nav-item {% if request.blueprint == 'call_list' %}active{% endif %}">
         <span class="icon">📋</span> Call List Upload
       </a>
+      <a href="{{ url_for('first_month_collections.index') }}"
+         class="nav-item {% if request.blueprint == 'first_month_collections' %}active{% endif %}">
+        <span class="icon">⚠️</span> First-Month Failed Debits
+      </a>
       {% endif %}
       {% if has_perm('all_members') %}
       <a href="{{ url_for('applications.applications_index') }}"

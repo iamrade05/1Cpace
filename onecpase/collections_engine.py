@@ -17,7 +17,15 @@ DEFAULT_COLLECTION_RULES = {
     "minimum_arrears_installment": ("30.00", "decimal"),
     "inactive_after_months": ("6", "integer"),
     "reminder_offset_days": ("2", "integer"),
+    "sales_transfer_months": ("2", "integer"),
+    "first_debit_window_days": ("45", "integer"),
 }
+
+OWNER_SALES = "SALES"
+OWNER_RECEPTION = "RECEPTION"
+REASON_FIRST_MONTH = "FIRST_MONTH_FAILED_DEBIT"
+REASON_SECOND_MONTH = "SECOND_MONTH_ARREARS"
+REASON_STANDARD = "STANDARD_ARREARS"
 
 COMMUNICATION_ORDER = ("CALL", "WHATSAPP", "SMS", "EMAIL")
 
@@ -566,7 +574,16 @@ def _engine_table_statements(backend):
             reason TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'collections_engine', evaluated_at {timestamp},
             FOREIGN KEY (case_id) REFERENCES collections_cases(id), FOREIGN KEY (member_id) REFERENCES members(id)
         )""",
+        f"""CREATE TABLE IF NOT EXISTS collection_assignment_history (
+            id {id_type}, case_id INTEGER NOT NULL, member_id INTEGER NOT NULL,
+            from_owner_type TEXT, from_staff_id INTEGER,
+            to_owner_type TEXT NOT NULL, to_staff_id INTEGER,
+            reason TEXT NOT NULL, system_generated INTEGER NOT NULL DEFAULT 1,
+            transferred_by INTEGER, transferred_at {timestamp},
+            FOREIGN KEY (case_id) REFERENCES collections_cases(id), FOREIGN KEY (member_id) REFERENCES members(id)
+        )""",
         "CREATE INDEX IF NOT EXISTS idx_collections_cases_member_status ON collections_cases(member_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_collection_assignment_case ON collection_assignment_history(case_id, transferred_at)",
         "CREATE INDEX IF NOT EXISTS idx_collection_communications_member ON collection_communications(member_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_collection_exceptions_status ON collection_exceptions(status, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_access_decisions_member ON access_decisions(member_id, evaluated_at)",
@@ -579,6 +596,11 @@ def ensure_collections_engine_schema(db, backend="sqlite"):
     from .database import _ensure_column
 
     _ensure_column(db, backend, "collection_exceptions", "ptp_id", "INTEGER")
+    _ensure_column(db, backend, "collections_cases", "owner_type", "TEXT DEFAULT 'RECEPTION'")
+    _ensure_column(db, backend, "collections_cases", "owner_staff_id", "INTEGER")
+    _ensure_column(db, backend, "collections_cases", "original_sales_consultant_id", "INTEGER")
+    _ensure_column(db, backend, "collections_cases", "assignment_reason", "TEXT")
+    _ensure_column(db, backend, "collections_cases", "assigned_at", "TEXT")
     insert = "INSERT INTO collection_rules (rule_key, rule_value, value_type) VALUES (?, ?, ?)"
     if backend == "sqlite":
         insert = insert.replace("INSERT INTO", "INSERT OR IGNORE INTO")
@@ -643,6 +665,7 @@ def sync_collection_case(
                access_status=?, assigned_to=?, updated_at=datetime('now','localtime') WHERE id=?""",
             (*values, existing["id"]),
         )
+        apply_case_ownership(db, existing["id"], months_owing=months_owing)
         return existing["id"]
     cursor = db.execute(
         """INSERT INTO collections_cases
@@ -651,7 +674,116 @@ def sync_collection_case(
            VALUES (?,?,?,?,?,?,?,?,?,?)""",
         (member_id, *values),
     )
+    apply_case_ownership(db, cursor.lastrowid, months_owing=months_owing)
     return cursor.lastrowid
+
+
+def find_original_sales_consultant(db, member_id):
+    """The consultant who signed the member: the application's lead owner, else
+    whoever created the application. Never chosen by hand."""
+    row = db.execute(
+        """SELECT COALESCE(l.assigned_to, ma.created_by) AS consultant_id
+           FROM membership_applications ma LEFT JOIN leads l ON l.id = ma.lead_id
+           WHERE ma.member_id=? ORDER BY ma.id DESC LIMIT 1""",
+        (member_id,),
+    ).fetchone()
+    return row["consultant_id"] if row and row["consultant_id"] else None
+
+
+def is_first_debit_failure(db, member_id, failed_debit_date, months_owing):
+    """A new member whose first scheduled debit failed — not merely a member
+    who is one month behind. Needs: joined within the first-debit window, no
+    earlier recurring payment, and at most one month owing."""
+    if int(months_owing or 0) > 1:
+        return False
+    member = db.execute("SELECT join_date FROM members WHERE id=?", (member_id,)).fetchone()
+    joined, failed = _parse_date(member["join_date"] if member else None), _parse_date(failed_debit_date)
+    if not joined or not failed or failed < joined:
+        return False
+    window = get_collection_rule_int(db, "first_debit_window_days", 45)
+    if (failed - joined).days > window:
+        return False
+    earlier_payment = db.execute(
+        """SELECT 1 FROM collections
+           WHERE member_id=? AND collection_date < ?
+             AND (status='paid' OR COALESCE(amount_paid,0) > 0)
+             AND LOWER(COALESCE(notes,'')) LIKE '%recurring%' LIMIT 1""",
+        (member_id, failed.isoformat()),
+    ).fetchone()
+    return earlier_payment is None
+
+
+def determine_owner(*, months_owing, first_debit_failure, original_sales_consultant_id,
+                    transfer_months=2):
+    """Returns (owner_type, owner_staff_id, reason). Two months owing always
+    belongs to Reception; a first-debit failure belongs to the signing consultant."""
+    if int(months_owing or 0) >= int(transfer_months):
+        return OWNER_RECEPTION, None, REASON_SECOND_MONTH
+    if first_debit_failure and original_sales_consultant_id:
+        return OWNER_SALES, original_sales_consultant_id, REASON_FIRST_MONTH
+    return OWNER_RECEPTION, None, REASON_STANDARD
+
+
+def apply_case_ownership(db, case_id, *, months_owing, failed_debit_date=None, transferred_by=None):
+    """Set or transfer the case owner and record every change. Once a case is
+    with Reception it never goes back to Sales, even if part-paid. The same
+    case is handed over, so Sales history stays visible. Returns the owner type."""
+    case = db.execute(
+        """SELECT member_id, owner_type, owner_staff_id, original_sales_consultant_id,
+                  assignment_reason, failed_debit_date FROM collections_cases WHERE id=?""",
+        (case_id,),
+    ).fetchone()
+    if case is None:
+        return None
+    assigned = case["assignment_reason"] is not None
+    if assigned and case["owner_type"] == OWNER_RECEPTION:
+        return OWNER_RECEPTION
+    consultant = case["original_sales_consultant_id"] or find_original_sales_consultant(db, case["member_id"])
+    first = is_first_debit_failure(
+        db, case["member_id"], failed_debit_date or case["failed_debit_date"], months_owing
+    ) if (not assigned or case["owner_type"] == OWNER_SALES) else False
+    owner, staff, reason = determine_owner(
+        months_owing=months_owing, first_debit_failure=first,
+        original_sales_consultant_id=consultant,
+        transfer_months=get_collection_rule_int(db, "sales_transfer_months", 2),
+    )
+    if assigned and (owner, staff) == (case["owner_type"], case["owner_staff_id"]):
+        return owner
+    db.execute(
+        """UPDATE collections_cases SET owner_type=?, owner_staff_id=?, assignment_reason=?,
+           original_sales_consultant_id=?, assigned_at=datetime('now','localtime') WHERE id=?""",
+        (owner, staff, reason, consultant, case_id),
+    )
+    db.execute(
+        """INSERT INTO collection_assignment_history
+           (case_id, member_id, from_owner_type, from_staff_id, to_owner_type, to_staff_id,
+            reason, system_generated, transferred_by)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (case_id, case["member_id"], case["owner_type"] if assigned else None,
+         case["owner_staff_id"] if assigned else None, owner, staff, reason,
+         0 if transferred_by else 1, transferred_by),
+    )
+    return owner
+
+
+def transfer_due_sales_cases(db, arrears_by_member=None):
+    """Daily sweep: hand any Sales-owned case that has reached the transfer
+    threshold to Reception. Returns the number transferred."""
+    if arrears_by_member is None:
+        from .ptp import bulk_member_arrears
+        ids = [r["member_id"] for r in db.execute(
+            "SELECT member_id FROM collections_cases WHERE owner_type=? AND status IN ('open','active','pending')",
+            (OWNER_SALES,)).fetchall()]
+        arrears_by_member = bulk_member_arrears(db, ids) if ids else {}
+    moved = 0
+    for case in db.execute(
+        "SELECT id, member_id FROM collections_cases WHERE owner_type=? AND status IN ('open','active','pending')",
+        (OWNER_SALES,),
+    ).fetchall():
+        months = arrears_by_member.get(case["member_id"], {}).get("months_in_arrears", 0)
+        if apply_case_ownership(db, case["id"], months_owing=months) == OWNER_RECEPTION:
+            moved += 1
+    return moved
 
 
 def log_collection_communication(

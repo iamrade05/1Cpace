@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}First-Month Failed Debits · 1Cpase{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>First-Month Failed Debits</h1>
+    <p class="page-sub">
+      {% if manager_view %}Every consultant's new members whose first debit failed.{% else %}Members you signed whose first debit failed. You follow these up until the account reaches two months owing, then Reception takes it over.{% endif %}
+    </p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body" style="padding:0;overflow-x:auto;">
+    {% if cases %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Member</th>{% if manager_view %}<th>Consultant</th>{% endif %}
+          <th>Joined</th><th>Failed</th><th>Owing</th><th>Last contact</th><th>Record contact</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for case in cases %}
+        {% set owed = arrears.get(case.member_id, {}) %}
+        <tr>
+          <td>
+            <a href="{{ url_for('members.member_detail', mid=case.member_id) }}">{{ case.first_name }} {{ case.last_name }}</a>
+            <div style="color:#6b7280;font-size:.8rem;">{{ case.contact or '' }}</div>
+          </td>
+          {% if manager_view %}<td>{{ case.consultant_name or '—' }}</td>{% endif %}
+          <td>{{ case.join_date or '—' }}</td>
+          <td>{{ case.failed_debit_date or '—' }}</td>
+          <td>R{{ '%.2f'|format(owed.get('total_arrears', 0) or 0) }}
+            <div style="color:#6b7280;font-size:.8rem;">{{ owed.get('months_in_arrears', 0) }} month(s)</div></td>
+          <td>
+            {% if case.last_contact_at %}{{ case.last_contact_at }}
+              <div style="color:#6b7280;font-size:.8rem;">{{ outcome_labels.get(case.last_outcome, case.last_outcome or '') }}</div>
+            {% else %}Not yet contacted{% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('first_month_collections.record_contact', case_id=case.id) }}"
+                  style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+              <select name="channel" class="form-control" style="width:auto;" aria-label="Channel">
+                {% for channel in channels %}<option value="{{ channel }}">{{ channel|title }}</option>{% endfor %}
+              </select>
+              <select name="outcome" class="form-control" style="width:auto;" required aria-label="Outcome">
+                <option value="">Outcome…</option>
+                {% for key, label, _ok in outcomes %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+              </select>
+              <input name="notes" class="form-control" style="min-width:160px;" placeholder="Note" maxlength="500">
+              <button class="btn btn-primary" type="submit">Save</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="padding:20px;color:#4b5563;">No first-month failed debits right now.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

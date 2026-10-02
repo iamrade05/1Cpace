@@ -100,7 +100,7 @@ def test_admin_set_password_also_forces_a_change(client):
     client.post(
         f"/admin/users/{uid}/edit",
         data={
-            "full_name": "Edited User", "email": "", "contact": "",
+            "full_name": "Edited User", "email": "edited.user@example.com", "contact": "",
             "role": "staff", "department": "General", "active": "on",
             "new_password": "TempPass456",
         },

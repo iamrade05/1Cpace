@@ -23,6 +23,7 @@ from .collections_engine import (
     log_collection_communication,
     next_communication,
     sync_collection_case,
+    transfer_due_sales_cases,
 )
 
 collections_bp = Blueprint("collections", __name__, url_prefix="/collections")
@@ -281,7 +282,16 @@ def _ensure_daily_call_tasks(db, today: date | None = None) -> dict | None:
     current = []
     if cycle:
         current = [candidate for candidate in _cycle_candidates(db, cycle) if candidate["member_id"] not in existing]
-    excluded = existing | {candidate["member_id"] for candidate in current}
+    # First-month failed debits stay with the signing consultant until they
+    # reach the transfer threshold, so they never count in Reception's workload.
+    transfer_due_sales_cases(db, arrears_by_member=None)
+    sales_owned = {
+        row["member_id"] for row in db.execute(
+            "SELECT member_id FROM collections_cases WHERE owner_type='SALES' AND status IN ('open','active','pending')"
+        ).fetchall()
+    }
+    current = [candidate for candidate in current if candidate["member_id"] not in sales_owned]
+    excluded = existing | sales_owned | {candidate["member_id"] for candidate in current}
     candidates = current + _old_owing_candidates(db, excluded, today)
     for candidate in candidates:
         available = [

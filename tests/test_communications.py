@@ -16,12 +16,26 @@ def _login(client, permissions=None, role="staff"):
         session["permissions"] = permissions or []
 
 
+WEBHOOK_SECRET = "test-meta-secret"
+
+
+def _post_signed(client, app, url, payload):
+    """Meta webhooks fail closed without a valid X-Hub-Signature-256."""
+    with app.app_context():
+        app.config["FB_APP_SECRET"] = WEBHOOK_SECRET
+    body = json.dumps(payload).encode()
+    signature = "sha256=" + hmac.new(WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+    return client.post(url, data=body, content_type="application/json",
+                       headers={"X-Hub-Signature-256": signature})
+
+
 # ── Signature verification (pure logic) ───────────────────────────────────────
 
-def test_verify_fb_signature_accepts_anything_when_secret_unset(app):
+def test_verify_fb_signature_rejects_everything_when_secret_unset(app):
+    """Fails closed: an unconfigured secret must not accept unsigned payloads."""
     with app.app_context():
         app.config["FB_APP_SECRET"] = ""
-        assert verify_fb_signature(b"anything", "") is True
+        assert verify_fb_signature(b"anything", "") is False
 
 
 def test_verify_fb_signature_rejects_wrong_signature_when_secret_set(app):
@@ -76,7 +90,7 @@ def test_whatsapp_webhook_ingests_inbound_text_message(client, app):
                           "text": {"body": "Hi, is the gym open?"}, "timestamp": "1700000000"}],
         }}]}]
     }
-    resp = client.post("/webhooks/whatsapp", json=payload)
+    resp = _post_signed(client, app, "/webhooks/whatsapp", payload)
     assert resp.status_code == 200
 
     with app.app_context():
@@ -98,7 +112,7 @@ def test_whatsapp_webhook_ignores_unknown_phone_number_id(client, app):
             "messages": [{"id": "wamid.2", "from": "27821234567", "type": "text", "text": {"body": "hi"}}],
         }}]}]
     }
-    resp = client.post("/webhooks/whatsapp", json=payload)
+    resp = _post_signed(client, app, "/webhooks/whatsapp", payload)
     assert resp.status_code == 200
     with app.app_context():
         assert get_db().execute("SELECT COUNT(*) FROM wa_conversations").fetchone()[0] == 0
@@ -120,7 +134,6 @@ def test_facebook_webhook_rejects_bad_signature_when_secret_configured(client, a
 
 def test_facebook_webhook_ingests_comment(client, app):
     with app.app_context():
-        app.config["FB_APP_SECRET"] = ""
         assert register_integration("facebook", "page_1", "elev8", "facebook page")
     payload = {
         "entry": [{"id": "page_1", "changes": [{"field": "feed", "value": {
@@ -130,7 +143,7 @@ def test_facebook_webhook_ingests_comment(client, app):
             "from": {"name": "John Prospect", "id": "psid_1"},
         }}]}]
     }
-    resp = client.post("/webhooks/facebook", json=payload)
+    resp = _post_signed(client, app, "/webhooks/facebook", payload)
     assert resp.status_code == 200
     with app.app_context():
         comment = get_db().execute("SELECT * FROM fb_comments WHERE fb_comment_id='fb_c_1'").fetchone()

@@ -45,6 +45,7 @@ PHASES: dict[int, tuple[str, frozenset[str]]] = {
                 "admin_events",     # create/manage events and their registrations
                 "whatsapp_web",     # WhatsApp Web sender status/QR page
                 "screen_recordings",
+                "first_month_collections",  # a consultant's first-debit failures
             }
         ),
     ),

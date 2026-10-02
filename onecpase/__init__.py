@@ -39,6 +39,7 @@ from .turnstile_routes import turnstile_bp
 from .tenants import tenants_bp, TENANT_COOKIE_NAME
 from .platform_admin import platform_bp
 from .screen_recordings import screen_recordings_bp
+from .first_month_collections import first_month_bp
 
 
 def create_app(test_config: dict | None = None) -> Flask:
@@ -136,6 +137,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(tenants_bp)
     app.register_blueprint(platform_bp)
     app.register_blueprint(screen_recordings_bp)
+    app.register_blueprint(first_month_bp)
 
     # ── Database ──────────────────────────────────────────────────────────────
     with app.app_context():
