@@ -29,7 +29,7 @@
       {% for c in cases %}
         <tr>
           <td>
-            <a href="{{ url_for('members.member_detail', mid=c.member_id) }}">{{ c.first_name }} {{ c.last_name }}</a>
+            <a href="{{ url_for('collections.member_profile', mid=c.member_id) }}">{{ c.first_name }} {{ c.last_name }}</a>
             {% if c.priority == 1 %}<span class="badge badge-red">Critical</span>
             {% elif c.priority == 2 %}<span class="badge badge-orange">High</span>{% endif %}
             <div style="color:#6b7280;font-size:.8rem;">{{ c.contact or '' }}</div>

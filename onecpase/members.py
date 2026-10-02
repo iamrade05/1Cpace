@@ -854,9 +854,20 @@ def member_detail(mid: int):
     last_gym_visit = _get_last_gym_visit(db, member)
     tenant_name = current_tenant_name()
 
+    collection_case = db.execute(
+        """SELECT c.*, u.full_name AS owner_name, s.full_name AS sales_name
+           FROM collections_cases c
+           LEFT JOIN users u ON u.id = c.owner_staff_id
+           LEFT JOIN users s ON s.id = c.original_sales_consultant_id
+           WHERE c.member_id = ? AND c.status IN ('open','active','pending')
+           ORDER BY c.id DESC LIMIT 1""",
+        (mid,),
+    ).fetchone()
+
     return render_template(
         "members/detail.html",
         member=member,
+        collection_case=collection_case,
         collections=collections,
         payment_profile=payment_profile,
         application=application,

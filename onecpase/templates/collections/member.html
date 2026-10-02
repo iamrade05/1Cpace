@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}{{ p.member.first_name }} {{ p.member.last_name }} · Collections · 1Cpase{% endblock %}
+
+{% macro section(id, title) %}
+<div class="card" id="{{ id }}" style="margin-top:20px;">
+  <div class="card-header"><h2>{{ title }}</h2></div>
+  <div class="card-body" style="padding:0;overflow-x:auto;">{{ caller() }}</div>
+</div>
+{% endmacro %}
+
+{% block content %}
+{% set c = p.case %}
+<div class="page-header">
+  <div>
+    <h1>{{ p.member.first_name }} {{ p.member.last_name }}</h1>
+    <p class="page-sub">{{ p.member.contact or '' }} · <a href="{{ url_for('members.member_detail', mid=p.member.id) }}">Member profile</a> ·
+      <a href="{{ url_for('collections.case_queue') }}">Case queue</a></p>
+  </div>
+</div>
+
+<div class="kpi-grid">
+  {% if c %}
+  <div class="kpi-card"><div class="kpi-label">Outstanding</div><div class="kpi-value">R{{ '%.2f'|format(c.arrears_amount or 0) }}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Age</div><div class="kpi-value">{{ c.months_owing or 0 }} month(s)</div></div>
+  <div class="kpi-card"><div class="kpi-label">Stage</div><div class="kpi-value">{{ (c.collection_stage or 'CONTACT_REQUIRED')|replace('_', ' ')|title }}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Owner</div>
+    <div class="kpi-value">{% if c.owner_type == 'SALES' %}Sales{% if c.owner_name %} · {{ c.owner_name }}{% endif %}{% else %}Reception{% endif %}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Original sales consultant</div><div class="kpi-value">{{ c.sales_name or '—' }}</div></div>
+  <div class="kpi-card"><div class="kpi-label">DebiCheck</div><div class="kpi-value">{{ (c.debicheck_status or 'unknown')|title }}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Access</div><div class="kpi-value">{{ (p.member.gym_access_status or 'allowed')|title }}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Next action</div><div class="kpi-value">{{ (c.next_action or 'NO_ACTION')|replace('_', ' ')|title }}</div></div>
+  {% else %}
+  <div class="kpi-card"><div class="kpi-label">Collection case</div><div class="kpi-value">No open case</div></div>
+  {% endif %}
+</div>
+
+<p style="margin-top:16px;">
+  <a href="#timeline">Timeline</a> · <a href="#contacts">Contacts</a> · <a href="#ptp">PTP</a> ·
+  <a href="#payments">Payments</a> · <a href="#approvals">Approvals</a> · <a href="#access">Access</a> · <a href="#history">History</a>
+</p>
+
+{% call section('timeline', 'Timeline') %}
+  {% if p.timeline %}
+  <table class="table"><thead><tr><th>When</th><th>Event</th><th>Detail</th><th>By</th></tr></thead><tbody>
+    {% for when, kind, text, who in p.timeline %}
+    <tr><td>{{ when }}</td><td><strong>{{ kind }}</strong></td><td>{{ text }}</td><td>{{ who }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+  {% else %}<p style="padding:20px;color:#4b5563;">No collections activity yet.</p>{% endif %}
+{% endcall %}
+
+{% call section('contacts', 'Communication history') %}
+  {% if p.contacts %}
+  <table class="table"><thead><tr><th>When</th><th>Channel</th><th>Outcome</th><th>Notes</th><th>By</th></tr></thead><tbody>
+    {% for x in p.contacts %}
+    <tr><td>{{ x.created_at }}</td><td>{{ x.channel }}</td><td>{{ (x.outcome or '')|replace('_', ' ')|title }}</td><td>{{ x.notes or '' }}</td><td>{{ x.staff or 'System' }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+  {% else %}<p style="padding:20px;color:#4b5563;">No contacts recorded.</p>{% endif %}
+{% endcall %}
+
+{% call section('ptp', 'Promises to pay and arrangements') %}
+  {% if p.ptps %}
+  <table class="table"><thead><tr><th>Created</th><th>Promised</th><th>Date</th><th>Method</th><th>Status</th><th>Discount</th><th>Approval</th><th>By</th></tr></thead><tbody>
+    {% for x in p.ptps %}
+    <tr><td>{{ x.created_at }}</td><td>R{{ '%.2f'|format(x.promise_amount or 0) }}</td><td>{{ x.promise_date }}</td><td>{{ x.payment_method }}</td>
+        <td>{{ (x.ptp_status or '')|replace('_', ' ')|title }}</td><td>{{ x.discount_pct or 0 }}%</td>
+        <td>{{ (x.manager_approval_status or '')|replace('_', ' ')|title }}</td><td>{{ x.staff or 'System' }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+  {% else %}<p style="padding:20px;color:#4b5563;">No promises recorded.</p>{% endif %}
+{% endcall %}
+
+{% call section('payments', 'Payments and charges') %}
+  {% if p.payments %}
+  <table class="table"><thead><tr><th>Date</th><th>Due</th><th>Paid</th><th>Method</th><th>Status</th></tr></thead><tbody>
+    {% for x in p.payments %}
+    <tr><td>{{ x.collection_date }}</td><td>R{{ '%.2f'|format(x.outstanding_balance or 0) }}</td><td>R{{ '%.2f'|format(x.amount_paid or 0) }}</td><td>{{ x.method or '' }}</td><td>{{ x.status }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+  {% else %}<p style="padding:20px;color:#4b5563;">No payment records.</p>{% endif %}
+{% endcall %}
+
+{% call section('approvals', 'Manager approvals and exceptions') %}
+  {% if p.exceptions %}
+  <table class="table"><thead><tr><th>Requested</th><th>Reason</th><th>Status</th><th>Decided by</th><th>Notes</th></tr></thead><tbody>
+    {% for x in p.exceptions %}
+    <tr><td>{{ x.created_at }}</td><td>{{ x.reason }}</td><td>{{ (x.status or '')|title }}</td><td>{{ x.decider or '—' }}</td><td>{{ x.notes or '' }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+  {% else %}<p style="padding:20px;color:#4b5563;">No exceptions requested.</p>{% endif %}
+{% endcall %}
+
+{% call section('access', 'Access decisions') %}
+  {% if p.access %}
+  <table class="table"><thead><tr><th>When</th><th>Decision</th><th>Reason</th><th>Source</th></tr></thead><tbody>
+    {% for x in p.access %}
+    <tr><td>{{ x.evaluated_at }}</td><td>{{ x.access_status }}</td><td>{{ x.reason }}</td><td>{{ x.source }}</td></tr>
+    {% endfor %}
+  </tbody></table>
+  {% else %}<p style="padding:20px;color:#4b5563;">No access decisions recorded.</p>{% endif %}
+{% endcall %}
+
+{% call section('history', 'Ownership and stage history') %}
+  <table class="table"><thead><tr><th>When</th><th>Change</th><th>Reason</th></tr></thead><tbody>
+    {% for a in p.assignments %}
+    <tr><td>{{ a.transferred_at }}</td>
+        <td>{% if a.from_owner_type %}{{ a.from_owner_type|title }} → {{ a.to_owner_type|title }}{% else %}Assigned to {{ a.to_name or a.to_owner_type|title }}{% endif %}</td>
+        <td>{{ a.reason }}</td></tr>
+    {% endfor %}
+    {% for s in p.stages %}
+    <tr><td>{{ s.changed_at }}</td><td>{{ (s.from_stage or 'new')|replace('_', ' ')|title }} → {{ s.to_stage|replace('_', ' ')|title }}</td><td>{{ s.reason or '' }}</td></tr>
+    {% endfor %}
+    {% if not p.assignments and not p.stages %}<tr><td colspan="3" style="color:#4b5563;">No history yet.</td></tr>{% endif %}
+  </tbody></table>
+{% endcall %}
+{% endblock %}

@@ -155,3 +155,99 @@ def dashboard_metrics(db, *, user_id=None, today=None):
     }
     manager = {"open_by_owner": owners, "recovered_this_month_by_owner": recoveries}
     return {"financial": financial, "workload": workload, "sales": sales, "manager": manager}
+
+
+def _ts(value):
+    return str(value)[:19] if value else ""
+
+
+def _name(row, key="staff"):
+    return row[key] or "System"
+
+
+def member_profile(db, member_id):
+    """One member's whole collections history: the current case, the records
+    behind it, and a single chronological timeline across all of them."""
+    member = db.execute(
+        "SELECT id, first_name, last_name, contact, member_status, gym_access_status, "
+        "access_block_reason FROM members WHERE id=?", (member_id,)).fetchone()
+    if member is None:
+        return None
+    cases = db.execute(
+        """SELECT c.*, u.full_name AS owner_name, s.full_name AS sales_name
+           FROM collections_cases c
+           LEFT JOIN users u ON u.id = c.owner_staff_id
+           LEFT JOIN users s ON s.id = c.original_sales_consultant_id
+           WHERE c.member_id=? ORDER BY c.id DESC""", (member_id,)).fetchall()
+    current = next((c for c in cases if c["status"] in ("open", "active", "pending")), None)
+
+    contacts = db.execute(
+        """SELECT cc.*, u.full_name AS staff FROM collection_communications cc
+           LEFT JOIN users u ON u.id = cc.created_by
+           WHERE cc.member_id=? ORDER BY cc.id DESC""", (member_id,)).fetchall()
+    ptps = db.execute(
+        """SELECT p.*, u.full_name AS staff FROM ptp_agreements p
+           LEFT JOIN users u ON u.id = p.created_by
+           WHERE p.member_id=? ORDER BY p.id DESC""", (member_id,)).fetchall()
+    payments = db.execute(
+        "SELECT * FROM collections WHERE member_id=? ORDER BY collection_date DESC, id DESC",
+        (member_id,)).fetchall()
+    receipts = db.execute(
+        """SELECT r.*, u.full_name AS staff FROM ptp_receipts r
+           LEFT JOIN users u ON u.id = r.uploaded_by WHERE r.member_id=?""", (member_id,)).fetchall()
+    exceptions = db.execute(
+        """SELECT e.*, u.full_name AS staff, d.full_name AS decider FROM collection_exceptions e
+           LEFT JOIN users u ON u.id = e.created_by LEFT JOIN users d ON d.id = e.decided_by
+           WHERE e.member_id=?""", (member_id,)).fetchall()
+    access = db.execute(
+        "SELECT * FROM access_decisions WHERE member_id=? ORDER BY id DESC", (member_id,)).fetchall()
+    assignments = db.execute(
+        """SELECT h.*, f.full_name AS from_name, t.full_name AS to_name
+           FROM collection_assignment_history h
+           LEFT JOIN users f ON f.id = h.from_staff_id LEFT JOIN users t ON t.id = h.to_staff_id
+           WHERE h.member_id=? ORDER BY h.id""", (member_id,)).fetchall()
+    stages = db.execute(
+        """SELECT h.*, u.full_name AS staff FROM collection_stage_history h
+           LEFT JOIN users u ON u.id = h.changed_by
+           WHERE h.member_id=? ORDER BY h.id""", (member_id,)).fetchall()
+
+    events = []
+    for c in cases:
+        events.append((_ts(c["created_at"]), "Case opened", f"Failed debit R{float(c['arrears_amount'] or 0):.2f}", "System"))
+        if c["closed_at"]:
+            events.append((_ts(c["closed_at"]), "Case resolved", c["resolution_type"] or "Closed", _name({"staff": c["owner_name"]})))
+    for a in assignments:
+        who = a["to_name"] or a["to_owner_type"].title()
+        if a["from_owner_type"]:
+            text = f"Transferred {a['from_owner_type'].title()} → {a['to_owner_type'].title()} ({a['reason']})"
+        else:
+            text = f"Assigned to {who} ({a['reason']})"
+        events.append((_ts(a["transferred_at"]), "Ownership", text, "System" if a["system_generated"] else "Manager"))
+    for s in stages:
+        change = f"{(s['from_stage'] or 'new')} → {s['to_stage']}".replace("_", " ")
+        events.append((_ts(s["changed_at"]), "Stage", change + (f" — {s['reason']}" if s["reason"] else ""), _name(s)))
+    for cc in contacts:
+        text = f"{cc['channel']} — {(cc['outcome'] or 'logged').replace('_', ' ')}" + (f": {cc['notes']}" if cc["notes"] else "")
+        events.append((_ts(cc["created_at"]), "Contact", text, _name(cc)))
+    for p in ptps:
+        events.append((_ts(p["created_at"]), "Promise to pay",
+                       f"R{float(p['promise_amount'] or 0):.2f} by {p['promise_date']} ({p['ptp_status']})", _name(p)))
+    for r in receipts:
+        events.append((_ts(r["uploaded_at"]), "Receipt",
+                       f"R{float(r['amount_paid'] or 0):.2f} via {r['payment_method']} ({r['verification_status']})", _name(r)))
+    for e in exceptions:
+        events.append((_ts(e["created_at"]), "Exception requested", e["reason"] or "", _name(e)))
+        if e["decided_at"]:
+            events.append((_ts(e["decided_at"]), "Exception " + (e["status"] or "decided"), e["notes"] or "", _name(e, "decider")))
+    for d in access:
+        events.append((_ts(d["evaluated_at"]), "Access", f"{d['access_status']} — {d['reason']}", "System"))
+    for row in payments:
+        events.append((_ts(row["collection_date"]), "Debit" if row["status"] == "failed" else "Payment",
+                       f"R{float(row['amount_paid'] or 0):.2f} of R{float(row['outstanding_balance'] or 0):.2f} ({row['status']})", "System"))
+    events.sort(key=lambda e: e[0], reverse=True)
+
+    return {
+        "member": member, "case": current, "cases": cases, "timeline": events,
+        "contacts": contacts, "ptps": ptps, "payments": payments, "exceptions": exceptions,
+        "access": access, "assignments": assignments, "stages": stages,
+    }

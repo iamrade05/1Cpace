@@ -97,3 +97,66 @@ def test_dashboard_and_queue_pages_render(app, client):
     queue = client.get("/collections/queue?filter=no_contact")
     assert queue.status_code == 200 and b"Wk T10" in queue.data
     assert client.get("/collections/queue?filter=nonsense").status_code == 200
+
+
+def test_member_profile_builds_one_timeline_across_everything(app):
+    from onecpase.collections_engine import apply_case_ownership
+    from onecpase.collections_workspace import member_profile
+
+    with app.app_context():
+        db = get_db()
+        mid = _member(db, 20, join="2026-08-20")
+        db.execute("INSERT INTO membership_applications (member_id, created_by) VALUES (?, 1)", (mid,))
+        case_id = _case(db, mid)
+        log_collection_communication(db, mid, "call", case_id=case_id, outcome="promised_to_pay",
+                                     notes="Pays Friday", created_by=1)
+        db.execute("""INSERT INTO ptp_agreements (member_id, promise_amount, promise_date, payment_method, ptp_status, created_by)
+                      VALUES (?, 500, '2026-10-30', 'eft', 'pending', 1)""", (mid,))
+        apply_case_ownership(db, case_id, months_owing=2)
+        refresh_case_workflow(db, case_id)
+        db.commit()
+
+        profile = member_profile(db, mid)
+        kinds = {kind for _when, kind, _text, _who in profile["timeline"]}
+        assert {"Case opened", "Ownership", "Stage", "Contact", "Promise to pay", "Debit"} <= kinds
+        whens = [when for when, *_ in profile["timeline"]]
+        assert whens == sorted(whens, reverse=True)
+        transfer = [t for _w, k, t, _u in profile["timeline"] if k == "Ownership" and "Transferred" in t]
+        assert transfer and "Sales" in transfer[0] and "Reception" in transfer[0]
+        assert profile["case"]["id"] == case_id
+        assert member_profile(db, 99999) is None
+
+
+def test_member_profile_page_renders_and_unknown_member_redirects(app, client):
+    with app.app_context():
+        db = get_db()
+        mid = _member(db, 21)
+        _case(db, mid, amount=410)
+    with client.session_transaction() as session:
+        session["user_id"] = 1
+        session["role"] = "admin"
+        session["username"] = "admin"
+    page = client.get(f"/collections/member/{mid}")
+    assert page.status_code == 200
+    assert b"Timeline" in page.data and b"R410.00" in page.data and b"Case opened" in page.data
+    assert client.get("/collections/member/99999").status_code == 302
+
+
+def test_member_profile_shows_the_collections_panel(app, client):
+    with app.app_context():
+        db = get_db()
+        mid = _member(db, 22)
+        _case(db, mid, amount=333)
+    with client.session_transaction() as session:
+        session["user_id"] = 1
+        session["role"] = "admin"
+        session["username"] = "admin"
+    page = client.get(f"/members/{mid}")
+    assert page.status_code == 200
+    assert b"Open collection case" in page.data and b"R333.00" in page.data
+    # No open case, no panel.
+    with app.app_context():
+        db = get_db()
+        other = _member(db, 23)
+        db.commit()
+    assert b"Open collection case" not in client.get(f"/members/{other}").data

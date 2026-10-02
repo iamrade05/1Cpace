@@ -405,6 +405,18 @@ def dashboard():
     )
 
 
+@collections_bp.route("/member/<int:mid>")
+@permission_required("all_collections")
+def member_profile(mid: int):
+    from . import collections_workspace as workspace
+
+    profile = workspace.member_profile(get_db(), mid)
+    if profile is None:
+        flash("Member not found.", "warning")
+        return redirect(url_for("collections.case_queue"))
+    return render_template("collections/member.html", p=profile)
+
+
 @collections_bp.route("/queue")
 @permission_required("all_collections")
 def case_queue():

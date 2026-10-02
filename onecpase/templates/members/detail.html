@@ -610,6 +610,23 @@
   {% endif %}
 </div>
 
+{% if collection_case and phase_open('connections') and has_perm('all_collections') %}
+<!-- ── Collections summary ── -->
+<div class="notes-card profile-panel" id="collections-case">
+  <h2>Collections</h2>
+  <div style="display:flex;gap:24px;flex-wrap:wrap;padding:8px 0 12px;">
+    <div><div class="kpi-label">Outstanding</div><strong>R{{ '%.2f'|format(collection_case.arrears_amount or 0) }}</strong></div>
+    <div><div class="kpi-label">Age</div><strong>{{ collection_case.months_owing or 0 }} month(s)</strong></div>
+    <div><div class="kpi-label">Stage</div><strong>{{ (collection_case.collection_stage or 'CONTACT_REQUIRED')|replace('_', ' ')|title }}</strong></div>
+    <div><div class="kpi-label">Owner</div><strong>{% if collection_case.owner_type == 'SALES' %}Sales{% if collection_case.owner_name %} · {{ collection_case.owner_name }}{% endif %}{% else %}Reception{% endif %}</strong></div>
+    <div><div class="kpi-label">Original sales</div><strong>{{ collection_case.sales_name or '—' }}</strong></div>
+    <div><div class="kpi-label">DebiCheck</div><strong>{{ (collection_case.debicheck_status or 'unknown')|title }}</strong></div>
+    <div><div class="kpi-label">Next action</div><strong>{{ (collection_case.next_action or 'NO_ACTION')|replace('_', ' ')|title }}</strong></div>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('collections.member_profile', mid=member['id']) }}">Open collection case</a>
+</div>
+{% endif %}
+
 <!-- ── Row 6: PTP / Collection ── -->
 <div class="notes-card profile-panel" id="ptp">
 <style>
