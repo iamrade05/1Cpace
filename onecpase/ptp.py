@@ -1,6 +1,7 @@
 """PTP / Collection module for 1Cpase."""
 import os
 import time
+import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -504,8 +505,10 @@ RULE_7_EXCEPTION_REASON = (
     "Three or more months owing with no qualifying DebiCheck arrangement or full settlement"
 )
 
-DEBICHECK_DISCOUNT_CEILING = 25   # Rule §9: DebiCheck + PTP, auto-approved up to this %
-CASH_UPFRONT_DISCOUNT_CEILING = 50  # cash paid in full upfront, auto-approved up to this %
+AUTO_SETTLEMENT_DISCOUNT_CEILING = 50
+MINIMUM_RECOVERABLE_BALANCE = 1800.0
+MINIMUM_RECOVERY_INSTALLMENT = 150.0
+NORMAL_RECOVERY_TERM_MONTHS = 12
 
 
 def _broken_promise_hold(db, member_id: int) -> bool:
@@ -782,44 +785,92 @@ def ptp_create(mid: int):
         flash("Amount, promise date, payment method, and notes are required.", "error")
         return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
 
-    # Discount tiers (Rules §9/§10): DebiCheck+PTP auto-approves up to 25%,
-    # cash paid upfront in full auto-approves up to 50%. Anything else with a
-    # discount attached — no DebiCheck, or above the tier's ceiling — is not
-    # a receptionist's call to make, so it's forced to manager approval.
+    # A collector may approve automatically only within the proposed 50%
+    # discount ceiling and minimum recoverable balance. The remaining
+    # prerequisites are checked below and failures go to manager approval.
     discount_amount = 0.0
     discount_basis = None
     discount_auto_approved = True
+    is_cash_upfront = payment_method == "cash" and arrangement_type == "full"
     if discount_pct > 0:
-        is_cash_upfront = payment_method == "cash" and arrangement_type == "full"
         # The PTP half of "DebiCheck + PTP" is the record being created here, so
         # the gate is a confirmed mandate. _has_qualifying_arrangement() also
         # requires an already-saved pending PTP, which no first arrangement can
         # satisfy — using it here made this tier unreachable.
-        if _has_submitted_mandate(db, mid) and discount_pct <= DEBICHECK_DISCOUNT_CEILING:
+        if _has_submitted_mandate(db, mid) and discount_pct <= AUTO_SETTLEMENT_DISCOUNT_CEILING:
             discount_basis = "debicheck_ptp"
-        elif is_cash_upfront and discount_pct <= CASH_UPFRONT_DISCOUNT_CEILING:
+        elif is_cash_upfront and discount_pct <= AUTO_SETTLEMENT_DISCOUNT_CEILING:
             discount_basis = "cash_upfront"
         else:
             discount_auto_approved = False
         discount_amount = round(float(arrears_amount or 0) * discount_pct / 100, 2)
 
-    # Recovery rule: discount first, then calculate the 30% upfront payment
-    # from the discounted balance. The remaining arrears are recovered using
-    # the member's normal monthly instalment rather than an arbitrary arrears
-    # instalment.
+    # A no-upfront arrangement has no assumed cash contribution: its full
+    # recoverable balance determines the term. A full cash settlement retains
+    # the legacy upfront calculation. Recovery uses the member's normal
+    # monthly instalment as the affordable arrears payment.
     try:
         recovery_plan = calculate_realistic_recovery_plan(
             arrears_value,
             float(member["monthly_installment"] or 0),
             discount_pct,
-            UPFRONT_RECOVERY_PERCENT,
+            UPFRONT_RECOVERY_PERCENT if is_cash_upfront else 0,
         )
     except (TypeError, ValueError):
         recovery_plan = calculate_realistic_recovery_plan(
-            arrears_value, 0, discount_pct, UPFRONT_RECOVERY_PERCENT
+            arrears_value, 0, discount_pct,
+            UPFRONT_RECOVERY_PERCENT if is_cash_upfront else 0,
         )
 
-    mgr_status = "pending" if (needs_approval or not discount_auto_approved) else "not_required"
+    # Evidence currently means a bank statement document is on the member
+    # record. This does not claim that income was independently verified; where
+    # the app cannot establish that the rule is met, a manager must review it.
+    bank_documents = db.execute(
+        """SELECT analysis_json FROM member_documents
+           WHERE member_id=? AND lower(COALESCE(document_type,'')) LIKE '%bank%'
+           ORDER BY uploaded_at DESC""",
+        (mid,),
+    ).fetchall()
+    has_bank_evidence = False
+    for bank_document in bank_documents:
+        try:
+            analysis = json.loads(bank_document["analysis_json"] or "{}")
+        except (TypeError, ValueError):
+            analysis = {}
+        if analysis.get("verification_qualified"):
+            has_bank_evidence = True
+            break
+    manager_reasons = []
+    minimum_recoverable = max(
+        MINIMUM_RECOVERABLE_BALANCE, round(arrears_value * 0.50, 2)
+    )
+    if discount_pct > AUTO_SETTLEMENT_DISCOUNT_CEILING:
+        manager_reasons.append("discount exceeds 50%")
+    if not is_cash_upfront:
+        if float(recovery_plan["discounted_balance"]) < minimum_recoverable:
+            manager_reasons.append("recoverable balance is below the automatic minimum")
+        if not _has_submitted_mandate(db, mid):
+            manager_reasons.append("authenticated DebiCheck is not on file")
+        if not has_bank_evidence:
+            manager_reasons.append("bank statement evidence is not on file")
+        if float(member["monthly_installment"] or 0) < MINIMUM_RECOVERY_INSTALLMENT:
+            manager_reasons.append("monthly instalment is below R150")
+        if int(recovery_plan["recovery_months"]) > NORMAL_RECOVERY_TERM_MONTHS:
+            manager_reasons.append("term exceeds 12 months or needs a hardship exception")
+    if db.execute(
+        "SELECT 1 FROM ptp_agreements WHERE member_id=? AND ptp_status='broken' LIMIT 1",
+        (mid,),
+    ).fetchone():
+        manager_reasons.append("member has a previously defaulted arrangement")
+    if db.execute(
+        "SELECT 1 FROM legal_referrals WHERE member_id=? AND status='open' LIMIT 1",
+        (mid,),
+    ).fetchone():
+        manager_reasons.append("account is currently in the legal pathway")
+
+    mgr_status = "pending" if (
+        needs_approval or not discount_auto_approved or manager_reasons
+    ) else "not_required"
 
     cursor = db.execute("""
         INSERT INTO ptp_agreements
@@ -937,6 +988,8 @@ def ptp_create(mid: int):
             f"{discount_basis or 'no qualifying basis'} — "
             f"{'auto-approved' if discount_auto_approved and not needs_approval else 'awaiting manager approval'}."
         )
+    if manager_reasons:
+        discount_note += " Manager review: " + "; ".join(manager_reasons) + "."
     escalation_note = (
         " Escalated to the management exception queue: three or more months "
         "owing without a qualifying DebiCheck arrangement." if escalated else ""
