@@ -71,6 +71,7 @@
       </div>
     </div>
 
+    {% if has_perm('hr_payroll') %}
     <div class="card">
       <div class="card-header">
         <h2>Payroll</h2>
@@ -101,6 +102,7 @@
         {% endif %}
       </div>
     </div>
+    {% endif %}
   </div>
 
   <div class="card" style="align-self:start;">

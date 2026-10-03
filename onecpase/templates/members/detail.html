@@ -231,8 +231,8 @@
     </div>
 
     <div style="margin-top:20px; display:flex; gap:10px; flex-wrap:wrap;">
-      <a href="{{ url_for('members.member_edit', mid=member.id) }}" class="btn btn-primary btn-sm">Edit</a>
-      <a href="{{ url_for('collections.collections_add', member_id=member.id) }}" class="btn btn-secondary btn-sm">Record Payment</a>
+      {% if has_perm('add_member') %}<a href="{{ url_for('members.member_edit', mid=member.id) }}" class="btn btn-primary btn-sm">Edit</a>{% endif %}
+      {% if has_perm('new_collection') %}<a href="{{ url_for('collections.collections_add', member_id=member.id) }}" class="btn btn-secondary btn-sm">Record Payment</a>{% endif %}
       {% if has_perm('new_debicheck') %}
         {% if mandate and mandate.status == 'reviewing' %}
           <span class="btn btn-ghost btn-sm" style="cursor:default;">⏳ Waiting on the NuPay browser window</span>
@@ -274,8 +274,8 @@
       <a href="#notes" class="btn btn-ghost btn-sm">Activity & Notes</a>
       <a href="#docs" class="btn btn-ghost btn-sm profile-panel-toggle" data-panel="docs" aria-expanded="false">Documents</a>
       <a href="#payments" class="btn btn-ghost btn-sm profile-panel-toggle" data-panel="payments" aria-expanded="false">Payment Profile</a>
-      <a href="#ptp" class="btn btn-ghost btn-sm profile-panel-toggle" data-panel="ptp" aria-expanded="false"
-         style="border:1px solid #e11d48;color:#e11d48;">PTP / Collection{% if arrears_info.total_arrears > 0 %} &bull; R{{ "%.0f"|format(arrears_info.total_arrears) }}{% endif %}</a>
+      {% if has_perm('all_collections') %}<a href="#ptp" class="btn btn-ghost btn-sm profile-panel-toggle" data-panel="ptp" aria-expanded="false"
+         style="border:1px solid #e11d48;color:#e11d48;">PTP / Collection{% if arrears_info.total_arrears > 0 %} &bull; R{{ "%.0f"|format(arrears_info.total_arrears) }}{% endif %}</a>{% endif %}
       <a href="#queries" class="btn btn-ghost btn-sm profile-panel-toggle" data-panel="queries" aria-expanded="false"
          style="border:1px solid #7c3aed;color:#7c3aed;">🎫 Queries{% if open_queries_count %} &bull; {{ open_queries_count }} open{% endif %}</a>
       <a href="{{ url_for('contracts.view_contract', mid=member.id) }}" class="btn btn-ghost btn-sm">Contract</a>
@@ -562,7 +562,7 @@
 <div class="pay-card profile-panel" id="payments">
   <div class="pay-card-header">
     <h2>Payment Profile</h2>
-    <a href="{{ url_for('collections.collections_add', member_id=member.id) }}" class="btn btn-primary btn-sm">+ Record Payment</a>
+    {% if has_perm('new_collection') %}<a href="{{ url_for('collections.collections_add', member_id=member.id) }}" class="btn btn-primary btn-sm">+ Record Payment</a>{% endif %}
   </div>
 
   {% if payment_profile %}
@@ -605,7 +605,7 @@
   <div class="empty-state" style="padding:48px 24px;">
     <div class="empty-icon">💳</div>
     <p>No recurring payment profile for this member.</p>
-    <a href="{{ url_for('collections.collections_add', member_id=member.id) }}" class="btn btn-primary">Record First Payment</a>
+    {% if has_perm('new_collection') %}<a href="{{ url_for('collections.collections_add', member_id=member.id) }}" class="btn btn-primary">Record First Payment</a>{% endif %}
   </div>
   {% endif %}
 </div>
@@ -628,6 +628,7 @@
 {% endif %}
 
 <!-- ── Row 6: PTP / Collection ── -->
+{% if has_perm('all_collections') %}
 <div class="notes-card profile-panel" id="ptp">
 <style>
 .ptp-cat-a { background:#fef3c7;color:#92400e;border:1px solid #fde68a; }
@@ -1233,6 +1234,7 @@
   </div>
 
 </div><!-- end #ptp panel -->
+{% endif %}
 
 <!-- ══════════════════════════════════════════════════════════════════════════
      QUERIES PANEL

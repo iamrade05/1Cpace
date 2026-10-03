@@ -5,7 +5,7 @@
 
 {% block content %}
 <div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
-  <a href="{{ url_for('hr.staff_add') }}" class="btn btn-primary">+ Add Staff</a>
+  {% if has_perm('user_management') %}<a href="{{ url_for('hr.staff_add') }}" class="btn btn-primary">+ Add Staff</a>{% endif %}
   <a href="{{ url_for('hr.leave_index') }}" class="btn btn-secondary">Leave Requests</a>
   <a href="{{ url_for('hr.leave_request') }}" class="btn btn-ghost">Request Leave</a>
   {% if has_perm('hr_staff') %}<a href="{{ url_for('hr.employee_index') }}" class="btn btn-ghost">Employee Register</a>{% endif %}
@@ -53,7 +53,7 @@
             {% endif %}
           </td>
           <td>
-            <a href="{{ url_for('hr.staff_edit', uid=u.id) }}" class="btn btn-ghost btn-sm">Edit</a>
+            {% if has_perm('user_management') %}<a href="{{ url_for('hr.staff_edit', uid=u.id) }}" class="btn btn-ghost btn-sm">Edit</a>{% endif %}
           </td>
         </tr>
         {% endfor %}
@@ -63,7 +63,7 @@
     <div class="empty-state">
       <div class="empty-icon">🧑‍💼</div>
       <p>No staff found{% if search %} matching "{{ search }}"{% endif %}.</p>
-      <a href="{{ url_for('hr.staff_add') }}" class="btn btn-primary">Add First Staff Member</a>
+      {% if has_perm('user_management') %}<a href="{{ url_for('hr.staff_add') }}" class="btn btn-primary">Add First Staff Member</a>{% endif %}
     </div>
     {% endif %}
   </div>

@@ -607,7 +607,7 @@
     </a>
     {% endif %}
 
-    {% if phase_open('sales') and (has_perm('view_leads') or has_perm('capture_leads') or has_perm('all_members')) %}
+    {% if phase_open('sales') and (has_perm('view_leads') or has_perm('capture_leads')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="sales" aria-expanded="false">
       <span>Sales</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -644,7 +644,7 @@
        too, purely to avoid rendering an empty section — but it now also
        holds Staff Messages and Announcements, which every signed-in
        member of staff may use, so the phase alone decides. #}
-    {% if phase_open('communication') %}
+    {% if phase_open('communication') and session.get('access_profile') != 'fitness' %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="communication" aria-expanded="false">
       <span>Communication</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -754,9 +754,9 @@
     </div>
     {% endif %}
 
-    {% if phase_open('finance') %}
+    {% if phase_open('finance') and (has_perm('debicheck_mandates') or has_perm('new_debicheck') or has_perm('all_collections')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="finance" aria-expanded="false">
-      <span>Finance</span><span class="nav-accordion-chevron">▸</span>
+      <span>{{ 'DebiCheck' if session.get('access_profile') == 'sales' else 'Finance' }}</span><span class="nav-accordion-chevron">▸</span>
     </button>
     <div class="nav-accordion-panel" data-section-panel="finance" hidden>
       {% if phase_open('access_report') and has_perm('all_collections') %}

@@ -72,6 +72,37 @@ MODULE_PERMISSIONS = {
 # Flat set of all valid permission keys
 ALL_PERMISSIONS = {perm for perms in MODULE_PERMISSIONS.values() for perm, _ in perms}
 
+_HR_WITHOUT_PAYROLL = {key for key, _ in MODULE_PERMISSIONS['HR']} - {'hr_payroll'}
+_MEMBER_ACCESS = {'all_members', 'add_member', 'daily_queries', 'verification'}
+_SALES_ACCESS = {'view_leads', 'capture_leads', 'pbx_call'}
+_COMMUNICATION_ACCESS = {key for key, _ in MODULE_PERMISSIONS['COMMUNICATIONS']}
+STAFF_ACCESS_PROFILES = {
+    'sales': {'dashboard', 'debicheck_mandates', 'new_debicheck'} | _MEMBER_ACCESS | _SALES_ACCESS | _COMMUNICATION_ACCESS | _HR_WITHOUT_PAYROLL,
+    'reception': {'dashboard'} | {key for key, _ in MODULE_PERMISSIONS['COLLECTIONS']} | _MEMBER_ACCESS | _SALES_ACCESS | _COMMUNICATION_ACCESS | _HR_WITHOUT_PAYROLL,
+    'fitness': {'dashboard', 'all_members'} | {key for key, _ in MODULE_PERMISSIONS['FITNESS']} | _HR_WITHOUT_PAYROLL,
+}
+
+
+def staff_access_profile(role, department, is_sales_consultant=False):
+    role = str(role or '').strip().lower()
+    department = str(department or '').strip().lower()
+    if role in {'admin', 'manager'}:
+        return None
+    if role in {'reception', 'receptionist'} or department == 'reception':
+        return 'reception'
+    if role in {'trainer', 'instructor'} or department in {'training', 'fitness'}:
+        return 'fitness'
+    if is_sales_consultant or department == 'sales':
+        return 'sales'
+    return None
+
+
+def effective_permissions_for(role, department, assigned=(), is_sales_consultant=False):
+    profile = staff_access_profile(role, department, is_sales_consultant)
+    if profile:
+        return set(STAFF_ACCESS_PROFILES[profile])
+    return set(assigned) | default_permissions_for(role, department)
+
 # Permissions granted automatically by department/role, on top of whatever a
 # user is individually assigned via the Add/Edit User form. Keeps a Sales
 # Manager fully functional without an admin having to remember to tick every
@@ -102,5 +133,8 @@ ROLE_DEFAULT_PERMISSIONS = {
 def default_permissions_for(role: str, department: str) -> set:
     """Permissions a user gets for free from their role/department, merged
     with whatever's individually granted in user_permissions."""
+    profile = staff_access_profile(role, department)
+    if profile:
+        return set(STAFF_ACCESS_PROFILES[profile])
     return (DEPARTMENT_DEFAULT_PERMISSIONS.get(department, set())
             | ROLE_DEFAULT_PERMISSIONS.get(role, set()))

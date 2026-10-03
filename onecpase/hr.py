@@ -28,6 +28,10 @@ def as_float(value, default: float = 0.0):
         return default
 
 
+def can_access_payroll():
+    return session.get('role') == 'admin' or 'hr_payroll' in session.get('permissions', [])
+
+
 def parse_date_value(value, fallback: date | None = None) -> date:
     if value:
         try:
@@ -133,7 +137,7 @@ def staff_add():
 
 
 @hr_bp.route("/<int:uid>/edit", methods=["GET", "POST"])
-@permission_required("hr_staff")
+@permission_required("user_management")
 def staff_edit(uid: int):
     db = get_db()
     user = db.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
@@ -316,7 +320,7 @@ def employee_add():
                     str(request.form.get("email", "")).strip() or None,
                     str(request.form.get("start_date", "")).strip() or date.today().isoformat(),
                     str(request.form.get("contract_end", "")).strip() or None,
-                    as_float(request.form.get("salary")),
+                    as_float(request.form.get("salary")) if can_access_payroll() else 0,
                 ),
             )
             get_db().commit()
@@ -356,7 +360,7 @@ def employee_edit(sid: int):
                     str(request.form.get("email", "")).strip() or None,
                     str(request.form.get("start_date", "")).strip() or None,
                     str(request.form.get("contract_end", "")).strip() or None,
-                    as_float(request.form.get("salary")),
+                    as_float(request.form.get("salary")) if can_access_payroll() else employee['salary'],
                     str(request.form.get("status", "active")).strip() or "active",
                     sid,
                 ),
@@ -385,9 +389,10 @@ def employee_detail(sid: int):
     leave = db.execute(
         "SELECT * FROM leave_requests WHERE staff_id = ? ORDER BY start_date DESC, id DESC LIMIT 10", (sid,)
     ).fetchall()
+    can_view_payroll = can_access_payroll()
     payroll = db.execute(
         "SELECT * FROM payroll WHERE staff_id = ? ORDER BY month DESC, id DESC LIMIT 12", (sid,)
-    ).fetchall()
+    ).fetchall() if can_view_payroll else []
 
     return render_template(
         "hr/employee_detail.html", s=employee, attendance=attendance, leave=leave, payroll=payroll

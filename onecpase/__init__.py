@@ -187,6 +187,35 @@ def create_app(test_config: dict | None = None) -> Flask:
             g.tenant = tenant
             g.tenant_slug = tenant["slug"]
 
+    @app.before_request
+    def _enforce_staff_access():
+        from .auth import _load_permissions, session_tenant_ok
+        from .database import get_db
+        from .permissions import staff_access_profile
+
+        if not session.get('user_id') or not session_tenant_ok() or request.blueprint in {'platform', 'auth', 'tenants', 'health', 'comms_webhooks', 'join'} or request.endpoint in {None, 'static'}:
+            return None
+        user = get_db().execute(
+            'SELECT role, department, is_sales_consultant FROM users WHERE id=?',
+            (session['user_id'],),
+        ).fetchone()
+        profile = staff_access_profile(user['role'], user['department'], user['is_sales_consultant']) if user else None
+        session['access_profile'] = profile
+        if not profile:
+            return None
+        session['role'] = user['role']
+        session['permissions'] = sorted(_load_permissions(session['user_id']))
+        if request.endpoint == 'dashboard.dashboard':
+            return redirect(url_for('members.members_index' if profile == 'fitness' else 'leads.leads_index'))
+        if request.blueprint == 'dashboard' and (profile == 'fitness' or request.endpoint != 'dashboard.sales_dashboard'):
+            return jsonify(ok=False, error="You don't have permission to access that area."), 403
+        common = {'dashboard', 'members', 'queries', 'turnstile', 'hr', 'contracts', 'screen_recordings'}
+        allowed = common | ({'fitness', 'onboarding'} if profile == 'fitness' else {'leads', 'sales_pipeline', 'applications', 'call_list', 'first_month_collections', 'comms', 'internal_comms', 'pbx', 'debicheck'})
+        if profile == 'reception':
+            allowed |= {'collections', 'ptp', 'access_report'}
+        if request.blueprint not in allowed:
+            return jsonify(ok=False, error="You don't have permission to access that area."), 403
+
     # ── Phased go-live ────────────────────────────────────────────────────────
     @app.before_request
     def _enforce_active_phase():

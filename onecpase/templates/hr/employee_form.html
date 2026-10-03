@@ -41,10 +41,12 @@
           {% endfor %}
         </select>
       </div>
+      {% if has_perm('hr_payroll') %}
       <div class="form-group">
         <label>Salary (R)</label>
         <input type="number" step="0.01" name="salary" value="{{ employee.salary if employee else '' }}">
       </div>
+      {% endif %}
     </div>
 
     <div class="form-row">

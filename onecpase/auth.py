@@ -35,18 +35,18 @@ def valid_email_address(value: str | None) -> bool:
 # ── Permission helpers ────────────────────────────────────────────────────────
 
 def _load_permissions(user_id: int) -> set:
-    from .permissions import default_permissions_for
+    from .permissions import effective_permissions_for
 
     db = get_db()
     user = db.execute(
-        "SELECT role, department FROM users WHERE id = ?", (user_id,)
+        "SELECT role, department, is_sales_consultant FROM users WHERE id = ?", (user_id,)
     ).fetchone()
     rows = db.execute(
         "SELECT permission FROM user_permissions WHERE user_id = ?", (user_id,)
     ).fetchall()
     perms = {r["permission"] for r in rows}
     if user:
-        perms |= default_permissions_for(user["role"], user["department"])
+        perms = effective_permissions_for(user['role'], user['department'], perms, user['is_sales_consultant'])
     return perms
 
 
