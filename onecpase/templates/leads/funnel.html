@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Sales Funnel | 1Cpase{% endblock %}
+{% block title %}Sales Funnel | 1Cpace{% endblock %}
 {% block page_title %}Sales Funnel & Attribution{% endblock %}
 
 {% macro rate(value, base) -%}
@@ -9,17 +9,18 @@
 {% macro report_table(rows, label) %}
 <div class="form-card" style="margin-bottom:18px;overflow-x:auto;">
   <h3 style="margin-bottom:12px;">By {{ label }}</h3>
-  <table style="width:100%;font-size:.8rem;white-space:nowrap;">
+  <div class="table-wrap"><table style="width:100%;font-size:.8rem;white-space:nowrap;" class="table">
     <thead><tr><th>{{ label }}</th><th>Prospects</th><th>Assigned</th><th>Contacted</th><th>Appointments</th><th>Showed</th><th>Consulted</th><th>Joined</th><th>Conversion</th><th>Monthly Sales Value</th></tr></thead>
     <tbody>
-      {% for name, row in rows %}<tr><td><strong>{{ name }}</strong></td><td>{{ row.prospects }}</td><td>{{ row.assigned }}</td><td>{{ row.contacted }}</td><td>{{ row.appointment }}</td><td>{{ row.showed }}</td><td>{{ row.consulted }}</td><td>{{ row.joined }}</td><td>{{ rate(row.joined, row.prospects) }}</td><td>R{{ '%.2f'|format(row.sales_value) }}</td></tr>
+      {% for name, row in rows %}<tr><td><strong>{{ name }}</strong></td><td>{{ row.prospects }}</td><td>{{ row.assigned }}</td><td>{{ row.contacted }}</td><td>{{ row.appointment }}</td><td>{{ row.showed }}</td><td>{{ row.consulted }}</td><td>{{ row.joined }}</td><td>{{ rate(row.joined, row.prospects) }}</td><td class="num">R{{ '%.2f'|format(row.sales_value) }}</td></tr>
       {% else %}<tr><td colspan="10">No prospect data yet.</td></tr>{% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 {% endmacro %}
 
 {% block content %}
+<header class="page-header"><div><h1>Sales Funnel & Attribution</h1></div></header>
 <div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><a href="{{ url_for('leads.leads_index') }}" class="btn btn-secondary">Back to Pipeline</a></div>
 <div class="form-card" style="margin-bottom:18px;overflow-x:auto;">
   <h3 style="margin-bottom:12px;">Overall Funnel</h3>

@@ -1,15 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Membership Plans | 1Cpase{% endblock %}
+{% block title %}Membership Plans | 1Cpace{% endblock %}
 {% block page_title %}Membership Plans{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Membership Plans</h1></div></header>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
   <p style="font-size:0.85rem;color:#6b7280;">Create and edit membership plans. Active plans appear in the Add Member form and automatically fill the duration and monthly amount.</p>
   <a href="{{ url_for('admin.tariff_add') }}" class="btn btn-primary">+ Create Membership Plan</a>
 </div>
 
 <div class="table-card">
-  <table class="data-table">
+  <div class="table-wrap"><table class="data-table table">
     <thead>
       <tr>
         <th>Order</th>
@@ -47,6 +48,6 @@
       <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:32px;">No membership plans yet. <a href="{{ url_for('admin.tariff_add') }}">Create one</a>.</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 {% endblock %}

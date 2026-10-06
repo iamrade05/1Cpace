@@ -2,7 +2,7 @@
 {% block title %}Reports – Queries{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>📊 Reports – Queries &amp; Tickets</h1>
+  <h1> Reports – Queries &amp; Tickets</h1>
 </div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
   <a href="{{ url_for('reports.overview') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Overview</a>
@@ -57,7 +57,7 @@
   <div class="card">
     <div class="card-header"><h3 class="card-title">By Status</h3></div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.83rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
         <thead><tr><th>Status</th><th class="text-right">Count</th></tr></thead>
         <tbody>
           {% for r in status_breakdown %}
@@ -66,10 +66,10 @@
               <span class="badge
                 {% if r['status']=='open' %}badge-warning
                 {% elif r['status']=='resolved' %}badge-success
-                {% elif r['status']=='closed' %}badge-secondary
+                {% elif r['status']=='closed' %}badge-gray
                 {% elif r['status']=='escalated' %}badge-danger
                 {% elif r['status']=='in_progress' %}badge-info
-                {% else %}badge-secondary{% endif %}">
+                {% else %}badge-gray{% endif %}">
                 {{ r['status'] | replace('_',' ') | title }}
               </span>
             </td>
@@ -79,7 +79,7 @@
           <tr><td colspan="2" class="text-center text-muted">No queries for period</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -87,7 +87,7 @@
   <div class="card">
     <div class="card-header"><h3 class="card-title">By Priority</h3></div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.83rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
         <thead><tr><th>Priority</th><th class="text-right">Count</th></tr></thead>
         <tbody>
           {% for r in priority_breakdown %}
@@ -97,7 +97,7 @@
                 {% if r['priority']=='urgent' %}badge-danger
                 {% elif r['priority']=='high' %}badge-warning
                 {% elif r['priority']=='medium' %}badge-info
-                {% else %}badge-secondary{% endif %}">
+                {% else %}badge-gray{% endif %}">
                 {{ r['priority'] | title }}
               </span>
             </td>
@@ -107,7 +107,7 @@
           <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -115,7 +115,7 @@
   <div class="card">
     <div class="card-header"><h3 class="card-title">Trend — Last 6 Months</h3></div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.83rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
         <thead><tr><th>Month</th><th class="text-right">Logged</th><th class="text-right">Resolved</th></tr></thead>
         <tbody>
           {% for r in monthly_trend %}
@@ -128,7 +128,7 @@
           <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -140,7 +140,7 @@
   <div class="card">
     <div class="card-header"><h3 class="card-title">By Category</h3></div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.83rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
         <thead>
           <tr><th>Category</th><th class="text-right">Total</th><th class="text-right">Open</th><th class="text-right">Urgent</th></tr>
         </thead>
@@ -156,7 +156,7 @@
           <tr><td colspan="4" class="text-center text-muted">No data</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -164,7 +164,7 @@
   <div class="card">
     <div class="card-header"><h3 class="card-title">By Assigned Staff</h3></div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.83rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
         <thead>
           <tr><th>Staff</th><th class="text-right">Assigned</th><th class="text-right">Resolved</th></tr>
         </thead>
@@ -179,7 +179,7 @@
           <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -193,7 +193,7 @@
     <span class="badge badge-danger">{{ overdue | length }}</span>
   </div>
   <div class="card-body" style="padding:0;">
-    <table class="data-table" style="font-size:.82rem;">
+    <div class="table-wrap"><table class="data-table table" style="font-size:.82rem;">
       <thead>
         <tr><th>Ref</th><th>Member</th><th>Category</th><th>Priority</th><th>Follow-up</th><th>Assigned</th><th></th></tr>
       </thead>
@@ -210,11 +210,11 @@
           </td>
           <td style="color:#dc3545;">{{ r['follow_up_date'] }}</td>
           <td>{{ r['assigned_to_name'] or '—' }}</td>
-          <td><a href="{{ url_for('queries.detail', query_id=r['id']) }}" class="btn btn-xs btn-outline">View</a></td>
+          <td><a href="{{ url_for('queries.detail', qid=r['id']) }}" class="btn btn-xs btn-outline">View</a></td>
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% endif %}
@@ -229,7 +229,7 @@
     </div>
   </div>
   <div class="card-body" style="padding:0;">
-    <table class="data-table" style="font-size:.82rem;">
+    <div class="table-wrap"><table class="data-table table" style="font-size:.82rem;">
       <thead>
         <tr><th>Ref</th><th>Member</th><th>Category</th><th>Priority</th><th>Status</th><th>Assigned</th><th>Created</th><th></th></tr>
       </thead>
@@ -240,7 +240,7 @@
           <td>{{ r['member_name'] or r['name'] or '—' }}</td>
           <td>{{ r['category'] | replace('_',' ') | title }}</td>
           <td>
-            <span class="badge {% if r['priority']=='urgent' %}badge-danger{% elif r['priority']=='high' %}badge-warning{% elif r['priority']=='medium' %}badge-info{% else %}badge-secondary{% endif %}">
+            <span class="badge {% if r['priority']=='urgent' %}badge-danger{% elif r['priority']=='high' %}badge-warning{% elif r['priority']=='medium' %}badge-info{% else %}badge-gray{% endif %}">
               {{ r['priority'] | title }}
             </span>
           </td>
@@ -251,13 +251,13 @@
           </td>
           <td>{{ r['assigned_to_name'] or '—' }}</td>
           <td style="color:#6c757d;">{{ r['created_at'][:10] if r['created_at'] else '—' }}</td>
-          <td><a href="{{ url_for('queries.detail', query_id=r['id']) }}" class="btn btn-xs btn-outline">View</a></td>
+          <td><a href="{{ url_for('queries.detail', qid=r['id']) }}" class="btn btn-xs btn-outline">View</a></td>
         </tr>
         {% else %}
         <tr><td colspan="8" class="text-center text-muted">No queries for this period</td></tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% endblock %}

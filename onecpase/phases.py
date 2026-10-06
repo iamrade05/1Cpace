@@ -49,7 +49,7 @@ PHASES: dict[int, tuple[str, frozenset[str]]] = {
             }
         ),
     ),
-    2: ("Collections", frozenset({"collections", "ptp"})),
+    2: ("Collections", frozenset({"collections", "ptp", "reconciliation"})),
     3: ("Queries", frozenset({"queries"})),
     4: ("Fitness", frozenset({"fitness", "onboarding"})),
     5: ("Reports", frozenset({"reports", "access_report"})),

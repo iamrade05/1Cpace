@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% block title %}DebiCheck #{{ mandate.id }} | 1Cpase{% endblock %}
+{% block title %}DebiCheck #{{ mandate.id }} | 1Cpace{% endblock %}
 {% block page_title %}DebiCheck #{{ mandate.id }}{% endblock %}
 {% block content %}
+<header class="page-header"><div><h1>DebiCheck #{{ mandate.id }}</h1></div></header>
 <div class="card" style="max-width:900px;margin:auto;">
   <div class="card-header"><div><h2>{{ mandate.first_name }} {{ mandate.last_name }}</h2><div style="font-size:.75rem;color:#6b7280;margin-top:3px;">NuPay mandate · Staff {{ mandate.client_ref2 }}</div></div><span class="badge {% if mandate.status == 'active' %}badge-success{% elif mandate.status in ('failed','rejected','cancelled') %}badge-danger{% else %}badge-warning{% endif %}">{{ mandate.status }}{% if mandate.status == 'submitted' %} — not yet confirmed active{% elif mandate.status == 'reviewing' %} — waiting on the NuPay browser window{% elif mandate.status == 'cancelled' %} — suspended or inactive at NuPay, it will not collect{% endif %}</span></div>
   <div style="padding:20px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;" class="mandate-detail-grid">

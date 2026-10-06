@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Maintenance: {{ item.name }} | 1Cpase{% endblock %}
+{% block title %}Maintenance: {{ item.name }} | 1Cpace{% endblock %}
 {% block page_title %}{{ item.name }} — Maintenance Log{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>{{ item.name }} — Maintenance Log</h1></div></header>
 
 <!-- Equipment info bar -->
 <div style="background:#fff; border-radius:10px; padding:16px 20px; margin-bottom:20px;
@@ -36,7 +37,7 @@
     <div class="card-header"><h2>Maintenance History</h2></div>
     <div class="card-body">
       {% if logs %}
-      <table>
+      <div class="table-wrap"><table class="table">
         <thead>
           <tr><th>Date</th><th>Description</th><th>By</th><th>Cost</th><th>Next Due</th></tr>
         </thead>
@@ -54,10 +55,10 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
       {% else %}
       <div class="empty-state" style="padding:32px;">
-        <div class="empty-icon">🔧</div>
+        <div class="empty-icon"></div>
         <p>No maintenance records yet.</p>
       </div>
       {% endif %}

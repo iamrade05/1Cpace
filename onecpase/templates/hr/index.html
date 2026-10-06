@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}HR & Staff | 1Cpase{% endblock %}
+{% block title %}HR & Staff | 1Cpace{% endblock %}
 {% block page_title %}HR & Staff{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>HR & Staff</h1></div></header>
 <div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
   {% if has_perm('user_management') %}<a href="{{ url_for('hr.staff_add') }}" class="btn btn-primary">+ Add Staff</a>{% endif %}
   <a href="{{ url_for('hr.leave_index') }}" class="btn btn-secondary">Leave Requests</a>
@@ -25,7 +26,7 @@
   </div>
   <div class="card-body">
     {% if staff %}
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr>
           <th>Name</th>
@@ -58,10 +59,10 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="empty-state">
-      <div class="empty-icon">🧑‍💼</div>
+      <div class="empty-icon"></div>
       <p>No staff found{% if search %} matching "{{ search }}"{% endif %}.</p>
       {% if has_perm('user_management') %}<a href="{{ url_for('hr.staff_add') }}" class="btn btn-primary">Add First Staff Member</a>{% endif %}
     </div>

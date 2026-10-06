@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Review Call List | 1Cpase{% endblock %}
+{% block title %}Review Call List | 1Cpace{% endblock %}
 {% block page_title %}Review Call List — {{ upload.original_filename }}{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Review Call List — {{ upload.original_filename }}</h1></div></header>
 <style>
 .clrow-form { display:flex; flex-direction:column; gap:4px; }
 .clrow-form input, .clrow-form select { padding:5px 7px; border:1px solid #d1d5db; border-radius:5px; font-size:.8rem; width:100%; }
@@ -30,7 +31,7 @@
   <div class="card-body" style="padding:0;">
     {% if rows %}
     <div style="overflow-x:auto;">
-      <table>
+      <div class="table-wrap"><table class="table">
         <thead>
           <tr>
             <th style="width:36px;"></th>
@@ -49,7 +50,7 @@
           <tr>
             <td>
               {% if row.imported_lead_id %}
-              <span title="Already imported">✓</span>
+              <span title="Already imported"></span>
               {% else %}
               <input type="checkbox" name="row_id" value="{{ row.id }}" form="import-form">
               {% endif %}
@@ -82,14 +83,14 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
     <div style="padding:14px 16px;border-top:1px solid #f0f0f0;">
       <button type="submit" form="import-form" class="btn btn-primary">Import Selected Rows into Sales CRM</button>
     </div>
     {% else %}
     <div class="empty-state" style="padding:48px 24px;">
-      <div class="empty-icon">🔍</div>
+      <div class="empty-icon"></div>
       <p>No rows were detected in this document.</p>
     </div>
     {% endif %}

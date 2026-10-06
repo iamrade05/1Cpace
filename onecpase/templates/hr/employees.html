@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Employee Register | 1Cpase{% endblock %}
+{% block title %}Employee Register | 1Cpace{% endblock %}
 {% block page_title %}Employee Register{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Employee Register</h1></div></header>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
   <form method="get" style="display:flex; gap:8px;">
     <input name="q" value="{{ search }}" placeholder="Search name or role…"
@@ -16,7 +17,7 @@
 {% if employees %}
 <div class="card">
   <div class="card-body">
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr><th>Name</th><th>Role</th><th>Department</th><th>Contact</th><th>Start Date</th><th>Status</th><th></th></tr>
       </thead>
@@ -39,12 +40,12 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% else %}
 <div class="empty-state">
-  <div class="empty-icon">🧑‍💼</div>
+  <div class="empty-icon"></div>
   <p>No employees found{% if search %} matching "{{ search }}"{% endif %}.</p>
   <a href="{{ url_for('hr.employee_add') }}" class="btn btn-primary">Add First Employee</a>
 </div>

@@ -1,191 +1,26 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ event.name }} – Registration</title>
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { font-size: 16px; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #EDE8DF;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 24px 16px 48px;
-  }
-  .card {
-    width: 100%;
-    max-width: 520px;
-    background: #fff;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 12px 48px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08);
-  }
-  .meta-chip {
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.18);
-    color: rgba(255,255,255,0.92);
-    font-size: 11px;
-    padding: 5px 12px;
-    border-radius: 20px;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .progress-bar {
-    background: #F4F0E8;
-    padding: 14px 24px;
-    display: flex;
-    align-items: center;
-    border-bottom: 1px solid #E0DBD1;
-  }
-  .step-dot {
-    width: 28px; height: 28px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 700; flex-shrink: 0;
-    transition: background 0.3s, color 0.3s;
-  }
-  .step-dot.idle   { background: #D0CCBF; color: #888; }
-  .step-dot.active { background: #1B2B5E; color: #fff; box-shadow: 0 0 0 4px rgba(27,43,94,0.18); }
-  .step-dot.done   { background: #1D6B3A; color: #fff; }
-  .step-line { flex: 1; height: 2px; background: #D0CCBF; transition: background 0.3s; margin: 0 2px; }
-  .step-line.done { background: #1D6B3A; }
-  .form-body { padding: 26px 24px; }
-  .step-panel { display: none; }
-  .step-panel.active { display: block; }
-  .section-title {
-    font-size: 11px; font-weight: 700; color: #1B2B5E; text-transform: uppercase;
-    letter-spacing: 1.8px; margin-bottom: 16px; padding-bottom: 10px;
-    border-bottom: 2.5px solid #E8920A; display: flex; align-items: center; gap: 8px;
-  }
-  .section-title .icon { font-size: 15px; }
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
-  .grid-1 { display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 14px; }
-  .field-group { display: flex; flex-direction: column; gap: 5px; }
-  .field-group label {
-    font-size: 10px; font-weight: 700; color: #999;
-    text-transform: uppercase; letter-spacing: 0.8px;
-  }
-  .field-group input, .field-group select {
-    width: 100%; padding: 10px 13px; border: 1.5px solid #DDD9D0; border-radius: 7px;
-    font-size: 14px; color: #1A1A1A; background: #FAFAF8; outline: none;
-    font-family: inherit; transition: border-color 0.15s, background 0.15s;
-    appearance: none; -webkit-appearance: none;
-  }
-  .field-group select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 13px center; padding-right: 36px;
-  }
-  .field-group input:focus, .field-group select:focus {
-    border-color: #1B2B5E; background: #fff; box-shadow: 0 0 0 3px rgba(27,43,94,0.10);
-  }
-  .pace-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
-  .pace-card {
-    border: 1.5px solid #DDD9D0; border-radius: 10px; padding: 14px 10px; text-align: center;
-    cursor: pointer; background: #FAFAF8; transition: border-color 0.15s, background 0.15s, transform 0.1s;
-    user-select: none;
-  }
-  .pace-card:hover { border-color: #1B2B5E; transform: translateY(-1px); }
-  .pace-card.selected {
-    border-color: #1B2B5E; border-width: 2px; background: #EEF0F8;
-    transform: translateY(-1px); box-shadow: 0 4px 12px rgba(27,43,94,0.12);
-  }
-  .pace-card .p-icon { font-size: 28px; margin-bottom: 6px; }
-  .pace-card .p-name { font-size: 13px; font-weight: 700; color: #1A1A1A; }
-  .pace-card .p-sub  { font-size: 11px; color: #999; margin-top: 3px; }
-  .toggle-row {
-    display: flex; align-items: center; gap: 11px; padding: 13px 14px;
-    background: #F4F0E8; border-radius: 8px; border: 1px solid #E0DBD1;
-    cursor: pointer; margin-bottom: 14px; transition: background 0.15s;
-  }
-  .toggle-row:hover { background: #EDE8DF; }
-  .toggle-box {
-    width: 20px; height: 20px; border-radius: 4px; border: 2px solid #C8C4BB;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    transition: background 0.15s, border-color 0.15s; font-size: 12px; color: transparent; font-weight: 700;
-  }
-  .toggle-box.checked { background: #1D6B3A; border-color: #1D6B3A; color: #fff; }
-  .toggle-label { font-size: 13px; color: #333; line-height: 1.4; }
-  .toggle-label .hl { color: #1D6B3A; font-weight: 700; }
-  .waiver-box {
-    background: #F4F0E8; border: 1px solid #E0DBD1; border-radius: 8px; padding: 16px;
-    font-size: 12px; color: #666; line-height: 1.7; margin-bottom: 4px;
-  }
-  .waiver-box .waiver-title {
-    font-size: 13px; font-weight: 700; color: #1A1A1A; margin-bottom: 10px;
-    display: flex; align-items: center; gap: 7px;
-  }
-  .waiver-check {
-    display: flex; align-items: flex-start; gap: 11px; margin-top: 14px;
-    cursor: pointer; padding-top: 12px; border-top: 1px solid #E0DBD1;
-  }
-  .waiver-check .toggle-box { margin-top: 1px; }
-  .waiver-check span { font-size: 12px; color: #555; line-height: 1.5; }
-  .form-footer {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-top: 22px; padding-top: 18px; border-top: 1px solid #EEE;
-  }
-  .btn {
-    padding: 11px 26px; border-radius: 8px; font-size: 14px; font-weight: 600;
-    cursor: pointer; border: none; font-family: inherit; transition: all 0.15s; letter-spacing: 0.3px;
-  }
-  .btn-back { background: transparent; border: 1.5px solid #DDD9D0; color: #888; }
-  .btn-back:hover { background: #F4F0E8; }
-  .btn-next { background: #1B2B5E; color: #fff; }
-  .btn-next:hover { background: #253878; }
-  .btn-submit { background: #C41A1A; color: #fff; }
-  .btn-submit:hover { background: #A51515; }
-  .btn:disabled { opacity: 0.55; cursor: default; }
-  .motto-bar {
-    background: #1B2B5E; text-align: center; padding: 13px; font-size: 11px;
-    color: rgba(255,255,255,0.6); letter-spacing: 0.8px;
-  }
-  .motto-bar strong { color: #E8920A; }
-  .hero {
-    background: #1B2B5E; padding: 34px 20px; text-align: center;
-    background-size: cover; background-position: center top; position: relative;
-  }
-  .hero.has-banner {
-    /* A wash under the photo, not over it - if the file is not there yet
-       this is simply a solid navy header with the event name, never a
-       broken-image icon. Drop the file in later and it just appears. */
-    background-image: linear-gradient(180deg, rgba(27,43,94,.55), rgba(27,43,94,.85)),
-                       url("{{ url_for('events.event_banner', slug=event.slug) }}");
-    min-height: 200px; display: flex; flex-direction: column; justify-content: center;
-  }
-  .errors {
-    background: #FBE9E9; border: 1px solid #C41A1A; color: #7a1010;
-    border-radius: 8px; padding: 12px 16px; margin: 0 24px 18px; font-size: 13px;
-  }
-  .errors ul { margin: 4px 0 0 18px; }
-  .honeypot { position: absolute; left: -10000px; }
-  @media (max-width: 480px) {
-    body { padding: 0 0 40px; }
-    .card { border-radius: 0; box-shadow: none; }
-    .grid-2 { grid-template-columns: 1fr; }
-    .pace-grid { gap: 8px; }
-    .pace-card { padding: 12px 6px; }
-    .pace-card .p-icon { font-size: 24px; }
-  }
-</style>
-</head>
-<body>
+{% extends "public.html" %}
+{% block title %}{{ event.name }} – Registration{% endblock %}
+{% block head %}
+
+
+
+
+{% endblock %}
+{% block content %}
 
 <div class="card">
   <div class="hero {% if event.banner_filename %}has-banner{% endif %}">
-    <h1 style="color:#fff;font-size:26px;font-weight:800;">{{ event.name }}</h1>
-    {% if event.tagline %}<p style="color:#E8920A;font-size:14px;font-weight:700;margin-top:6px;">{{ event.tagline }}</p>{% endif %}
+    {% if event.banner_filename %}<img class="event-banner" src="{{ url_for('events.event_banner', slug=event.slug) }}" alt="{{ event.name }} banner">{% endif %}
+    <h1>{{ event.name }}</h1>
+    {% if event.tagline %}<p class="muted">{{ event.tagline }}</p>{% endif %}
   </div>
 
   <div style="background:#1B2B5E;padding:12px 20px 14px;border-bottom:4px solid #E8920A;">
     <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
-      {% if event.event_date %}<span class="meta-chip">📅 {{ event.event_date }}</span>{% endif %}
+      {% if event.event_date %}<span class="meta-chip"> {{ event.event_date }}</span>{% endif %}
       {% if event.start_time %}<span class="meta-chip">⏰ {{ event.start_time }}{% if event.end_time %} – {{ event.end_time }}{% endif %}</span>{% endif %}
-      {% if event.location %}<span class="meta-chip">📍 {{ event.location }}</span>{% endif %}
-      {% if event.distance %}<span class="meta-chip">🏃 {{ event.distance }}</span>{% endif %}
+      {% if event.location %}<span class="meta-chip"> {{ event.location }}</span>{% endif %}
+      {% if event.distance %}<span class="meta-chip"> {{ event.distance }}</span>{% endif %}
     </div>
   </div>
 
@@ -209,7 +44,7 @@
     <input type="hidden" name="waiver_accepted" id="waiverAcceptedInput" value="{{ '1' if values.waiver_accepted else '0' }}">
 
     <div class="step-panel active" id="step1">
-      <div class="section-title"><span class="icon">👤</span> Personal Information</div>
+      <div class="section-title"><span class="icon"></span> Personal Information</div>
       <div class="grid-2">
         <div class="field-group"><label>First Name</label><input type="text" name="first_name" placeholder="Thabo" autocomplete="given-name" value="{{ values.first_name or '' }}"></div>
         <div class="field-group"><label>Last Name</label><input type="text" name="last_name" placeholder="Mokoena" autocomplete="family-name" value="{{ values.last_name or '' }}"></div>
@@ -235,17 +70,17 @@
     </div>
 
     <div class="step-panel" id="step2">
-      <div class="section-title"><span class="icon">🏃</span> Participation Details</div>
+      <div class="section-title"><span class="icon"></span> Participation Details</div>
       <label style="font-size:10px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:10px">Choose Your Pace</label>
       <div class="pace-grid">
         <div class="pace-card {% if (values.pace or 'Jog') == 'Walk' %}selected{% endif %}" onclick="selectPace(this, 'Walk')" data-pace="Walk">
-          <div class="p-icon">🚶</div><div class="p-name">Walk</div><div class="p-sub">Easy &amp; social</div>
+          <div class="p-icon"></div><div class="p-name">Walk</div><div class="p-sub">Easy &amp; social</div>
         </div>
         <div class="pace-card {% if (values.pace or 'Jog') == 'Jog' %}selected{% endif %}" onclick="selectPace(this, 'Jog')" data-pace="Jog">
-          <div class="p-icon">🏃</div><div class="p-name">Jog</div><div class="p-sub">Steady pace</div>
+          <div class="p-icon"></div><div class="p-name">Jog</div><div class="p-sub">Steady pace</div>
         </div>
         <div class="pace-card {% if (values.pace or 'Jog') == 'Run' %}selected{% endif %}" onclick="selectPace(this, 'Run')" data-pace="Run">
-          <div class="p-icon">⚡</div><div class="p-name">Run</div><div class="p-sub">Full speed</div>
+          <div class="p-icon"></div><div class="p-name">Run</div><div class="p-sub">Full speed</div>
         </div>
       </div>
       <div class="grid-1">
@@ -258,7 +93,7 @@
         </div>
       </div>
       <div class="toggle-row" onclick="toggleFriend()" id="friendToggleRow">
-        <div class="toggle-box {% if values.bringing_friend %}checked{% endif %}" id="friendBox">{% if values.bringing_friend %}✓{% endif %}</div>
+        <div class="toggle-box {% if values.bringing_friend %}checked{% endif %}" id="friendBox">{% if values.bringing_friend %}{% endif %}</div>
         <span class="toggle-label">I'm bringing a friend! <span class="hl">(Bring Your Energy, Bring a Friend!)</span></span>
       </div>
       <div class="grid-1" id="friendNameGroup" style="display:{{ 'grid' if values.bringing_friend else 'none' }};">
@@ -273,7 +108,7 @@
     </div>
 
     <div class="step-panel" id="step3">
-      <div class="section-title"><span class="icon">📞</span> Emergency Contact</div>
+      <div class="section-title"><span class="icon"></span> Emergency Contact</div>
       <div class="grid-1">
         <div class="field-group"><label>Emergency Contact Name</label><input type="text" name="emergency_contact_name" placeholder="Full name" autocomplete="off" value="{{ values.emergency_contact_name or '' }}"></div>
       </div>
@@ -288,7 +123,7 @@
         </div>
       </div>
       <div class="waiver-box">
-        <div class="waiver-title">⚖️ Participation Waiver</div>
+        <div class="waiver-title"> Participation Waiver</div>
         {{ event.waiver_text or ("I confirm that I am physically fit to participate in " ~ event.name ~ ". I participate voluntarily and accept all associated risks. The organisers shall not be held liable for any injury, loss, or damage sustained during the event or related activities. I give permission for photographs and videos taken during the event to be used for promotional purposes.") }}
         <div class="waiver-check" onclick="toggleWaiver()" id="waiverRow">
           <div class="toggle-box" id="waiverBox"></div>
@@ -337,7 +172,7 @@
     input.value = checked ? '0' : '1';
     var box = document.getElementById('friendBox');
     box.className = 'toggle-box' + (input.value === '1' ? ' checked' : '');
-    box.textContent = input.value === '1' ? '✓' : '';
+    box.textContent = input.value === '1' ? '' : '';
     document.getElementById('friendNameGroup').style.display = input.value === '1' ? 'grid' : 'none';
   }
 
@@ -346,8 +181,7 @@
     input.value = input.value === '1' ? '0' : '1';
     var box = document.getElementById('waiverBox');
     box.className = 'toggle-box' + (input.value === '1' ? ' checked' : '');
-    box.textContent = input.value === '1' ? '✓' : '';
+    box.textContent = input.value === '1' ? '' : '';
   }
 </script>
-</body>
-</html>
+{% endblock %}

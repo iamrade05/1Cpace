@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Mandate Coverage | 1Cpase{% endblock %}
+{% block title %}Mandate Coverage | 1Cpace{% endblock %}
 {% block page_title %}Mandate Coverage{% endblock %}
 {% block content %}
+<header class="page-header"><div><h1>Mandate Coverage</h1></div></header>
 <div class="kpi-grid">
   <div class="kpi-card green"><div class="kpi-label">Has a Mandate</div><div class="kpi-value">{{ with_mandate|length }}</div></div>
   <div class="kpi-card red"><div class="kpi-label">No Mandate</div><div class="kpi-value">{{ without_mandate|length }}</div></div>
@@ -31,7 +32,7 @@
   <div class="card-header"><h3>No Mandate ({{ without_mandate|length }})</h3></div>
   <div class="card-body">
     {% if without_mandate %}
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead><tr><th>Member</th><th>Status</th><th>Debit Order Date</th><th></th></tr></thead>
       <tbody>{% for m in without_mandate %}<tr>
         <td>{{ m.first_name }} {{ m.last_name }}</td>
@@ -42,7 +43,7 @@
           {% if has_perm('new_debicheck') %}<a href="{{ url_for('debicheck.add') }}?member_id={{ m.id }}" class="btn btn-primary btn-sm">+ Add Mandate</a>{% endif %}
         </td>
       </tr>{% endfor %}</tbody>
-    </table>
+    </table></div>
     {% else %}<div class="empty-state"><p>{% if search or status_filter %}No members match this filter.{% else %}Every Debit Order member has a mandate on record.{% endif %}</p></div>{% endif %}
   </div>
 </div>
@@ -51,7 +52,7 @@
   <div class="card-header"><h3>Has a Mandate ({{ with_mandate|length }})</h3></div>
   <div class="card-body">
     {% if with_mandate %}
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead><tr><th>Member</th><th>Status</th><th>Mandate Status</th><th></th></tr></thead>
       <tbody>{% for m in with_mandate %}<tr>
         <td>{{ m.first_name }} {{ m.last_name }}</td>
@@ -59,7 +60,7 @@
         <td><span class="badge {% if m.mandate_status=='active' %}badge-success{% elif m.mandate_status in ('failed','rejected') %}badge-danger{% else %}badge-warning{% endif %}">{{ m.mandate_status }}</span></td>
         <td><a href="{{ url_for('debicheck.detail', mandate_id=m.mandate_id) }}" class="btn btn-ghost btn-sm">View Mandate</a></td>
       </tr>{% endfor %}</tbody>
-    </table>
+    </table></div>
     {% else %}<div class="empty-state"><p>No members match this filter.</p></div>{% endif %}
   </div>
 </div>

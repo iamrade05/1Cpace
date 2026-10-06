@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-POLICY_VERSION = "2026-10-live-1"
+POLICY_VERSION = "2026-10-ranges-1"
 
 DECISION_ELIGIBLE = "eligible"
 DECISION_CONDITIONS = "conditions_outstanding"
@@ -153,6 +153,15 @@ def decide_offer(
     tier = arrears_discount_policy(months)
     percent = tier["discount_percent"]
     manager_required = tier["manager_approval_required"]
+    result.update(
+        discount_min_percent=tier["min_percent"],
+        discount_max_percent=tier["max_percent"],
+        discount_range_label=tier["range_label"],
+    )
+    if tier["manager_discretion"]:
+        result["reasons"].append(
+            f"{months} months owing: the discount is at manager discretion — full account review first."
+        )
     minimum = policy.get("recovery_minimum_amount", DEFAULT_RECOVERY_MINIMUM)
     from_months = int(policy.get("recovery_minimum_from_months", DEFAULT_RECOVERY_FROM_MONTHS))
     recovery_account = months >= from_months

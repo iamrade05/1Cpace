@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Command Center | 1Cpase{% endblock %}
+{% block title %}Command Center | 1Cpace{% endblock %}
 {% block page_title %}Command Center{% endblock %}
 
 {% block content %}
@@ -9,12 +9,12 @@
 {% set cleared_pct = ((payment_status_values[0] / total_status * 100)|round(1)) if total_status else 0 %}
 {% set selected = trend_ranges[selected_range] %}
 
-{% include '_future_dashboard_styles.html' %}
+
 
 <div class="future-dashboard">
-  <header class="fd-topline">
+  <header class="fd-topline page-header">
     <div>
-      <div class="fd-eyebrow"><span class="fd-live-dot" aria-hidden="true"></span> 1Cpase intelligence layer</div>
+      <div class="fd-eyebrow"><span class="fd-live-dot" aria-hidden="true"></span> 1Cpace intelligence layer</div>
       <h1 class="fd-title">Performance <span>command center</span></h1>
       <p class="fd-description">Live membership, collection and portfolio signals in one operational view.</p>
     </div>
@@ -180,10 +180,11 @@
 (() => {
   const rangeData = {{ trend_ranges | tojson }};
   const initialRange = {{ selected_range | tojson }};
+  const token = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const colors = {
-    cyan: '#55dcff', green: '#55e6ad', gold: '#d7ad53',
-    orange: '#ffad66', red: '#ff718a', purple: '#aa8cff',
-    grid: 'rgba(126, 231, 255, 0.075)', ticks: '#6f8c9b', panel: '#0d2230'
+    cyan: token('--info'), green: token('--ok'), gold: token('--red'),
+    orange: token('--warn'), red: token('--err'), purple: token('--info'),
+    grid: token('--b1'), ticks: token('--t2'), panel: token('--s1')
   };
   const money = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 });
   const integer = new Intl.NumberFormat('en-ZA', { maximumFractionDigits: 0 });

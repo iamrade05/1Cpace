@@ -1,14 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Collections Call Queue | 1Cpase{% endblock %}
+{% block title %}Collections Call Queue | 1Cpace{% endblock %}
 {% block page_title %}Collections Call Queue{% endblock %}
 
 {% block content %}
-<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--b1);overflow-x:auto;">
-  <a href="{{ url_for('collections.collections_index') }}" style="padding:10px 20px;color:var(--t2);white-space:nowrap;">💳 Payment Records</a>
-  <a href="{{ url_for('ptp.ptp_dashboard') }}" style="padding:10px 20px;color:var(--t2);white-space:nowrap;">🔴 PTP / Collection</a>
-  <a href="{{ url_for('collections.call_queue') }}" style="padding:10px 20px;color:var(--red);border-bottom:2px solid var(--red);margin-bottom:-2px;font-weight:700;white-space:nowrap;">☎ Collections Call Queue</a>
-  <a href="{{ url_for('ptp.legal_referrals') }}" style="padding:10px 20px;color:var(--t2);white-space:nowrap;">⚖ Legal Referrals</a>
-</div>
+<header class="page-header"><div><h1>Collections Call Queue</h1></div></header>
+
 
 {% if cycle %}
 <div class="form-card" style="margin-bottom:16px;border-left:4px solid var(--red);">
@@ -64,7 +60,7 @@
 </div>
 
 <div class="table-card" style="overflow-x:auto;">
-  <table class="data-table" style="min-width:760px;">
+  <div class="table-wrap"><table class="data-table table" style="min-width:760px;">
     <thead><tr><th>#</th><th>Priority</th><th>Member</th><th>Assigned to</th><th>Status</th><th>Client brief</th></tr></thead>
     <tbody>
       {% for task in tasks %}
@@ -82,6 +78,6 @@
       </tr>
       {% else %}<tr><td colspan="6" style="padding:28px;text-align:center;color:var(--t2);">No calls assigned for today.</td></tr>{% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 {% endblock %}

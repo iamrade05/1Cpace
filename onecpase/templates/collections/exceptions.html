@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Exception Queue · 1Cpase{% endblock %}
+{% block title %}Exception Queue · 1Cpace{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -20,7 +20,7 @@
   <div class="card-body">
     {% if ptp_approvals %}
     <div style="overflow-x:auto;">
-      <table>
+      <div class="table-wrap"><table class="table">
         <thead>
           <tr>
             <th>Member</th><th>Requested</th><th>Why it needs a manager</th>
@@ -61,7 +61,7 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
     {% else %}
     <div style="padding:22px;color:#6b7280;">No arrangements are waiting for a manager decision.</div>
@@ -77,7 +77,7 @@
   <div class="card-body">
     {% if engine_exceptions %}
     <div style="overflow-x:auto;">
-      <table>
+      <div class="table-wrap"><table class="table">
         <thead>
           <tr>
             <th>Member</th><th>Reason</th><th>Requested override</th>
@@ -111,7 +111,7 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
     {% else %}
     <div style="padding:22px;color:#6b7280;">No open collections exceptions.</div>

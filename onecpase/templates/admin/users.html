@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}User Management | 1Cpase{% endblock %}
+{% block title %}User Management | 1Cpace{% endblock %}
 {% block page_title %}User Management{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>User Management</h1></div></header>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
   <p style="font-size:0.85rem;color:#6b7280;">Manage staff accounts and module permissions.</p>
   <a href="{{ url_for('admin.user_add') }}" class="btn btn-primary">+ Add User</a>
@@ -15,7 +16,7 @@
 {% endif %}
 
 <div class="table-card">
-  <table class="data-table">
+  <div class="table-wrap"><table class="data-table table">
     <thead>
       <tr>
         <th>Name</th>
@@ -66,7 +67,7 @@
           {% if u.id != session.user_id and not u.is_platform_user
                 and u.username|lower not in protected_usernames %}
           <form method="POST" action="{{ url_for('admin.user_reset_password', uid=u.id) }}" style="margin:0;"
-                onsubmit="return confirm('Reset {{ u.full_name or u.username }} to the default password ({{ default_staff_password }})? They will have to choose a new one at their next sign-in.');">
+                data-confirm="Reset {{ u.full_name or u.username }} to the default password ({{ default_staff_password }})? They will have to choose a new one at their next sign-in.">
             <button class="btn btn-sm" style="background:#fef3c7;color:#92400e;">Reset password</button>
           </form>
           {% endif %}
@@ -81,6 +82,6 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 {% endblock %}

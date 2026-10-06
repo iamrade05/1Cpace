@@ -3,7 +3,7 @@
 <div class="container">
   <h1>PBX Call Log</h1>
   <p>Calls are automatically linked to leads or members by phone number. Record the outcome to complete the CRM timeline.</p>
-  <table>
+  <div class="table-wrap"><table class="table">
     <thead><tr><th>Time</th><th>Direction</th><th>Staff</th><th>Contact</th><th>Status</th><th>Talk</th><th>Outcome / Next action</th></tr></thead>
     <tbody>
     {% for c in calls %}
@@ -45,6 +45,6 @@
       <tr><td colspan="7">No PBX calls recorded.</td></tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 {% endblock %}

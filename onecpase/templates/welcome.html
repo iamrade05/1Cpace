@@ -1,85 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>1Cpase — Welcome</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      background: radial-gradient(circle at top left, rgba(176,132,45,0.24), transparent 24rem),
-                  linear-gradient(135deg, #002e45 0%, #001f30 100%);
-      min-height: 100vh;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .card {
-      background: #fff; border-radius: 16px;
-      padding: 44px 40px; width: 100%; max-width: 400px;
-      box-shadow: 0 24px 64px rgba(0,46,69,0.34);
-      border: 1px solid rgba(193,194,197,0.75);
-    }
-    .brand { text-align: center; margin-bottom: 32px; }
-    .brand img { width: 78px; height: 78px; object-fit: contain; margin-bottom: 12px; }
-    .brand h1 {
-      font-size: 2.2rem; font-weight: 800; color: #002e45; letter-spacing: 1px;
-    }
-    .brand p { font-size: 0.78rem; color: #9ca3af; margin-top: 5px;
-               text-transform: uppercase; letter-spacing: 1.5px; }
-
-    .intro { font-size: 0.85rem; color: #6b7280; text-align: center; margin-bottom: 28px; }
-
-    .form-group { margin-bottom: 18px; }
-    .form-group label {
-      display: block; font-size: 0.8rem; font-weight: 700;
-      color: #002e45; margin-bottom: 7px; letter-spacing: 0.2px;
-    }
-    .form-group select {
-      width: 100%; padding: 12px 14px;
-      border: 1.5px solid #c1c2c5; border-radius: 8px;
-      font-size: 0.9rem; color: #002e45; background: #fff;
-      transition: border-color .15s, box-shadow .15s;
-    }
-    .form-group select:focus {
-      outline: none; border-color: #b0842d;
-      box-shadow: 0 0 0 3px rgba(176,132,45,0.16);
-    }
-
-    .btn-login {
-      width: 100%; padding: 13px;
-      background: #002e45; color: #fff; border: none;
-      border-radius: 9px; font-size: 0.95rem; font-weight: 700;
-      cursor: pointer; margin-top: 6px; letter-spacing: 0.3px;
-      transition: background .15s;
-    }
-    .btn-login:hover { background: #001f30; }
-    .btn-login:disabled { background: #c1c2c5; cursor: not-allowed; }
-
-    .alert-error {
-      background: #fee2e2; color: #991b1b;
-      border-left: 4px solid #ef4444;
-      padding: 10px 14px; border-radius: 6px;
-      font-size: 0.85rem; margin-bottom: 18px;
-    }
-
-    .empty-state {
-      text-align: center; color: #6b7280; font-size: 0.85rem;
-      padding: 12px 0;
-    }
-    .power-user-link {
-      display: block; text-align: center; margin-top: 24px; padding-top: 18px;
-      border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 0.78rem;
-      text-decoration: none;
-    }
-    .power-user-link:hover { color: #185FA5; text-decoration: underline; }
-  </style>
-  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
-</head>
-<body>
+{% extends "public.html" %}
+{% block title %}1Cpace — Welcome{% endblock %}
+{% block content %}
 <div class="card">
   <div class="brand">
-    <img src="{{ url_for('static', filename='images/1cpase-logo.svg') }}" alt="1Cpase logo">
-    <h1>1Cpase</h1>
+    <img src="{{ url_for('static', filename='images/1cpase-logo.svg') }}" alt="1Cpace logo">
+    <h1>1Cpace</h1>
     <p>Gym Management System</p>
   </div>
 
@@ -105,7 +30,6 @@
   {% else %}
   <p class="empty-state">No gyms are set up on this platform yet.</p>
   {% endif %}
-  <a class="power-user-link" href="{{ url_for('platform.login') }}">1Cpase Power User sign in</a>
+  <a class="power-user-link" href="{{ url_for('platform.login') }}">1Cpace Power User sign in</a>
 </div>
-</body>
-</html>
+{% endblock %}

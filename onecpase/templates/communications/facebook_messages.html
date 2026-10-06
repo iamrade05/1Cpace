@@ -1,13 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Facebook Messages | 1Cpase{% endblock %}
+{% block title %}Facebook Messages | 1Cpace{% endblock %}
 {% block page_title %}Facebook Messages{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Facebook Messages</h1></div></header>
 <div class="card">
   <div class="card-body" style="padding:0;">
     {% if conversations %}
     <div style="overflow-x:auto;">
-      <table>
+      <div class="table-wrap"><table class="table">
         <thead>
           <tr>
             <th>Contact</th>
@@ -31,11 +32,11 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
     {% else %}
     <div class="empty-state" style="padding:48px 24px;">
-      <div class="empty-icon">📨</div>
+      <div class="empty-icon"></div>
       <p>No Facebook conversations yet.</p>
     </div>
     {% endif %}

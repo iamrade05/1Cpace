@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ s.first_name }} {{ s.last_name }} | 1Cpase{% endblock %}
+{% block title %}{{ s.first_name }} {{ s.last_name }} | 1Cpace{% endblock %}
 {% block page_title %}{{ s.first_name }} {{ s.last_name }}{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>{{ s.first_name }} {{ s.last_name }}</h1></div></header>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
   <div style="display:flex; gap:8px; align-items:center;">
     <span class="badge badge-gray">{{ s.role or 'Staff' }}</span>
@@ -22,7 +23,7 @@
       <div class="card-header"><h2>Recent Attendance</h2></div>
       <div class="card-body">
         {% if attendance %}
-        <table>
+        <div class="table-wrap"><table class="table">
           <thead><tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Status</th></tr></thead>
           <tbody>
             {% for a in attendance %}
@@ -34,7 +35,7 @@
             </tr>
             {% endfor %}
           </tbody>
-        </table>
+        </table></div>
         {% else %}
         <div class="empty-state" style="padding:24px;"><p>No attendance logged yet.</p></div>
         {% endif %}
@@ -48,7 +49,7 @@
       </div>
       <div class="card-body">
         {% if leave %}
-        <table>
+        <div class="table-wrap"><table class="table">
           <thead><tr><th>Type</th><th>From</th><th>To</th><th>Status</th></tr></thead>
           <tbody>
             {% for l in leave %}
@@ -64,7 +65,7 @@
             </tr>
             {% endfor %}
           </tbody>
-        </table>
+        </table></div>
         {% else %}
         <div class="empty-state" style="padding:24px;"><p>No leave history yet.</p></div>
         {% endif %}
@@ -79,15 +80,15 @@
       </div>
       <div class="card-body">
         {% if payroll %}
-        <table>
+        <div class="table-wrap"><table class="table">
           <thead><tr><th>Month</th><th>Basic</th><th>Bonus</th><th>Deductions</th><th>Net</th><th>Status</th></tr></thead>
           <tbody>
             {% for p in payroll %}
             <tr>
               <td>{{ p.month }}</td>
-              <td>R{{ '%.2f'|format(p.basic or 0) }}</td>
-              <td>R{{ '%.2f'|format(p.bonus or 0) }}</td>
-              <td>R{{ '%.2f'|format(p.deductions or 0) }}</td>
+              <td class="num">R{{ '%.2f'|format(p.basic or 0) }}</td>
+              <td class="num">R{{ '%.2f'|format(p.bonus or 0) }}</td>
+              <td class="num">R{{ '%.2f'|format(p.deductions or 0) }}</td>
               <td style="font-weight:600;">R{{ '%.2f'|format(p.net or 0) }}</td>
               <td>
                 {% if p.status == 'paid' %}<span class="badge badge-success">Paid</span>
@@ -96,7 +97,7 @@
             </tr>
             {% endfor %}
           </tbody>
-        </table>
+        </table></div>
         {% else %}
         <div class="empty-state" style="padding:24px;"><p>No payroll history yet.</p></div>
         {% endif %}

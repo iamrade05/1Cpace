@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Leave Requests | 1Cpase{% endblock %}
+{% block title %}Leave Requests | 1Cpace{% endblock %}
 {% block page_title %}Leave Requests{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Leave Requests</h1></div></header>
 <div style="display:flex; gap:10px; margin-bottom:20px;">
   <a href="{{ url_for('hr.leave_request') }}" class="btn btn-primary btn-sm">+ Request Leave</a>
   {% for s in ['pending', 'approved', 'rejected'] %}
@@ -23,7 +24,7 @@
   </div>
   <div class="card-body">
     {% if leaves %}
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr>
           <th>Staff Member</th>
@@ -67,10 +68,10 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="empty-state">
-      <div class="empty-icon">📅</div>
+      <div class="empty-icon"></div>
       <p>No leave requests{% if status_filter %} with status "{{ status_filter }}"{% endif %}.</p>
     </div>
     {% endif %}

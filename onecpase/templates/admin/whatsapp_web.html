@@ -1,17 +1,18 @@
 {% extends "base.html" %}
-{% block title %}WhatsApp Web Sender | 1Cpase{% endblock %}
+{% block title %}WhatsApp Web Sender | 1Cpace{% endblock %}
 {% block page_title %}WhatsApp Web Sender{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>WhatsApp Web Sender</h1></div></header>
 <div class="card" style="max-width:520px;">
   <div class="card-body" style="padding:20px;">
     {% if not status.enabled %}
     <div class="alert alert-warning">
-      WhatsApp Web sending is turned off (<code>WHATSAPP_WEB_ENABLED</code> is not set). No messages are being queued or sent.
+      WhatsApp Web sending is turned off. Ask an admin to enable it in the integration settings. No messages are being queued or sent.
     </div>
     {% elif status.logged_in %}
     <div class="alert alert-success" style="margin-bottom:16px;">
-      ✅ Connected — a WhatsApp number is linked and sending.
+       Connected — a WhatsApp number is linked and sending.
       {% if status.last_sent_at %}<br><small>Last message sent: {{ status.last_sent_at[:19].replace('T', ' ') }}</small>{% endif %}
     </div>
     {% elif status.pairing_code %}
@@ -68,13 +69,13 @@
     {% endif %}
 
     {% if status.last_error %}
-    <div class="alert alert-error" style="margin-bottom:16px;">⚠ {{ status.last_error }}</div>
+    <div class="alert alert-error" style="margin-bottom:16px;"> {{ status.last_error }}</div>
     {% endif %}
 
-    <table style="width:100%;font-size:0.83rem;">
+    <div class="table-wrap"><table style="width:100%;font-size:0.83rem;" class="table">
       <tr><td style="color:#6b7280;padding:4px;">Background session running</td><td>{{ 'Yes' if status.started else 'No' }}</td></tr>
       <tr><td style="color:#6b7280;padding:4px;">Messages waiting to send</td><td>{{ status.queue_length }}</td></tr>
-    </table>
+    </table></div>
   </div>
 </div>
 

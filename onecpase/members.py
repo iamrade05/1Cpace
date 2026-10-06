@@ -851,6 +851,18 @@ def member_detail(mid: int):
         1 for q in member_queries if q["status"] not in ("resolved", "closed")
     )
 
+    # Arrived from a query's "Convert to PTP": the PTP form carries the query
+    # id so the new arrangement is linked back to it, and a discount a manager
+    # approved on that query is filled in.
+    ptp_from_query = None
+    from_query = request.args.get("from_query", "")
+    if from_query.isdigit():
+        ptp_from_query = db.execute(
+            """SELECT id, reference, approval_status, proposed_discount_pct
+               FROM queries WHERE id=? AND member_id=? AND status NOT IN ('resolved','closed')""",
+            (int(from_query), mid),
+        ).fetchone()
+
     last_gym_visit = _get_last_gym_visit(db, member)
     tenant_name = current_tenant_name()
 
@@ -864,9 +876,20 @@ def member_detail(mid: int):
         (mid,),
     ).fetchone()
 
+    # What NuPay says about this member's debits (None until a NuPay report has been uploaded).
+    nupay = None
+    if session.get("role") == "admin" or "all_collections" in (session.get("permissions") or []):
+        try:
+            from .nupay_reconciliation import member_view
+
+            nupay = member_view(db, mid)
+        except Exception:
+            current_app.logger.exception("NuPay summary failed for member %s", mid)
+
     return render_template(
         "members/detail.html",
         member=member,
+        nupay=nupay,
         collection_case=collection_case,
         collections=collections,
         payment_profile=payment_profile,
@@ -896,6 +919,7 @@ def member_detail(mid: int):
         last_gym_visit=last_gym_visit,
         member_queries=member_queries,
         open_queries_count=open_queries_count,
+        ptp_from_query=ptp_from_query,
         whatsapp_message=collection_care_message(member["first_name"], tenant_name),
     )
 

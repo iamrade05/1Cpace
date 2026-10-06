@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Fitness Classes | 1Cpase{% endblock %}
+{% block title %}Fitness Classes | 1Cpace{% endblock %}
 {% block page_title %}Fitness Classes{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Fitness Classes</h1></div></header>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
   <form method="get" style="display:flex; gap:8px;">
     <input name="q" value="{{ search }}" placeholder="Search classes or instructor…"
@@ -20,7 +21,7 @@
 {% if classes %}
 <div class="card">
   <div class="card-body">
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr>
           <th>Class</th>
@@ -60,12 +61,12 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% else %}
 <div class="empty-state">
-  <div class="empty-icon">🏋️</div>
+  <div class="empty-icon"></div>
   <p>No fitness classes found.</p>
   <a href="{{ url_for('fitness.fitness_add') }}" class="btn btn-primary">Create First Class</a>
 </div>

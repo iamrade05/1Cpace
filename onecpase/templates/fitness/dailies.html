@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Instructor Dailies | 1Cpase{% endblock %}
+{% block title %}Instructor Dailies | 1Cpace{% endblock %}
 {% block page_title %}Instructor Dailies{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Instructor Dailies</h1></div></header>
 <form method="get" style="display:flex; align-items:center; gap:10px; margin-bottom:20px; flex-wrap:wrap;">
   <input type="date" name="date" value="{{ day }}" onchange="this.form.submit()">
   <select name="view" onchange="this.form.submit()">
@@ -45,7 +46,7 @@
     <div class="card-header"><h2>Sessions</h2></div>
     <div class="card-body">
       {% if entries %}
-      <table>
+      <div class="table-wrap"><table class="table">
         <thead>
           <tr><th>Client</th><th>Instructor</th><th>Service</th><th>Session</th><th>Date</th><th>Time</th></tr>
         </thead>
@@ -64,10 +65,10 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
       {% else %}
       <div class="empty-state" style="padding:32px;">
-        <div class="empty-icon">🗓️</div>
+        <div class="empty-icon"></div>
         <p>No sessions logged for this period.</p>
       </div>
       {% endif %}

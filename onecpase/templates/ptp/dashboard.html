@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}PTP / Collection | 1Cpase{% endblock %}
+{% block title %}PTP / Collection | 1Cpace{% endblock %}
 {% block page_title %}PTP / Collection{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>PTP / Collection</h1></div></header>
 <style>
 .ptp-kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:22px; }
 .ptp-kpi-card {
@@ -57,33 +58,7 @@
 </style>
 
 <!-- Tab Navigation (mirrors Collections page) -->
-<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #e4e8f0;">
-  <a href="{{ url_for('collections.collections_index') }}"
-     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
-            border-bottom:2px solid transparent;color:#6b7280;">
-    💳 Payment Records
-  </a>
-  <a href="{{ url_for('collections.call_queue') }}"
-     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
-            border-bottom:2px solid transparent;color:#6b7280;">
-    ☎ Collections Call Queue
-  </a>
-  <a href="{{ url_for('ptp.ptp_dashboard') }}"
-     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
-            border-bottom:2px solid #e11d48;margin-bottom:-2px;color:#e11d48;">
-    🔴 PTP / Collection
-  </a>
-  <a href="{{ url_for('ptp.legal_referrals') }}"
-     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
-            border-bottom:2px solid transparent;color:#6b7280;">
-    ⚖ Legal Referrals
-  </a>
-  <a href="{{ url_for('access_report.index') }}"
-     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
-            border-bottom:2px solid transparent;color:#6b7280;">
-    📋 Access Report
-  </a>
-</div>
+
 
 <!-- ── Top Action Bar ── -->
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
@@ -94,7 +69,7 @@
   <div style="display:flex;gap:8px;">
     <form id="automations-form" method="POST" action="{{ url_for('ptp.run_automations') }}" style="margin:0;">
       <button type="button" class="btn btn-ghost btn-sm" onclick="confirmAutomations(this)">
-        ⚙ Run Automations
+         Run Automations
       </button>
     </form>
     <a href="{{ url_for('collections.collections_index') }}" class="btn btn-ghost btn-sm">← Collections</a>
@@ -226,7 +201,7 @@
   <div class="card-body">
     {% if members %}
     <div style="overflow-x:auto;">
-      <table>
+      <div class="table-wrap"><table class="table">
         <thead>
           <tr>
             <th>Member</th>
@@ -299,11 +274,11 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
     {% else %}
     <div class="empty-state" style="padding:48px 24px;">
-      <div class="empty-icon">🎉</div>
+      <div class="empty-icon"></div>
       <p>
         {% if search or cat_filter or status_filter %}
           No members match your filters.
@@ -331,15 +306,11 @@ function confirmAutomations(btn) {
         + counts.expired_count + " temporary unblock(s) will expire\n"
         + counts.restricted_count + " member(s) will be ACCESS RESTRICTED (2+ months, no arrangement)\n"
         + counts.inactive_count + " member(s) will be flagged INACTIVE (6+ months unpaid)";
-      if (confirm(msg)) {
-        document.getElementById("automations-form").submit();
-      }
+      showInlineConfirmation(document.getElementById("automations-form"), msg);
     })
     .catch(() => {
       btn.disabled = false;
-      if (confirm("Could not preview the impact. Run automations anyway?")) {
-        document.getElementById("automations-form").submit();
-      }
+      showInlineConfirmation(document.getElementById("automations-form"), "Could not preview the impact. Run automations anyway?");
     });
 }
 </script>

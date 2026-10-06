@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Facebook Comments | 1Cpase{% endblock %}
+{% block title %}Facebook Comments | 1Cpace{% endblock %}
 {% block page_title %}Facebook Comments{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Facebook Comments</h1></div></header>
 <div style="padding:8px 0 16px;display:flex;gap:6px;flex-wrap:wrap;">
   <a href="{{ url_for('comms.facebook_comments_view') }}" class="q-chip {% if filter_mode=='all' %}active{% endif %}">All</a>
   <a href="{{ url_for('comms.facebook_comments_view', filter='new') }}" class="q-chip {% if filter_mode=='new' %}active{% endif %}">Not Replied</a>
@@ -20,7 +21,7 @@
   <div class="card-body" style="padding:0;">
     {% if comments %}
     <div style="overflow-x:auto;">
-      <table>
+      <div class="table-wrap"><table class="table">
         <thead>
           <tr>
             <th>Commenter</th>
@@ -48,7 +49,7 @@
             <td style="white-space:nowrap;">
               <form method="POST" action="{{ url_for('comms.facebook_comment_flag', comment_id=c.id, filter=filter_mode) }}" style="display:inline;">
                 <button type="submit" class="btn btn-ghost btn-sm">
-                  {{ '★ Unflag' if c.is_interested else '☆ Flag interested' }}
+                  {{ ' Unflag' if c.is_interested else ' Flag interested' }}
                 </button>
               </form>
               {% if not c.linked_lead_id %}
@@ -60,11 +61,11 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
     {% else %}
     <div class="empty-state" style="padding:48px 24px;">
-      <div class="empty-icon">💭</div>
+      <div class="empty-icon"></div>
       <p>No comments{% if filter_mode != 'all' %} match this filter{% endif %}.</p>
     </div>
     {% endif %}

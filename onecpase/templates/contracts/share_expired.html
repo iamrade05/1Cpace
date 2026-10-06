@@ -1,7 +1,7 @@
 {% extends "contracts/_public_page.html" %}
 {% set gym = (g.get('tenant') or {}).get('name') or 'the gym' %}
 {% block title %}Contract Link Unavailable{% endblock %}
-{% block content %}
+{% block contract_content %}
 <h2>Contract link unavailable</h2>
 <p>This contract link has expired, already been used, or has been replaced. Please contact {{ gym }} for a new link.</p>
 {% endblock %}

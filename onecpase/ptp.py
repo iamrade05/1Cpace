@@ -505,7 +505,8 @@ RULE_7_EXCEPTION_REASON = (
     "Three or more months owing with no qualifying DebiCheck arrangement or full settlement"
 )
 
-AUTO_SETTLEMENT_DISCOUNT_CEILING = 50
+# Same ceiling the shared arrears policy uses: above it, a manager approves.
+from .collections_engine import STAFF_DISCOUNT_CEILING as AUTO_SETTLEMENT_DISCOUNT_CEILING  # noqa: E402
 MINIMUM_RECOVERABLE_BALANCE = 1800.0
 MINIMUM_RECOVERY_INSTALLMENT = 150.0
 NORMAL_RECOVERY_TERM_MONTHS = 12
@@ -560,6 +561,8 @@ def _run_collections_automations(db, today: str, dry_run: bool = False) -> dict:
                 "UPDATE ptp_agreements SET ptp_status='broken', updated_at=datetime('now','localtime') WHERE id=?",
                 (ptp["id"],),
             )
+            from .queries import sync_from_ptp
+            sync_from_ptp(db, ptp["id"], "broken")
             if ptp["auto_block_if_failed"]:
                 db.execute(
                     "UPDATE members SET gym_access_status='blocked', access_block_reason='ptp_broken' WHERE id=?",
@@ -770,6 +773,7 @@ def ptp_create(mid: int):
     notes            = (f.get("notes") or "").strip()
     arrears_amount   = (f.get("arrears_amount") or "0").strip()
     needs_approval   = f.get("needs_approval") == "yes"
+    from_query_id    = int(f.get("query_id")) if str(f.get("query_id") or "").isdigit() else None
     try:
         discount_pct = float((f.get("discount_pct") or "0").strip() or 0)
         promise_value = float(promise_amount or 0)
@@ -792,7 +796,18 @@ def ptp_create(mid: int):
     discount_basis = None
     discount_auto_approved = True
     is_cash_upfront = payment_method == "cash" and arrangement_type == "full"
-    if discount_pct > 0:
+    # A manager already approved this discount on the query the PTP comes
+    # from: that approval covers the discount, so it is not asked for twice.
+    query_approved_discount = None
+    if from_query_id:
+        from .queries import approved_discount_for
+        query_approved_discount = approved_discount_for(db, from_query_id, mid)
+    discount_query_approved = (
+        query_approved_discount is not None and discount_pct <= query_approved_discount + 0.005
+    )
+    if discount_pct > 0 and discount_query_approved:
+        discount_basis = "query_approval"
+    elif discount_pct > 0:
         # The PTP half of "DebiCheck + PTP" is the record being created here, so
         # the gate is a confirmed mandate. _has_qualifying_arrangement() also
         # requires an already-saved pending PTP, which no first arrangement can
@@ -844,8 +859,8 @@ def ptp_create(mid: int):
     minimum_recoverable = max(
         MINIMUM_RECOVERABLE_BALANCE, round(arrears_value * 0.50, 2)
     )
-    if discount_pct > AUTO_SETTLEMENT_DISCOUNT_CEILING:
-        manager_reasons.append("discount exceeds 50%")
+    if discount_pct > AUTO_SETTLEMENT_DISCOUNT_CEILING and not discount_query_approved:
+        manager_reasons.append(f"discount exceeds {AUTO_SETTLEMENT_DISCOUNT_CEILING}%")
     if not is_cash_upfront:
         if float(recovery_plan["discounted_balance"]) < minimum_recoverable:
             manager_reasons.append("recoverable balance is below the automatic minimum")
@@ -895,6 +910,10 @@ def ptp_create(mid: int):
           int(recovery_plan["recovery_months"])))
     ptp_id = cursor.lastrowid
     supersede_open_ptps(db, mid, ptp_id)
+    if from_query_id:
+        from .queries import link_ptp
+        if link_ptp(db, from_query_id, mid, ptp_id):
+            member_activity(db, mid, f"PTP #{ptp_id} linked to query #{from_query_id}.")
     refresh_member_cases(db, mid, changed_by=session.get("user_id"), source="ptp", reason="New promise to pay recorded")
 
     # Surface the exact recovery calculation to the receptionist so the PTP
@@ -1171,6 +1190,8 @@ def ptp_verify_receipt(mid: int, rid: int):
             if ptp:
                 new_ptp_status = "paid" if float(paid_for_ptp) >= float(ptp["promise_amount"] or 0) else "partially_paid"
                 db.execute("UPDATE ptp_agreements SET ptp_status=?, updated_at=datetime('now','localtime') WHERE id=?", (new_ptp_status, receipt["ptp_id"]))
+                from .queries import sync_from_ptp
+                sync_from_ptp(db, receipt["ptp_id"], new_ptp_status)
                 refresh_member_cases(db, mid, changed_by=session.get("user_id"), source="payment",
                                      reason=f"Verified payment: promise {new_ptp_status}")
                 reconcile_open_cases(db, [mid], changed_by=session.get("user_id"))
@@ -1209,6 +1230,8 @@ def ptp_update_status(mid: int, ptp_id: int):
         "UPDATE ptp_agreements SET ptp_status=?, updated_at=datetime('now','localtime') WHERE id=? AND member_id=?",
         (new_status, ptp_id, mid),
     )
+    from .queries import sync_from_ptp
+    sync_from_ptp(db, ptp_id, new_status)
 
     if new_status == "broken":
         db.execute(
@@ -1270,6 +1293,9 @@ def ptp_approve(mid: int, ptp_id: int):
         WHERE id=? AND member_id=?
     """, (decision, session.get("user_id"), notes, ptp_id, mid))
 
+    if decision == "declined":
+        from .queries import sync_from_ptp
+        sync_from_ptp(db, ptp_id, None, approval="declined")
     # The same request raised a Rule §7 exception; the manager has now decided it.
     settle_exception_for_arrangement(db, ptp_id, decision, session.get("user_id"), notes)
     if decision == "approved" and grant_exception_access(db, mid):

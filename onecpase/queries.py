@@ -1,11 +1,34 @@
+"""Queries & Tickets — Phase 3.
+
+Queries is the case-management layer: a query records *why* a member needs
+something done, routes it, tracks follow-up and closes it with a reason. The
+financial arrangement itself lives in the PTP module; a query links to its
+PTP through ``queries.ptp_id`` and follows that PTP's outcome.
+
+Lifecycle::
+
+    Logged → Open → In Progress / Pending → (Pending Approval) → Resolved → Closed
+
+Discounts above the staff ceiling, accounts at manager discretion and member
+cancellations requested by staff go through Pending Approval: the agent
+proposes, a manager approves or rejects, and only then does the query move on.
+"""
+import json
+import sqlite3
+
 from flask import (Blueprint, render_template, request, session,
-                   redirect, url_for, flash, jsonify)
+                   redirect, url_for, flash, jsonify, has_request_context)
 from datetime import datetime, date, timedelta
-from .database import get_db
-from .collections_engine import arrears_discount_policy
-from .auth import login_required
+
+from .database import get_db, audit_log, member_activity
+from .collections_engine import (
+    arrears_discount_policy, discount_needs_manager, STAFF_DISCOUNT_CEILING,
+)
+from .auth import permission_required, roles_required
 
 queries_bp = Blueprint('queries', __name__, url_prefix='/queries')
+
+QUERY_PERMISSION = 'daily_queries'
 
 # Categories where the account must be settled (zero balance) before we proceed.
 OWING_SENSITIVE_CATEGORIES = {'cancellation', 'freeze'}
@@ -16,8 +39,11 @@ FINANCIAL_DECISION_CATEGORIES = {
     'payments', 'ptp_collections', 'cancellation', 'freeze', 'refund', 'access_card',
 }
 
+# Categories that use the payment workflow statuses and can carry a proposed
+# settlement discount.
+PAYMENT_WORKFLOW_CATEGORIES = {'payments', 'ptp_collections'}
 
-# Roles that see gym-wide follow-up counts rather than just their own.
+# Roles that see gym-wide follow-up counts and decide approvals.
 MANAGER_ROLES = {'admin', 'manager'}
 
 # Default follow-up window for a new query (working days).
@@ -110,40 +136,42 @@ def calculate_cancellation_settlement(
 
 QUERY_CATEGORIES = [
     ('membership',        'Membership'),
-    ('payments',          'Payments / Arrears'),
-    ('ptp_collections',   'PTP / Collections'),
-    ('access_card',       'Access / Card'),
-    ('sales',             'Sales / New Joiner'),
-    ('compliance',        'Compliance / Verification'),
+    ('payments',          'Payments & Arrears'),
+    ('ptp_collections',   'Collections / PTP'),
+    ('access_card',       'Access'),
+    ('compliance',        'Compliance'),
     ('cancellation',      'Cancellation'),
-    ('freeze',            'Freeze / Suspension'),
-    ('facility',          'Facility / Maintenance'),
-    ('classes',           'Classes / Aerobics'),
+    ('freeze',            'Freeze'),
+    ('refund',            'Refund'),
+    ('sales',             'Sales'),
+    ('facility',          'Facility'),
+    ('classes',           'Classes'),
     ('personal_training', 'Personal Training'),
     ('complaint',         'Complaint'),
-    ('incident',          'Incident / Injury'),
-    ('refund',            'Refund'),
-    ('general',           'General Enquiry'),
+    ('incident',          'Incident'),
+    ('general',           'General'),
 ]
 
+# Payments & Arrears is about the balance itself (what is owed, why a debit
+# failed, proof of payment). Anything that needs a financial *arrangement* —
+# a promise to pay, a settlement discount, a payment plan — is a Collections /
+# PTP case, and the arrangement itself is created in the PTP module.
 QUERY_TYPES = {
-    'membership':        ['Upgrade', 'Downgrade', 'Renewal', 'Transfer', 'Membership type change',
-                          'Add family member', 'Contract query', 'Other'],
-    'payments': [
-        'Debit order failed', 'Debit order date change', 'Arrears balance',
-        'Statement request', 'Proof of payment', 'Double debit',
-        'Annual levy', 'Joining fee', 'Debit order dispute',
-        'Settlement discount', 'Promise to pay', 'Broken promise to pay',
-        'Payment arrangement', 'Access blocked due to arrears', 'Other'
-    ],
-    'ptp_collections':   ['Promise to pay', 'Broken PTP', 'Payment arrangement',
-                          'Collection follow-up', 'Other'],
+    'membership':        ['Membership status', 'Access status', 'Contract term / end date',
+                          'Membership package', 'Renewal', 'Upgrade/downgrade', 'Transfer',
+                          'Dependent account', 'Guardian/payer update', 'Member details update',
+                          'Freeze/suspension', 'Cancellation information', 'Reactivation', 'Other'],
+    'payments':          ['Debit order failed', 'Debit order date change', 'Arrears balance',
+                          'Statement request', 'Proof of payment', 'Double debit',
+                          'Annual levy', 'Joining fee', 'Debit order dispute',
+                          'Access blocked due to arrears', 'Other'],
+    'ptp_collections':   ['New PTP arrangement', 'Once-off settlement', 'Split payment arrangement',
+                          'Premium top-up arrangement', 'Add arrears to back of contract',
+                          'Broken PTP', 'PTP follow-up', 'Discount / settlement request',
+                          'Access blocked due to arrears', 'Other'],
     'access_card':       ['Card not working', 'Lost card', 'PIN/QR code issue',
                           'Access blocked', 'Member photo issue', 'Unauthorized access',
                           'Entry denied due to arrears', 'Other'],
-    'sales':             ['Pricing', 'Joining requirements', 'Promotion', '7-day voucher',
-                          'DebiCheck help', 'Contract signing', 'Lead follow-up',
-                          'Declined membership', 'Other'],
     'compliance':        ['Missing ID copy', 'Missing bank statement', 'DebiCheck not approved',
                           'Contract not signed', 'POS not captured', 'Underage approval',
                           'Incomplete profile', 'Other'],
@@ -151,6 +179,11 @@ QUERY_TYPES = {
                           'Cancellation follow-up', 'Other'],
     'freeze':            ['Medical freeze', 'Holiday freeze', 'Financial freeze',
                           'Freeze extension', 'Other'],
+    'refund':            ['Overpayment refund', 'Cancellation refund', 'PT refund',
+                          'Levy refund', 'Admin error refund', 'Other'],
+    'sales':             ['Pricing', 'Joining requirements', 'Promotion', '7-day voucher',
+                          'DebiCheck help', 'Contract signing', 'Lead follow-up',
+                          'Declined membership', 'Other'],
     'facility':          ['Equipment broken', 'Weights missing', 'Aircon/fans issue',
                           'Lights/electricity', 'Generator issue', 'Water issue',
                           'Toilet issue', 'Cleaning complaint', 'Safety hazard', 'Other'],
@@ -165,15 +198,26 @@ QUERY_TYPES = {
     'incident':          ['Injury report', 'Equipment accident', 'Slip/fall',
                           'Fight/altercation', 'Theft/lost item', 'Medical emergency',
                           'Safety complaint', 'Other'],
-    'refund':            ['Overpayment refund', 'Cancellation refund', 'PT refund',
-                          'Levy refund', 'Admin error refund', 'Other'],
     'general':           ['General information', 'Operating hours', 'Guest pass',
                           'Parking', 'Locker', 'Other'],
 }
 
-# Per query-type help text shown on the add form. Only categories with
-# authored hints appear here — the template already handles a missing entry
-# by simply not showing a hint.
+# Membership query types that should route to a specific department by default
+# (falls back to the generic _recommended_department rules when not listed here).
+MEMBERSHIP_TYPE_DEPARTMENT = {
+    'Renewal':                  'Sales',
+    'Upgrade/downgrade':        'Sales',
+    'Reactivation':             'Sales',
+    'Transfer':                 'Admin',
+    'Dependent account':        'Admin',
+    'Guardian/payer update':    'Admin',
+    'Freeze/suspension':        'Admin',
+    'Cancellation information': 'Admin',
+}
+
+# Short "what to check before answering" hints shown next to the query type
+# picker. Every key here must be a type listed in QUERY_TYPES for the same
+# category — the form only shows a hint on an exact match (tested).
 QUERY_TYPE_HINTS = {
     'membership': {
         'Membership status':        'Confirm status, access and reason if blocked before responding.',
@@ -190,41 +234,69 @@ QUERY_TYPE_HINTS = {
         'Cancellation information': 'Informational only — log an actual request under the Cancellation category.',
         'Reactivation':             'Check old balance, card status and whether a new package is required.',
     },
+    'payments': {
+        'Debit order failed':       'Check the collection history and mandate status before re-presenting the debit.',
+        'Arrears balance':          'Explain how the balance is made up. If the member needs an arrangement, log it under Collections / PTP.',
+        'Proof of payment':         'Attach or note the POP reference; Collections verifies it against the bank before the balance changes.',
+        'Debit order dispute':      'Record exactly what is disputed and the debit date(s). Disputes are counted on the member account.',
+        'Access blocked due to arrears': 'Confirm the block reason and what is needed to restore access.',
+    },
     'ptp_collections': {
-        'New PTP arrangement':          'Check the discount tier below. DebiCheck and a bank statement should be on file before finalising.',
+        'New PTP arrangement':          'Check the discount range below. DebiCheck and a bank statement should be on file before finalising.',
         'Once-off settlement':          'Best for 1–3 months arrears where the member can clear the balance in one payment.',
         'Split payment arrangement':    'Use where the member can clear arrears in 2–3 instalments.',
         'Premium top-up arrangement':   'Adds an extra amount to the monthly debit order — confirm affordability from the bank statement first.',
         'Add arrears to back of contract': 'Recommended when arrears exceed R1,000 — extends the contract term instead of a lump sum.',
         'Broken PTP':                   'Check auto-block settings; a broken PTP with auto-block re-blocks gym access.',
         'PTP follow-up':                'Confirm the promised payment date and whether a receipt has been uploaded.',
-        'Discount / settlement request': 'Discount is tiered by months in arrears — see the decision panel below for the range and approval requirement.',
+        'Discount / settlement request': f'Discount is set by months in arrears — up to {STAFF_DISCOUNT_CEILING}% you may agree it; above that a manager approves.',
         'Access blocked due to arrears': 'Confirm the block reason and what is needed to restore access.',
     },
 }
 
 PRIORITIES = [('low', 'Low'), ('medium', 'Medium'), ('high', 'High'), ('urgent', 'Urgent')]
-STATUSES   = [
-    ('open',           'Open'),
-    ('in_progress',    'In Progress'),
-    ('pending_member', 'Pending Member'),
-    ('pending_admin',  'Pending Admin'),
-    ('escalated',      'Escalated'),
-    ('resolved',       'Resolved'),
-    ('closed',         'Closed'),
+
+# Every status a query can hold.
+STATUSES = [
+    ('open',              'Open'),
+    ('in_progress',       'In Progress'),
+    ('pending_member',    'Pending Member'),
+    ('pending_admin',     'Pending Admin'),
+    ('pending_approval',  'Pending Approval'),
+    ('escalated',         'Escalated'),
+    ('resolved',          'Resolved'),
+    ('closed',            'Closed'),
 ]
+# Extra statuses for Payments & Arrears and Collections / PTP queries.
 PAYMENT_ARREARS_STATUSES = [
     ('arrears_confirmed', 'Arrears Confirmed'),
-    ('ptp_created', 'PTP Created'),
-    ('awaiting_payment', 'Awaiting Payment'),
-    ('pop_received', 'POP Received'),
-    ('payment_verified', 'Payment Verified'),
-    ('discount_offered', 'Discount Offered'),
-    ('manager_approval_required', 'Manager Approval Required'),
-    ('access_blocked', 'Access Blocked'),
-    ('access_restored', 'Access Restored'),
-    ('resolved', 'Resolved'),
+    ('discount_offered',  'Discount Offered'),
+    ('ptp_created',       'PTP Created'),
+    ('awaiting_payment',  'Awaiting Payment'),
+    ('pop_received',      'POP Received'),
+    ('payment_verified',  'Payment Verified'),
+    ('access_blocked',    'Access Blocked'),
+    ('access_restored',   'Access Restored'),
 ]
+# Set by the system only — never chosen in the Update form.
+SYSTEM_STATUSES = {'pending_approval', 'closed'}
+CLOSED_STATUSES = ('resolved', 'closed')
+
+CLOSURE_REASONS = [
+    ('resolved',          'Resolved — action completed'),
+    ('no_action_needed',  'Resolved — information given, no action needed'),
+    ('member_unreachable', 'Member unreachable'),
+    ('withdrawn',         'Withdrawn by member'),
+    ('duplicate',         'Duplicate query'),
+]
+
+APPROVAL_STATUSES = {
+    'not_required': 'Not required',
+    'pending':      'Pending approval',
+    'approved':     'Approved',
+    'rejected':     'Rejected',
+}
+
 DEPARTMENTS = ['Reception', 'Sales', 'Admin', 'Collections', 'Management', 'Maintenance', 'PT']
 
 PRIORITY_COLOURS = {
@@ -232,14 +304,35 @@ PRIORITY_COLOURS = {
 }
 STATUS_COLOURS = {
     'open': '#1769aa', 'in_progress': '#d97706', 'pending_member': '#9ca3af',
-    'pending_admin': '#6b7280', 'escalated': '#7c3aed', 'resolved': '#059669', 'closed': '#374151',
+    'pending_admin': '#6b7280', 'pending_approval': '#7c3aed',
+    'escalated': '#7c3aed', 'resolved': '#059669', 'closed': '#374151',
     'arrears_confirmed': '#b0842d', 'ptp_created': '#1769aa',
     'awaiting_payment': '#d97706', 'pop_received': '#0891b2',
     'payment_verified': '#059669', 'discount_offered': '#b0842d',
-    'manager_approval_required': '#7c3aed', 'access_blocked': '#e11d48',
-    'access_restored': '#059669',
+    'access_blocked': '#e11d48', 'access_restored': '#059669',
 }
 
+
+def status_options_for(category):
+    """Statuses staff may choose in the Update form for this category."""
+    options = [s for s in STATUSES if s[0] not in SYSTEM_STATUSES]
+    if category in PAYMENT_WORKFLOW_CATEGORIES:
+        # Workflow statuses first, then the payment steps, then the end states.
+        head = [s for s in options if s[0] not in ('escalated', 'resolved')]
+        tail = [s for s in options if s[0] in ('escalated', 'resolved')]
+        options = head + PAYMENT_ARREARS_STATUSES + tail
+    return options
+
+
+def _status_label(status):
+    return dict(STATUSES + PAYMENT_ARREARS_STATUSES).get(status, (status or '').replace('_', ' ').title())
+
+
+def _is_manager():
+    return session.get('role') in MANAGER_ROLES
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _next_reference(db):
     today = date.today().strftime('%Y%m%d')
@@ -250,6 +343,11 @@ def _next_reference(db):
     ).fetchone()
     seq = (int(last['reference'].split('-')[-1]) + 1) if last else 1
     return f'{prefix}{seq:04d}'
+
+
+def _is_unique_violation(exc):
+    text = str(exc).lower()
+    return isinstance(exc, sqlite3.IntegrityError) or 'unique' in text or 'duplicate key' in text
 
 
 def _log_note(db, query_id, note, action_type='note'):
@@ -293,21 +391,62 @@ def _as_int(value) -> int:
         return 0
 
 
-def _discount_percent_for_arrears(months_owing: int) -> int:
-    """Settlement discount % a member qualifies for, given months in arrears."""
-    return arrears_discount_policy(months_owing)["discount_percent"]
+def _optional_float(value):
+    """None when blank, else a float (raises ValueError when unreadable)."""
+    text = str(value if value is not None else '').strip()
+    if text == '':
+        return None
+    return float(text)
+
+
+def _contract_status(join_date, contract_duration):
+    """Contract end date, months completed and months remaining, derived from
+    join date and term. Returns None if either value is missing or unparsable
+    (e.g. a blank or "Month-to-month" duration).
+    """
+    if not join_date or not contract_duration:
+        return None
+    try:
+        months = int(str(contract_duration).strip().split()[0])
+        start = datetime.strptime(str(join_date)[:10], '%Y-%m-%d').date()
+    except (TypeError, ValueError, IndexError):
+        return None
+    if months <= 0:
+        return None
+
+    end_month_index = start.month - 1 + months
+    end = date(start.year + end_month_index // 12, end_month_index % 12 + 1,
+               min(start.day, 28))
+    today = date.today()
+    remaining = (end.year - today.year) * 12 + (end.month - today.month)
+    if today.day > end.day:
+        remaining -= 1
+    remaining = max(0, remaining)
+
+    return {
+        "contract_months": months,
+        "contract_end_date": end.isoformat(),
+        "remaining_months": remaining,
+        "months_completed": max(0, min(months, months - remaining)),
+        "expired": end < today,
+    }
 
 
 def _payment_arrears_decision(total_outstanding, arrears_months):
+    """Recommended handling for an account's arrears, from the shared policy
+    in collections_engine (the same one Collections and PTP use)."""
     total_outstanding = _money(total_outstanding)
     try:
-        arrears_months = int(arrears_months or 0)
+        arrears_months = max(int(arrears_months or 0), 0)
     except (TypeError, ValueError):
         arrears_months = 0
 
-    discount_percent = _discount_percent_for_arrears(arrears_months)
+    policy = arrears_discount_policy(arrears_months)
+    discount_percent = policy["discount_percent"]
+    range_label = policy["range_label"]
     discount_amount = _money(total_outstanding * discount_percent / 100)
     settlement_amount = _money(total_outstanding - discount_amount)
+    manager_approval_required = policy["manager_approval_required"]
 
     if total_outstanding <= 0:
         recommendation = "Account is up to date. No arrears action required."
@@ -315,23 +454,27 @@ def _payment_arrears_decision(total_outstanding, arrears_months):
         manager_approval_required = False
         ptp_required = "No"
         priority = "medium"
-    elif arrears_months >= 6:
-        recommendation = f"Offer {discount_percent}% settlement discount or create urgent PTP."
+    elif policy["manager_discretion"]:
+        recommendation = (f"{arrears_months} months in arrears — discount is at manager "
+                          "discretion. Full account review required before any settlement.")
         access_decision = "Keep access blocked until payment is received."
-        manager_approval_required = True
+        ptp_required = "Yes"
+        priority = "high"
+    elif arrears_months >= 6:
+        recommendation = (f"Offer {range_label} settlement discount (recommended "
+                          f"{discount_percent}%) or create urgent PTP. Manager approval required.")
+        access_decision = "Keep access blocked until payment is received."
         ptp_required = "Yes"
         priority = "high"
     elif arrears_months >= 4:
-        recommendation = f"Offer {discount_percent}% settlement discount and confirm payment date."
+        recommendation = (f"Offer {range_label} settlement discount (recommended "
+                          f"{discount_percent}%) and confirm payment date.")
         access_decision = "Keep access blocked until settlement or approved PTP."
-        # Four months and over is a manager decision under the shared policy.
-        manager_approval_required = True
         ptp_required = "Yes"
         priority = "high"
     elif arrears_months >= 2:
         recommendation = f"Offer {discount_percent}% settlement discount or create PTP."
         access_decision = "Keep access blocked unless manager approves temporary access."
-        manager_approval_required = False
         ptp_required = "Yes"
         priority = "medium"
     else:
@@ -345,6 +488,10 @@ def _payment_arrears_decision(total_outstanding, arrears_months):
         "total_outstanding": total_outstanding,
         "arrears_months": arrears_months,
         "discount_percent": discount_percent,
+        "discount_min_percent": policy["min_percent"],
+        "discount_max_percent": policy["max_percent"],
+        "discount_range_label": range_label,
+        "manager_discretion": policy["manager_discretion"],
         "discount_amount": discount_amount,
         "settlement_amount": settlement_amount,
         "recommendation": recommendation,
@@ -359,8 +506,10 @@ def _payment_arrears_decision(total_outstanding, arrears_months):
     }
 
 
-def _recommended_department(category, is_owing=False):
-    if category in {'payments', 'ptp_collections'}:
+def _recommended_department(category, is_owing=False, query_type=None):
+    if category == 'membership' and query_type in MEMBERSHIP_TYPE_DEPARTMENT:
+        return MEMBERSHIP_TYPE_DEPARTMENT[query_type]
+    if category in PAYMENT_WORKFLOW_CATEGORIES:
         return 'Collections'
     if category in {'cancellation', 'freeze', 'refund'}:
         return 'Admin'
@@ -382,9 +531,45 @@ def _recommended_priority(category, summary=None):
         return 'high'
     if summary and summary.get("arrears_months", 0) >= 6:
         return 'high'
-    if summary and summary.get("is_blocked"):
-        return 'medium'
     return 'medium'
+
+
+def _ptp_readiness(db, member_id, has_debit_order):
+    """Whether the member meets the PTP module's own evidence rules.
+
+    Uses the same tests the PTP module applies when it creates an
+    arrangement (ptp.ptp_create): a confirmed DebiCheck mandate and a bank
+    statement whose analysis qualified it as verification evidence. Signals
+    only — the PTP module still makes the final call.
+    """
+    from .ptp import _has_submitted_mandate             # local import avoids cycle
+
+    docs = db.execute(
+        """SELECT analysis_json FROM member_documents
+           WHERE member_id=? AND lower(COALESCE(document_type,'')) LIKE ?
+           ORDER BY uploaded_at DESC""",
+        (member_id, "%bank%"),
+    ).fetchall()
+    has_bank_statement = bool(docs)
+    income_verified = False
+    statement_qualified = False
+    for doc in docs:
+        try:
+            analysis = json.loads(doc["analysis_json"] or "{}")
+        except (TypeError, ValueError):
+            analysis = {}
+        income_verified = income_verified or bool(analysis.get("income_detected"))
+        statement_qualified = statement_qualified or bool(analysis.get("verification_qualified"))
+
+    debicheck_confirmed = _has_submitted_mandate(db, member_id)
+    return {
+        "has_bank_statement": has_bank_statement,
+        "income_verified": income_verified,
+        "statement_qualified": statement_qualified,
+        "debicheck_confirmed": debicheck_confirmed,
+        "ptp_requirements_met": bool(debicheck_confirmed and statement_qualified),
+        "has_debit_order": has_debit_order,
+    }
 
 
 def _account_summary(db, member_id):
@@ -395,6 +580,7 @@ def _account_summary(db, member_id):
     """
     from .members import _build_payment_profile          # local import avoids cycle
     from .encryption import decrypt_member
+    from .ptp import compute_arrears_from_profile           # canonical arrears calc
 
     row = db.execute("SELECT * FROM members WHERE id=?", (member_id,)).fetchone()
     if not row:
@@ -405,15 +591,13 @@ def _account_summary(db, member_id):
         "SELECT * FROM collections WHERE member_id=? ORDER BY collection_date DESC, id DESC",
         (member_id,)
     ).fetchall()
-    from .ptp import compute_arrears_from_profile           # canonical arrears calc
 
     profile = _build_payment_profile(collections)
     total_outstanding = _money(sum(r["balance"] for r in profile))
 
     # ── Arrears decision data ────────────────────────────────────────────────
     arrears = compute_arrears_from_profile(profile)
-    arrears_months = arrears["months_in_arrears"]
-    payment_decision = _payment_arrears_decision(total_outstanding, arrears_months)
+    payment_decision = _payment_arrears_decision(total_outstanding, arrears["months_in_arrears"])
 
     mandate = db.execute(
         "SELECT status FROM debicheck_mandates WHERE member_id=? ORDER BY id DESC LIMIT 1",
@@ -423,6 +607,7 @@ def _account_summary(db, member_id):
     acct_no = (member.get("account_number") or "").strip()
     has_debit_order = (payment_type.lower() == "debit order"
                        or mandate is not None or bool(acct_no))
+    readiness = _ptp_readiness(db, member_id, has_debit_order)
 
     counts = db.execute(
         """SELECT COUNT(*) AS total,
@@ -441,17 +626,46 @@ def _account_summary(db, member_id):
         (member_id, "%dispute%", "%dispute%")
     ).fetchone()[0]
 
+    open_ptp = db.execute(
+        """SELECT id, ptp_status, promise_amount, promise_date, manager_approval_status
+           FROM ptp_agreements
+           WHERE member_id=? AND ptp_status IN ('pending','partially_paid')
+           ORDER BY id DESC LIMIT 1""",
+        (member_id,)
+    ).fetchone()
+
     access_status = member.get("gym_access_status") or "allowed"
     masked = ("•••• " + acct_no[-4:]) if len(acct_no) >= 4 else acct_no
 
+    # ── Membership / contract snapshot ───────────────────────────────────────
+    contract = _contract_status(member.get("join_date"), member.get("contract_duration"))
+
     return {
         "member": member,
+        "package": member.get("package") or "",
+        "contract_duration": member.get("contract_duration") or "",
+        "contract_months": contract["contract_months"] if contract else None,
+        "contract_end_date": contract["contract_end_date"] if contract else None,
+        "contract_remaining_months": contract["remaining_months"] if contract else None,
+        "contract_months_completed": contract["months_completed"] if contract else None,
+        "contract_expired": contract["expired"] if contract else None,
+        "monthly_installment": _money(member.get("monthly_installment") or 0),
         "total_outstanding": total_outstanding,
         "is_owing": total_outstanding > 0.009,
         "arrears_months": payment_decision["arrears_months"],
         "discount_percent": payment_decision["discount_percent"],
+        "discount_min_percent": payment_decision["discount_min_percent"],
+        "discount_max_percent": payment_decision["discount_max_percent"],
+        "discount_range_label": payment_decision["discount_range_label"],
+        "manager_discretion": payment_decision["manager_discretion"],
+        "staff_discount_ceiling": STAFF_DISCOUNT_CEILING,
         "discount_amount": payment_decision["discount_amount"],
         "settlement_amount": payment_decision["settlement_amount"],
+        "has_bank_statement": readiness["has_bank_statement"],
+        "income_verified": readiness["income_verified"],
+        "statement_qualified": readiness["statement_qualified"],
+        "debicheck_confirmed": readiness["debicheck_confirmed"],
+        "ptp_requirements_met": readiness["ptp_requirements_met"],
         "recommended_action": payment_decision["recommendation"],
         "payment_recommendation": payment_decision["payment_recommendation"],
         "access_decision": payment_decision["access_decision"],
@@ -472,12 +686,37 @@ def _account_summary(db, member_id):
         "query_total": counts["total"] or 0,
         "query_open": counts["open"] or 0,
         "dispute_count": dispute_count,
+        "open_ptp_id": open_ptp["id"] if open_ptp else None,
+        "open_ptp_status": open_ptp["ptp_status"] if open_ptp else None,
         "is_blocked": access_status != "allowed",
         "access_status": access_status,
-        "package": member.get("package") or "",
-        "contract_duration": member.get("contract_duration") or "",
-        "monthly_installment": _money(member.get("monthly_installment") or 0),
     }
+
+
+# Keys from _account_summary that the Add form's JSON endpoint never sends:
+# the decrypted member row and banking details stay server-side.
+_SUMMARY_PRIVATE_KEYS = {"member", "bank", "account_name", "account_masked", "branch_code"}
+
+
+def _proposed_discount(form, summary):
+    """Read and validate the agent's proposed discount against the policy.
+
+    Returns (percent, error). Blank means "use the recommended figure".
+    """
+    try:
+        proposed = _optional_float(form.get('proposed_discount_pct'))
+    except ValueError:
+        return None, 'The proposed discount must be a number.'
+    if proposed is None:
+        return float(summary["discount_percent"]), None
+    if proposed < 0 or proposed > 100:
+        return None, 'The proposed discount must be between 0% and 100%.'
+    if not summary["manager_discretion"] and proposed > summary["discount_max_percent"]:
+        return None, (
+            f'{summary["arrears_months"]} month(s) in arrears allows at most '
+            f'{summary["discount_max_percent"]}% ({summary["discount_range_label"]}).'
+        )
+    return proposed, None
 
 
 def followup_due_count(db):
@@ -488,7 +727,7 @@ def followup_due_count(db):
     if not session.get("user_id"):
         return 0, "mine"
     today_str = date.today().isoformat()
-    is_manager = session.get("role") in MANAGER_ROLES
+    is_manager = _is_manager()
     sql = ("SELECT COUNT(*) FROM queries "
            "WHERE follow_up_date IS NOT NULL AND follow_up_date <= ? "
            "AND status NOT IN ('resolved','closed')")
@@ -500,9 +739,84 @@ def followup_due_count(db):
     return count, ("all" if is_manager else "mine")
 
 
+# ── PTP link: the PTP module calls these ──────────────────────────────────────
+
+# PTP outcome → (query status, note). Only open queries are moved.
+_PTP_OUTCOME = {
+    'pending':        ('ptp_created',      'PTP #{ptp} created — awaiting payment.'),
+    'partially_paid': ('awaiting_payment', 'PTP #{ptp} partially paid — balance still awaited.'),
+    'paid':           ('payment_verified', 'PTP #{ptp} paid in full — payment verified. Resolve and close when done.'),
+    'broken':         ('escalated',        'PTP #{ptp} broken — promise date passed without payment.'),
+    'superseded':     ('in_progress',      'PTP #{ptp} was replaced by a newer arrangement.'),
+}
+
+
+def link_ptp(db, query_id, member_id, ptp_id):
+    """Attach a newly created PTP to the query it was created from.
+
+    Returns True when the query was linked. The query must belong to the same
+    member and still be open.
+    """
+    if not query_id:
+        return False
+    qry = db.execute(
+        "SELECT id, status FROM queries WHERE id=? AND member_id=?",
+        (query_id, member_id),
+    ).fetchone()
+    if not qry or qry["status"] in CLOSED_STATUSES:
+        return False
+    db.execute(
+        "UPDATE queries SET ptp_id=?, updated_at=datetime('now','localtime') WHERE id=?",
+        (ptp_id, query_id),
+    )
+    sync_from_ptp(db, ptp_id, 'pending')
+    return True
+
+
+def sync_from_ptp(db, ptp_id, ptp_status, approval=None):
+    """Move every open query linked to this PTP to match the PTP's outcome.
+
+    ``approval`` is the manager's decision on the PTP itself ('declined' sends
+    the query back to In Progress). Does not commit.
+    """
+    rows = db.execute(
+        "SELECT id, status FROM queries WHERE ptp_id=? AND status NOT IN ('resolved','closed')",
+        (ptp_id,),
+    ).fetchall()
+    for row in rows:
+        if approval == 'declined':
+            new_status, note = 'in_progress', f'PTP #{ptp_id} was declined by a manager.'
+        elif ptp_status in _PTP_OUTCOME:
+            new_status, template = _PTP_OUTCOME[ptp_status]
+            note = template.format(ptp=ptp_id)
+        else:
+            continue
+        sets = "status=?, updated_at=datetime('now','localtime')"
+        params = [new_status]
+        if ptp_status == 'broken' and approval is None:
+            sets += ", priority='high', follow_up_date=?"
+            params.append(date.today().isoformat())
+        db.execute(f"UPDATE queries SET {sets} WHERE id=?", (*params, row["id"]))
+        db.execute(
+            """INSERT INTO query_notes (query_id, created_by, note, action_type)
+               VALUES (?, ?, ?, 'ptp')""",
+            (row["id"], session.get('user_id') if has_request_context() else None, note),
+        )
+
+
+def approved_discount_for(db, query_id, member_id):
+    """The discount a manager approved on this query, or None."""
+    row = db.execute(
+        """SELECT proposed_discount_pct FROM queries
+           WHERE id=? AND member_id=? AND approval_status='approved'""",
+        (query_id, member_id),
+    ).fetchone()
+    return float(row["proposed_discount_pct"] or 0) if row else None
+
+
 # ── Live account summary (JSON) ────────────────────────────────────────────────
 @queries_bp.route('/member-summary/<int:member_id>')
-@login_required
+@permission_required(QUERY_PERMISSION)
 def member_summary(member_id):
     """Return the account decision snapshot for a member as JSON, so the Add
     Query form can show it the moment a member is selected."""
@@ -512,43 +826,19 @@ def member_summary(member_id):
         return jsonify({"ok": False, "error": "Member not found"}), 404
 
     member = summary["member"]
-    return jsonify({
-        "ok": True,
-        "member_id": member_id,
-        "member_name": f"{member.get('first_name', '')} {member.get('last_name', '')}".strip(),
-        "contact": member.get("contact") or "",
-        "total_outstanding": summary["total_outstanding"],
-        "is_owing": summary["is_owing"],
-        "arrears_months": summary["arrears_months"],
-        "discount_percent": summary["discount_percent"],
-        "discount_amount": summary["discount_amount"],
-        "settlement_amount": summary["settlement_amount"],
-        "recommended_action": summary["recommended_action"],
-        "payment_recommendation": summary["payment_recommendation"],
-        "access_decision": summary["access_decision"],
-        "manager_approval_required": summary["manager_approval_required"],
-        "ptp_required": summary["ptp_required"],
-        "proof_of_payment_required": summary["proof_of_payment_required"],
-        "payment_follow_up": summary["payment_follow_up"],
-        "payment_assigned_to": summary["payment_assigned_to"],
-        "payment_priority": summary["payment_priority"],
-        "payment_type": summary["payment_type"],
-        "has_debit_order": summary["has_debit_order"],
-        "debit_order_status": summary["debit_order_status"],
-        "access_status": summary["access_status"],
-        "is_blocked": summary["is_blocked"],
-        "query_total": summary["query_total"],
-        "query_open": summary["query_open"],
-        "dispute_count": summary["dispute_count"],
-        "package": summary["package"],
-        "contract_duration": summary["contract_duration"],
-        "monthly_installment": summary["monthly_installment"],
-    })
+    payload = {k: v for k, v in summary.items() if k not in _SUMMARY_PRIVATE_KEYS}
+    payload.update(
+        ok=True,
+        member_id=member_id,
+        member_name=f"{member.get('first_name', '')} {member.get('last_name', '')}".strip(),
+        contact=member.get("contact") or "",
+    )
+    return jsonify(payload)
 
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 @queries_bp.route('/')
-@login_required
+@permission_required(QUERY_PERMISSION)
 def index():
     db = get_db()
     q         = request.args.get('q', '').strip()
@@ -557,6 +847,8 @@ def index():
     priority_f= request.args.get('priority', '')
     assigned_f= request.args.get('assigned', '')
     followup_f= request.args.get('followup', '')
+    approval_f= request.args.get('approval', '')
+    member_f  = _as_int(request.args.get('member_id'))
 
     sql = """
         SELECT qr.*, m.first_name || ' ' || m.last_name AS member_full_name,
@@ -576,6 +868,9 @@ def index():
                     OR (m.first_name || ' ' || m.last_name) LIKE ?)"""
         like = f'%{q}%'
         params += [like]*6
+    if member_f:
+        sql += " AND qr.member_id = ?"
+        params.append(member_f)
     if cat:
         sql += " AND qr.category = ?"
         params.append(cat)
@@ -585,6 +880,8 @@ def index():
     if priority_f:
         sql += " AND qr.priority = ?"
         params.append(priority_f)
+    if approval_f == 'pending':
+        sql += " AND qr.approval_status = 'pending'"
     if assigned_f == 'me':
         sql += " AND qr.assigned_to = ?"
         params.append(session.get('user_id'))
@@ -596,7 +893,7 @@ def index():
                 " AND qr.status NOT IN ('resolved','closed')")
         params.append(date.today().isoformat())
         # Non-managers only see their own follow-ups (matches the badge scope).
-        if session.get('role') not in MANAGER_ROLES:
+        if not _is_manager():
             sql += " AND qr.assigned_to = ?"
             params.append(session.get('user_id'))
 
@@ -604,11 +901,13 @@ def index():
 
     rows = db.execute(sql, params).fetchall()
 
-    # Account snapshot per distinct member, for triage columns (cached per member).
+    # Account snapshot per distinct member with an OPEN query, for the triage
+    # columns. Closed queries don't need a live balance, and each summary
+    # decrypts the member and reads their collections.
     member_summaries = {}
     for r in rows:
         mid = r['member_id']
-        if mid and mid not in member_summaries:
+        if mid and mid not in member_summaries and r['status'] not in CLOSED_STATUSES:
             member_summaries[mid] = _account_summary(db, mid)
 
     today_str = date.today().isoformat()
@@ -623,6 +922,9 @@ def index():
     kpi_resolved_today = db.execute(
         "SELECT COUNT(*) FROM queries WHERE status IN ('resolved','closed') AND DATE(updated_at)=?",
         (today_str,)).fetchone()[0]
+    kpi_pending_approval = db.execute(
+        "SELECT COUNT(*) FROM queries WHERE approval_status='pending'"
+    ).fetchone()[0]
 
     users = db.execute("SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name").fetchall()
 
@@ -630,10 +932,13 @@ def index():
         'queries/index.html',
         rows=rows, q=q, cat=cat, status_f=status_f,
         priority_f=priority_f, assigned_f=assigned_f, followup_f=followup_f,
+        approval_f=approval_f, member_f=member_f,
         kpi_open=kpi_open, kpi_overdue=kpi_overdue,
         kpi_escalated=kpi_escalated, kpi_urgent=kpi_urgent,
         kpi_resolved_today=kpi_resolved_today,
-        categories=QUERY_CATEGORIES, priorities=PRIORITIES, statuses=STATUSES,
+        kpi_pending_approval=kpi_pending_approval,
+        categories=QUERY_CATEGORIES, priorities=PRIORITIES,
+        statuses=STATUSES + PAYMENT_ARREARS_STATUSES,
         priority_colours=PRIORITY_COLOURS, status_colours=STATUS_COLOURS,
         users=users, today=today_str, member_summaries=member_summaries,
     )
@@ -641,7 +946,7 @@ def index():
 
 # ── Add ───────────────────────────────────────────────────────────────────────
 @queries_bp.route('/add', methods=['GET', 'POST'])
-@login_required
+@permission_required(QUERY_PERMISSION)
 def add():
     db = get_db()
     member_id = request.args.get('member_id') or request.form.get('member_id')
@@ -653,128 +958,9 @@ def add():
         ).fetchone()
 
     if request.method == 'POST':
-        category    = request.form.get('category', '').strip()
-        query_type  = request.form.get('query_type', '').strip()
-        description = request.form.get('description', '').strip()
-        priority    = request.form.get('priority', 'medium')
-        member_name = request.form.get('member_name', '').strip()
-        contact     = request.form.get('contact', '').strip()
-        due_date    = request.form.get('due_date', '').strip() or None
-        follow_up   = request.form.get('follow_up_date', '').strip() or None
-        # Every new query gets a 5-working-day follow-up window by default.
-        if not follow_up:
-            follow_up = _add_working_days(date.today(), FOLLOW_UP_WORKING_DAYS).isoformat()
-        assigned_to = request.form.get('assigned_to', '').strip() or None
-        department  = request.form.get('department', '').strip() or None
-        mem_id      = request.form.get('member_id', '').strip() or None
-
-        is_cancellation = category == 'cancellation'
-        cancel_contract_months = 0
-        cancel_months_completed = 0
-        cancel_monthly_fee = 0.0
-        cancel_payment_method = request.form.get('cancellation_payment_method', '').strip()
-        cancel_discount_pct = 0.0
-        cancel_member_now = request.form.get('cancel_member') == '1'
-        if is_cancellation:
-            cancel_contract_months = _as_int(request.form.get('cancellation_contract_months'))
-            cancel_months_completed = _as_int(request.form.get('cancellation_months_completed'))
-            cancel_monthly_fee = _money(request.form.get('cancellation_monthly_fee'))
-            cancel_discount_pct = _money(request.form.get('cancellation_discount_pct'))
-
-        if not category or not description:
-            flash('Category and description are required.', 'error')
-        elif is_cancellation and not mem_id:
-            flash('Select the member before logging a cancellation.', 'error')
-        elif is_cancellation and cancel_contract_months not in CANCELLATION_CONTRACT_MONTHS:
-            flash('Select a valid cancellation contract type (12, 24, or 36 months).', 'error')
-        elif is_cancellation and cancel_monthly_fee <= 0:
-            flash('Enter the monthly membership fee before saving the cancellation.', 'error')
-        else:
-            # ── Decision support: snapshot + routing recommendations ──────────
-            snapshot = _account_summary(db, int(mem_id)) if mem_id else None
-
-            # Auto-route where the agent didn't override.
-            if snapshot:
-                if not department:
-                    department = _recommended_department(category, snapshot["is_owing"])
-                if priority == 'medium':
-                    priority = _recommended_priority(category, snapshot)
-
-            # Freeze the financial position seen at capture time (balances change).
-            snap_out = snap_months = snap_dpct = snap_damt = snap_settle = 0
-            snap_action = None
-            snap_access = None
-            snap_mgr = 0
-            if snapshot and category in FINANCIAL_DECISION_CATEGORIES:
-                snap_out    = snapshot["total_outstanding"]
-                snap_months = snapshot["arrears_months"]
-                snap_dpct   = snapshot["discount_percent"]
-                snap_damt   = snapshot["discount_amount"]
-                snap_settle = snapshot["settlement_amount"]
-                snap_action = snapshot["recommended_action"]
-                snap_access = snapshot["access_decision"]
-                snap_mgr    = 1 if snapshot["manager_approval_required"] else 0
-
-            cancel_fee = cancel_penalty_months = 0
-            cancel_outstanding = cancel_settlement_amount = 0.0
-            cancel_settlement_rule = None
-            if is_cancellation:
-                cancel_fee, cancel_penalty_months = calculate_cancellation_fee(
-                    cancel_contract_months, cancel_months_completed, cancel_monthly_fee,
-                )
-                cancel_outstanding = snapshot["total_outstanding"] if snapshot else 0.0
-                settlement = calculate_cancellation_settlement(
-                    cancel_fee, cancel_outstanding, cancel_payment_method, cancel_discount_pct,
-                )
-                cancel_discount_pct = settlement["discount_pct"]
-                cancel_settlement_amount = settlement["settlement_amount"]
-                cancel_settlement_rule = settlement["rule"]
-
-            ref = _next_reference(db)
-            db.execute("""
-                INSERT INTO queries
-                  (reference, logged_by, member_id, member_name, contact,
-                   category, query_type, description, priority,
-                   assigned_to, department, due_date, follow_up_date,
-                   outstanding_snapshot, arrears_months_snapshot,
-                   discount_percent_snapshot, discount_amount_snapshot,
-                   settlement_amount_snapshot, recommended_action_snapshot,
-                   access_decision_snapshot, manager_approval_required,
-                   cancellation_contract_months, cancellation_months_completed,
-                   cancellation_monthly_fee, cancellation_fee,
-                   cancellation_penalty_months, cancellation_payment_method,
-                   cancellation_outstanding, cancellation_settlement_amount,
-                   cancellation_settlement_rule, cancellation_discount_pct,
-                   member_cancelled)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (ref, session.get('user_id'),
-                  int(mem_id) if mem_id else None,
-                  member_name, contact,
-                  category, query_type, description, priority,
-                  int(assigned_to) if assigned_to else None,
-                  department, due_date, follow_up,
-                  snap_out, snap_months, snap_dpct, snap_damt,
-                  snap_settle, snap_action, snap_access, snap_mgr,
-                  cancel_contract_months if is_cancellation else None,
-                  cancel_months_completed if is_cancellation else None,
-                  cancel_monthly_fee if is_cancellation else 0,
-                  cancel_fee, cancel_penalty_months,
-                  cancel_payment_method if is_cancellation else None,
-                  cancel_outstanding, cancel_settlement_amount, cancel_settlement_rule,
-                  cancel_discount_pct if is_cancellation else 0,
-                  1 if (is_cancellation and cancel_member_now) else 0))
-            if is_cancellation and cancel_member_now and mem_id:
-                db.execute("UPDATE members SET member_status='Cancelled' WHERE id=?", (mem_id,))
-            db.commit()
-            qid = db.execute("SELECT id FROM queries WHERE reference=?", (ref,)).fetchone()['id']
-            flash(
-                'Query logged. Member account cancelled.' if (is_cancellation and cancel_member_now)
-                else f'Query {ref} created.',
-                'success',
-            )
-            if mem_id:
-                return redirect(url_for('members.member_detail', mid=mem_id) + '#queries')
-            return redirect(url_for('queries.detail', qid=qid))
+        result = _create_query(db, request.form)
+        if result is not None:
+            return result
 
     users = db.execute("SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name").fetchall()
     return render_template(
@@ -784,12 +970,246 @@ def add():
         priorities=PRIORITIES, departments=DEPARTMENTS,
         users=users, today=date.today().isoformat(),
         cancellation_payment_methods=CANCELLATION_PAYMENT_METHODS,
+        payment_workflow_categories=sorted(PAYMENT_WORKFLOW_CATEGORIES),
+        staff_discount_ceiling=STAFF_DISCOUNT_CEILING,
+        is_manager=_is_manager(),
     )
+
+
+def _create_query(db, form):
+    """Validate and save a new query. Returns a redirect on success, or None
+    after flashing the reason it could not be saved."""
+    category    = form.get('category', '').strip()
+    query_type  = form.get('query_type', '').strip()
+    description = form.get('description', '').strip()
+    priority    = form.get('priority', 'medium')
+    member_name = form.get('member_name', '').strip()
+    contact     = form.get('contact', '').strip()
+    due_date    = form.get('due_date', '').strip() or None
+    follow_up   = form.get('follow_up_date', '').strip() or None
+    # Every new query gets a 5-working-day follow-up window by default.
+    if not follow_up:
+        follow_up = _add_working_days(date.today(), FOLLOW_UP_WORKING_DAYS).isoformat()
+    assigned_to = form.get('assigned_to', '').strip() or None
+    department  = form.get('department', '').strip() or None
+    mem_id      = form.get('member_id', '').strip() or None
+    approval_reason = form.get('approval_reason', '').strip()
+
+    if category not in dict(QUERY_CATEGORIES):
+        flash('Choose a category from the list.', 'error')
+        return None
+    if priority not in dict(PRIORITIES):
+        priority = 'medium'
+    if not description:
+        flash('Category and description are required.', 'error')
+        return None
+    if mem_id and not str(mem_id).isdigit():
+        flash('That member link is not valid.', 'error')
+        return None
+
+    is_cancellation = category == 'cancellation'
+    cancel_contract_months = 0
+    cancel_months_completed = 0
+    cancel_monthly_fee = 0.0
+    cancel_payment_method = form.get('cancellation_payment_method', '').strip()
+    cancel_discount_pct = 0.0
+    cancel_member_requested = form.get('cancel_member') == '1'
+    if is_cancellation:
+        cancel_contract_months = _as_int(form.get('cancellation_contract_months'))
+        cancel_monthly_fee = _money(form.get('cancellation_monthly_fee'))
+        cancel_discount_pct = _money(form.get('cancellation_discount_pct'))
+        if cancel_payment_method and cancel_payment_method not in dict(CANCELLATION_PAYMENT_METHODS):
+            cancel_payment_method = ''
+        if not mem_id:
+            flash('Select the member before logging a cancellation.', 'error')
+            return None
+        if cancel_contract_months not in CANCELLATION_CONTRACT_MONTHS:
+            flash('Select a valid cancellation contract type (12, 24, or 36 months).', 'error')
+            return None
+        if cancel_monthly_fee <= 0:
+            flash('Enter the monthly membership fee before saving the cancellation.', 'error')
+            return None
+        if str(form.get('cancellation_months_completed', '')).strip() == '':
+            # A blank used to count as 0 months — the maximum penalty.
+            flash('Enter how many months of the contract the member has completed.', 'error')
+            return None
+        cancel_months_completed = _as_int(form.get('cancellation_months_completed'))
+        if cancel_months_completed < 0 or cancel_months_completed > cancel_contract_months:
+            flash('Months completed must be between 0 and the contract length.', 'error')
+            return None
+
+    # ── Decision support: snapshot + routing recommendations ────────────────
+    snapshot = _account_summary(db, int(mem_id)) if mem_id else None
+    if mem_id and not snapshot:
+        flash('That member could not be found.', 'error')
+        return None
+
+    # Auto-route where the agent didn't override. Type-based routing
+    # (e.g. membership Transfer -> Admin) applies even without a linked
+    # member; arrears-based priority needs the snapshot.
+    if not department:
+        department = _recommended_department(
+            category, snapshot["is_owing"] if snapshot else False, query_type
+        )
+    if snapshot and priority == 'medium':
+        priority = _recommended_priority(category, snapshot)
+
+    # Freeze the financial position seen at capture time (balances change).
+    snap_out = snap_months = snap_dpct = snap_damt = snap_settle = 0
+    snap_action = None
+    snap_access = None
+    snap_mgr = 0
+    proposed_pct = 0.0
+    approval_needed = []          # human-readable reasons a manager must decide
+    if snapshot and category in FINANCIAL_DECISION_CATEGORIES:
+        snap_out    = snapshot["total_outstanding"]
+        snap_months = snapshot["arrears_months"]
+        snap_dpct   = snapshot["discount_percent"]
+        snap_damt   = snapshot["discount_amount"]
+        snap_settle = snapshot["settlement_amount"]
+        snap_action = snapshot["recommended_action"]
+        snap_access = snapshot["access_decision"]
+
+    if snapshot and category in PAYMENT_WORKFLOW_CATEGORIES and snapshot["is_owing"]:
+        proposed_pct, error = _proposed_discount(form, snapshot)
+        if error:
+            flash(error, 'error')
+            return None
+        # The saved snapshot reflects what the agent is actually offering.
+        snap_dpct = proposed_pct
+        snap_damt = _money(snapshot["total_outstanding"] * proposed_pct / 100)
+        snap_settle = _money(snapshot["total_outstanding"] - snap_damt)
+        if discount_needs_manager(proposed_pct, snapshot["arrears_months"]):
+            if snapshot["manager_discretion"]:
+                approval_needed.append(
+                    f'{snapshot["arrears_months"]} months in arrears — discount at manager discretion '
+                    f'(proposed {proposed_pct:g}%)')
+            else:
+                approval_needed.append(
+                    f'Proposed discount {proposed_pct:g}% is above the {STAFF_DISCOUNT_CEILING}% staff limit')
+
+    cancel_fee = cancel_penalty_months = 0
+    cancel_outstanding = cancel_settlement_amount = 0.0
+    cancel_settlement_rule = None
+    if is_cancellation:
+        cancel_fee, cancel_penalty_months = calculate_cancellation_fee(
+            cancel_contract_months, cancel_months_completed, cancel_monthly_fee,
+        )
+        cancel_outstanding = snapshot["total_outstanding"] if snapshot else 0.0
+        settlement = calculate_cancellation_settlement(
+            cancel_fee, cancel_outstanding, cancel_payment_method, cancel_discount_pct,
+        )
+        cancel_discount_pct = settlement["discount_pct"]
+        cancel_settlement_amount = settlement["settlement_amount"]
+        cancel_settlement_rule = settlement["rule"]
+        if settlement["rule"] == "none" and cancel_discount_pct > STAFF_DISCOUNT_CEILING:
+            approval_needed.append(
+                f'Manual cancellation discount {cancel_discount_pct:g}% is above the '
+                f'{STAFF_DISCOUNT_CEILING}% staff limit')
+        if cancel_member_requested and not _is_manager():
+            approval_needed.append('Cancel the member account')
+
+    # A manager logging the query is the approver; nobody else approves their own.
+    cancel_member_now = bool(is_cancellation and cancel_member_requested and _is_manager()
+                             and not approval_needed)
+    approval_status = 'pending' if approval_needed else 'not_required'
+    if approval_needed and _is_manager():
+        # Managers still record why; the decision is theirs and is logged as such.
+        approval_status = 'approved'
+        cancel_member_now = bool(is_cancellation and cancel_member_requested)
+    snap_mgr = 1 if approval_needed else 0
+    status = 'pending_approval' if approval_status == 'pending' else 'open'
+
+    values = dict(
+        logged_by=session.get('user_id'),
+        member_id=int(mem_id) if mem_id else None,
+        member_name=member_name, contact=contact,
+        category=category, query_type=query_type, description=description,
+        priority=priority, status=status,
+        assigned_to=int(assigned_to) if assigned_to and assigned_to.isdigit() else None,
+        department=department, due_date=due_date, follow_up_date=follow_up,
+        outstanding_snapshot=snap_out, arrears_months_snapshot=snap_months,
+        discount_percent_snapshot=snap_dpct, discount_amount_snapshot=snap_damt,
+        settlement_amount_snapshot=snap_settle, recommended_action_snapshot=snap_action,
+        access_decision_snapshot=snap_access, manager_approval_required=snap_mgr,
+        proposed_discount_pct=proposed_pct,
+        approval_status=approval_status,
+        approval_reason='; '.join(approval_needed) + (f' — {approval_reason}' if approval_reason and approval_needed else '') or None,
+        approval_requested_by=session.get('user_id') if approval_needed else None,
+        manager_approved_by=session.get('user_id') if approval_status == 'approved' else None,
+        cancellation_contract_months=cancel_contract_months if is_cancellation else None,
+        cancellation_months_completed=cancel_months_completed if is_cancellation else None,
+        cancellation_monthly_fee=cancel_monthly_fee if is_cancellation else 0,
+        cancellation_fee=cancel_fee, cancellation_penalty_months=cancel_penalty_months,
+        cancellation_payment_method=(cancel_payment_method or None) if is_cancellation else None,
+        cancellation_outstanding=cancel_outstanding,
+        cancellation_settlement_amount=cancel_settlement_amount,
+        cancellation_settlement_rule=cancel_settlement_rule,
+        cancellation_discount_pct=cancel_discount_pct if is_cancellation else 0,
+        cancel_member_requested=1 if (is_cancellation and cancel_member_requested) else 0,
+        member_cancelled=1 if cancel_member_now else 0,
+    )
+    cols = list(values)
+    stamp_cols = []
+    if approval_needed:
+        stamp_cols.append('approval_requested_at')
+    if approval_status == 'approved':
+        stamp_cols.append('manager_approved_at')
+    col_sql = ', '.join(['reference'] + cols + stamp_cols)
+    val_sql = ', '.join(['?'] * (len(cols) + 1) + ["datetime('now','localtime')"] * len(stamp_cols))
+
+    # Two people saving at once can draw the same next reference; retry.
+    qid = ref = None
+    for _attempt in range(5):
+        ref = _next_reference(db)
+        try:
+            db.execute(f"INSERT INTO queries ({col_sql}) VALUES ({val_sql})",
+                       (ref, *[values[c] for c in cols]))
+        except Exception as exc:  # noqa: BLE001 — driver-specific IntegrityError
+            if not _is_unique_violation(exc):
+                raise
+            db.rollback()
+            continue
+        qid = db.execute("SELECT id FROM queries WHERE reference=?", (ref,)).fetchone()['id']
+        break
+    if qid is None:
+        flash('Could not allocate a query reference — please try again.', 'error')
+        return None
+
+    _log_note(db, qid, f'Query logged under {_cat_label(category)}'
+                       + (f' — {query_type}' if query_type else '') + '.', 'created')
+    if approval_status == 'pending':
+        _log_note(db, qid, 'Manager approval requested: ' + values['approval_reason'], 'approval')
+    elif approval_status == 'approved':
+        _log_note(db, qid, 'Logged and approved by manager: ' + values['approval_reason'], 'approval')
+    if cancel_member_now:
+        _cancel_member(db, qid, int(mem_id))
+    db.commit()
+
+    if approval_status == 'pending':
+        flash(f'Query {ref} logged and sent for manager approval.', 'success')
+    elif cancel_member_now:
+        flash(f'Query {ref} logged. Member account cancelled.', 'success')
+    else:
+        flash(f'Query {ref} created.', 'success')
+    if mem_id:
+        return redirect(url_for('members.member_detail', mid=mem_id) + '#queries')
+    return redirect(url_for('queries.detail', qid=qid))
+
+
+def _cancel_member(db, qid, member_id):
+    """Cancel the member account for an approved cancellation query."""
+    db.execute("UPDATE members SET member_status='Cancelled' WHERE id=?", (member_id,))
+    db.execute("UPDATE queries SET member_cancelled=1 WHERE id=?", (qid,))
+    _log_note(db, qid, 'Member account cancelled (member status set to Cancelled). '
+                       'Stop any active debit order / DebiCheck mandate separately.', 'cancelled')
+    member_activity(db, member_id, f'Membership cancelled via query #{qid}.')
+    audit_log(db, 'query_member_cancelled', old_value=f'query:{qid}', new_value=f'member:{member_id}')
 
 
 # ── Detail ────────────────────────────────────────────────────────────────────
 @queries_bp.route('/<int:qid>')
-@login_required
+@permission_required(QUERY_PERMISSION)
 def detail(qid):
     db  = get_db()
     qry = db.execute("""
@@ -797,12 +1217,16 @@ def detail(qid):
                m.contact AS member_contact, m.id AS member_pk,
                ul.full_name AS logged_by_name,
                ua.full_name AS assigned_to_name,
-               uc.full_name AS closed_by_name
+               uc.full_name AS closed_by_name,
+               ur.full_name AS approval_requested_by_name,
+               um.full_name AS manager_approved_by_name
         FROM queries qr
         LEFT JOIN members m  ON qr.member_id = m.id
         LEFT JOIN users ul   ON qr.logged_by = ul.id
         LEFT JOIN users ua   ON qr.assigned_to = ua.id
         LEFT JOIN users uc   ON qr.closed_by = uc.id
+        LEFT JOIN users ur   ON qr.approval_requested_by = ur.id
+        LEFT JOIN users um   ON qr.manager_approved_by = um.id
         WHERE qr.id = ?
     """, (qid,)).fetchone()
     if not qry:
@@ -812,7 +1236,7 @@ def detail(qid):
     notes = db.execute("""
         SELECT qn.*, u.full_name AS author
         FROM query_notes qn LEFT JOIN users u ON qn.created_by = u.id
-        WHERE qn.query_id = ? ORDER BY qn.created_at ASC
+        WHERE qn.query_id = ? ORDER BY qn.created_at ASC, qn.id ASC
     """, (qid,)).fetchall()
 
     users = db.execute("SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name").fetchall()
@@ -824,27 +1248,58 @@ def detail(qid):
         and qry['category'] in OWING_SENSITIVE_CATEGORIES
     )
 
+    linked_ptp = None
+    if qry['ptp_id']:
+        linked_ptp = db.execute(
+            """SELECT id, ptp_status, promise_amount, promise_date, discount_pct,
+                      manager_approval_status, created_at
+               FROM ptp_agreements WHERE id=?""",
+            (qry['ptp_id'],),
+        ).fetchone()
+
     return render_template(
         'queries/detail.html',
         qry=qry, notes=notes, users=users,
         categories=QUERY_CATEGORIES, query_types=QUERY_TYPES,
         priorities=PRIORITIES, statuses=STATUSES,
-        payment_arrears_statuses=PAYMENT_ARREARS_STATUSES,
+        status_options=status_options_for(qry['category']),
+        status_label=_status_label,
         departments=DEPARTMENTS,
         priority_colours=PRIORITY_COLOURS, status_colours=STATUS_COLOURS,
         cat_label=_cat_label,
         summary=summary, requires_ack=requires_ack,
+        linked_ptp=linked_ptp,
+        closure_reasons=CLOSURE_REASONS,
+        approval_statuses=APPROVAL_STATUSES,
+        is_manager=_is_manager(),
+        payment_workflow=qry['category'] in PAYMENT_WORKFLOW_CATEGORIES,
+        staff_discount_ceiling=STAFF_DISCOUNT_CEILING,
         today=date.today().isoformat(),
     )
 
 
+def _load_open_query(db, qid):
+    """The query row, or None after flashing why it can't be changed."""
+    qry = db.execute("SELECT * FROM queries WHERE id=?", (qid,)).fetchone()
+    if not qry:
+        flash('Query not found.', 'warning')
+        return None
+    if qry['status'] == 'closed':
+        flash('This query is closed.', 'warning')
+        return None
+    return qry
+
+
 # ── Add Note ──────────────────────────────────────────────────────────────────
 @queries_bp.route('/<int:qid>/note', methods=['POST'])
-@login_required
+@permission_required(QUERY_PERMISSION)
 def add_note(qid):
     note = request.form.get('note', '').strip()
+    db = get_db()
+    if not db.execute("SELECT 1 FROM queries WHERE id=?", (qid,)).fetchone():
+        flash('Query not found.', 'warning')
+        return redirect(url_for('queries.index'))
     if note:
-        db = get_db()
         _log_note(db, qid, note)
         db.commit()
     return redirect(url_for('queries.detail', qid=qid) + '#timeline')
@@ -852,9 +1307,13 @@ def add_note(qid):
 
 # ── Update status / assign / priority ─────────────────────────────────────────
 @queries_bp.route('/<int:qid>/update', methods=['POST'])
-@login_required
+@permission_required(QUERY_PERMISSION)
 def update(qid):
     db = get_db()
+    qry = _load_open_query(db, qid)
+    if not qry:
+        return redirect(url_for('queries.index'))
+
     new_status    = request.form.get('status', '').strip()
     new_priority  = request.form.get('priority', '').strip()
     new_assigned  = request.form.get('assigned_to', '').strip() or None
@@ -863,10 +1322,26 @@ def update(qid):
     due_date      = request.form.get('due_date', '').strip() or None
     action_taken  = request.form.get('action_taken', '').strip() or None
 
-    qry = db.execute("SELECT status, priority, assigned_to FROM queries WHERE id=?", (qid,)).fetchone()
-    if not qry:
-        flash('Query not found.', 'warning')
-        return redirect(url_for('queries.index'))
+    back = redirect(url_for('queries.detail', qid=qid))
+    allowed = {k for k, _ in status_options_for(qry['category'])}
+    if new_status and new_status != qry['status']:
+        if new_status not in allowed:
+            flash('That status cannot be set here. Closing uses Close Query; approvals are decided by a manager.', 'error')
+            return back
+        if qry['approval_status'] == 'pending':
+            flash('This query is waiting for a manager decision — its status changes once approved or rejected.', 'error')
+            return back
+        if new_status == 'resolved':
+            problem = _closing_blocker(db, qry, owing_ack=False)
+            if problem:
+                flash(problem, 'error')
+                return back
+    if new_priority and new_priority not in dict(PRIORITIES):
+        new_priority = ''
+    if new_dept and new_dept not in DEPARTMENTS:
+        new_dept = qry['department']
+    if new_assigned and not new_assigned.isdigit():
+        new_assigned = None
 
     db.execute("""
         UPDATE queries SET status=?, priority=?, assigned_to=?, department=?,
@@ -881,85 +1356,218 @@ def update(qid):
 
     # Auto-log status/assignment changes
     if new_status and new_status != qry['status']:
-        _log_note(db, qid, f"Status changed to {new_status.replace('_',' ').title()}",
-                  'status_change')
+        _log_note(db, qid, f"Status changed to {_status_label(new_status)}", 'status_change')
     if new_assigned and str(new_assigned) != str(qry['assigned_to'] or ''):
         user = db.execute("SELECT full_name FROM users WHERE id=?", (int(new_assigned),)).fetchone()
         _log_note(db, qid,
                   f"Assigned to {user['full_name'] if user else 'unknown'}",
                   'assignment')
     db.commit()
-    return redirect(url_for('queries.detail', qid=qid))
+    return back
+
+
+def _closing_blocker(db, qry, owing_ack):
+    """Why this query can't be resolved/closed yet, or None."""
+    if qry['approval_status'] == 'pending':
+        return 'A manager has not decided the approval on this query yet.'
+    if qry['member_id'] and qry['category'] in OWING_SENSITIVE_CATEGORIES:
+        summary = _account_summary(db, qry['member_id'])
+        if summary and summary['is_owing'] and not owing_ack:
+            return (
+                f"This account is owing R{summary['total_outstanding']:,.2f}. "
+                "Use Close Query and confirm the client was informed the outstanding amount "
+                "must be settled / will be added before closing this query."
+            )
+    return None
 
 
 # ── Close ─────────────────────────────────────────────────────────────────────
 @queries_bp.route('/<int:qid>/close', methods=['POST'])
-@login_required
+@permission_required(QUERY_PERMISSION)
 def close(qid):
     db = get_db()
+    qry = _load_open_query(db, qid)
+    if not qry:
+        return redirect(url_for('queries.detail', qid=qid))
     resolution = request.form.get('resolution_notes', '').strip()
+    reason = request.form.get('closure_reason', '').strip()
+    back = redirect(url_for('queries.detail', qid=qid))
 
+    if reason not in dict(CLOSURE_REASONS):
+        flash('Choose a closure reason.', 'error')
+        return back
+    if not resolution:
+        flash('Add resolution notes — what was done for the member.', 'error')
+        return back
     # Cancellation/Freeze on an owing account: the agent must confirm the client
     # was informed the outstanding amount will be added before we proceed.
-    qry = db.execute("SELECT category, member_id FROM queries WHERE id=?", (qid,)).fetchone()
-    if qry and qry['member_id'] and qry['category'] in OWING_SENSITIVE_CATEGORIES:
-        summary = _account_summary(db, qry['member_id'])
-        if summary and summary['is_owing'] and not request.form.get('owing_ack'):
-            flash(
-                f"This account is owing R{summary['total_outstanding']:,.2f}. "
-                "Confirm the client was informed the outstanding amount must be "
-                "settled / will be added before closing this query.",
-                'error'
-            )
-            return redirect(url_for('queries.detail', qid=qid))
+    problem = _closing_blocker(db, qry, owing_ack=bool(request.form.get('owing_ack')))
+    if problem:
+        flash(problem, 'error')
+        return back
 
     db.execute("""
-        UPDATE queries SET status='closed', resolution_notes=?,
+        UPDATE queries SET status='closed', resolution_notes=?, closure_reason=?,
                closed_by=?, closed_at=datetime('now','localtime'),
                updated_at=datetime('now','localtime')
         WHERE id=?
-    """, (resolution, session.get('user_id'), qid))
+    """, (resolution, reason, session.get('user_id'), qid))
     _log_note(db, qid,
-              f"Query closed. {('Resolution: ' + resolution) if resolution else ''}",
+              f"Query closed — {dict(CLOSURE_REASONS)[reason]}. Resolution: {resolution}",
               'closed')
     db.commit()
     flash('Query closed.', 'success')
-    return redirect(url_for('queries.detail', qid=qid))
+    return back
 
 
 # ── Escalate ──────────────────────────────────────────────────────────────────
 @queries_bp.route('/<int:qid>/escalate', methods=['POST'])
-@login_required
+@permission_required(QUERY_PERMISSION)
 def escalate(qid):
     db = get_db()
+    qry = _load_open_query(db, qid)
+    if not qry:
+        return redirect(url_for('queries.index'))
     reason = request.form.get('reason', '').strip()
+    if not reason:
+        flash('Give a reason for escalating.', 'error')
+        return redirect(url_for('queries.detail', qid=qid))
+    # An escalation goes to Management and lands on today's follow-up list,
+    # so it shows on every manager's follow-up badge straight away.
     db.execute("""
-        UPDATE queries SET status='escalated', priority='urgent',
+        UPDATE queries SET status=CASE WHEN status='pending_approval' THEN status ELSE 'escalated' END,
+               priority='urgent', department='Management', follow_up_date=?,
                updated_at=datetime('now','localtime')
         WHERE id=?
-    """, (qid,))
-    _log_note(db, qid,
-              f"Escalated to management. {('Reason: ' + reason) if reason else ''}",
-              'escalated')
+    """, (date.today().isoformat(), qid))
+    _log_note(db, qid, f"Escalated to management. Reason: {reason}", 'escalated')
     db.commit()
-    flash('Query escalated.', 'success')
+    flash('Query escalated to management.', 'success')
     return redirect(url_for('queries.detail', qid=qid))
+
+
+# ── Approval ──────────────────────────────────────────────────────────────────
+@queries_bp.route('/<int:qid>/request-approval', methods=['POST'])
+@permission_required(QUERY_PERMISSION)
+def request_approval(qid):
+    """An agent proposes a discount (or a member cancellation) on an open
+    query and sends it to a manager."""
+    db = get_db()
+    qry = _load_open_query(db, qid)
+    back = redirect(url_for('queries.detail', qid=qid))
+    if not qry:
+        return back
+    if qry['approval_status'] == 'pending':
+        flash('This query is already waiting for a manager.', 'warning')
+        return back
+    reason = request.form.get('approval_reason', '').strip()
+    if not reason:
+        flash('Explain what you are asking the manager to approve.', 'error')
+        return back
+
+    proposed = qry['proposed_discount_pct'] or 0
+    asks = []
+    if qry['member_id'] and qry['category'] in PAYMENT_WORKFLOW_CATEGORIES:
+        summary = _account_summary(db, qry['member_id'])
+        if summary and summary['is_owing']:
+            proposed, error = _proposed_discount(request.form, summary)
+            if error:
+                flash(error, 'error')
+                return back
+            asks.append(f'Discount {proposed:g}% ({summary["discount_range_label"]} for '
+                        f'{summary["arrears_months"]} month(s) in arrears)')
+    cancel_member = (qry['category'] == 'cancellation' and qry['member_id']
+                     and not qry['member_cancelled'] and request.form.get('cancel_member') == '1')
+    if cancel_member:
+        asks.append('Cancel the member account')
+    asks.append(reason)
+
+    db.execute("""
+        UPDATE queries SET approval_status='pending', status='pending_approval',
+               proposed_discount_pct=?, approval_reason=?, approval_notes=NULL,
+               cancel_member_requested=CASE WHEN ? THEN 1 ELSE cancel_member_requested END,
+               manager_approval_required=1,
+               approval_requested_by=?, approval_requested_at=datetime('now','localtime'),
+               manager_approved_by=NULL, manager_approved_at=NULL,
+               updated_at=datetime('now','localtime')
+        WHERE id=?
+    """, (proposed, '; '.join(asks), 1 if cancel_member else 0, session.get('user_id'), qid))
+    _log_note(db, qid, 'Manager approval requested: ' + '; '.join(asks), 'approval')
+    db.commit()
+    flash('Sent for manager approval.', 'success')
+    return back
+
+
+@queries_bp.route('/<int:qid>/decide', methods=['POST'])
+@roles_required('admin', 'manager')
+def decide(qid):
+    """A manager approves or rejects what the agent proposed."""
+    db = get_db()
+    qry = _load_open_query(db, qid)
+    back = redirect(url_for('queries.detail', qid=qid))
+    if not qry:
+        return back
+    if qry['approval_status'] != 'pending':
+        flash('There is nothing waiting for approval on this query.', 'warning')
+        return back
+    decision = request.form.get('decision', '').strip()
+    notes = request.form.get('approval_notes', '').strip()
+    if decision not in ('approved', 'rejected'):
+        flash('Choose approve or reject.', 'error')
+        return back
+    if decision == 'rejected' and not notes:
+        flash('Say why the request is rejected so the agent can tell the member.', 'error')
+        return back
+    if qry['approval_requested_by'] and qry['approval_requested_by'] == session.get('user_id') \
+            and session.get('role') != 'admin':
+        flash('You requested this approval — another manager must decide it.', 'error')
+        return back
+
+    db.execute("""
+        UPDATE queries SET approval_status=?, approval_notes=?, status='in_progress',
+               manager_approved_by=?, manager_approved_at=datetime('now','localtime'),
+               updated_at=datetime('now','localtime')
+        WHERE id=?
+    """, (decision, notes or None, session.get('user_id'), qid))
+    label = 'Approved' if decision == 'approved' else 'Rejected'
+    _log_note(db, qid, f"{label} by manager." + (f" Notes: {notes}" if notes else ''), 'approval')
+    audit_log(db, f'query_approval_{decision}', old_value=f'query:{qid}',
+              new_value=(qry['approval_reason'] or '')[:500])
+    if decision == 'approved' and qry['cancel_member_requested'] and qry['member_id'] \
+            and not qry['member_cancelled']:
+        _cancel_member(db, qid, qry['member_id'])
+    db.commit()
+    flash(f'Request {label.lower()}.', 'success')
+    return back
 
 
 # ── Convert to PTP ────────────────────────────────────────────────────────────
 @queries_bp.route('/<int:qid>/convert-ptp', methods=['POST'])
-@login_required
+@permission_required(QUERY_PERMISSION)
 def convert_ptp(qid):
+    """Open the member's PTP form for this query. The PTP itself is created in
+    the PTP module; when it is saved it is linked back to this query (ptp_id)
+    and the query follows its outcome."""
     db  = get_db()
-    qry = db.execute("SELECT * FROM queries WHERE id=?", (qid,)).fetchone()
-    if not qry or not qry['member_id']:
+    qry = _load_open_query(db, qid)
+    if not qry:
+        return redirect(url_for('queries.index'))
+    back = redirect(url_for('queries.detail', qid=qid))
+    if not qry['member_id']:
         flash('Query must be linked to a member to convert to PTP.', 'error')
-        return redirect(url_for('queries.detail', qid=qid))
-    _log_note(db, qid, 'Converted to PTP — redirected to member PTP tab.', 'ptp')
+        return back
+    if qry['approval_status'] == 'pending':
+        flash('Wait for the manager decision before creating the PTP.', 'error')
+        return back
+    if qry['ptp_id']:
+        ptp = db.execute("SELECT ptp_status FROM ptp_agreements WHERE id=?", (qry['ptp_id'],)).fetchone()
+        if ptp and ptp['ptp_status'] in ('pending', 'partially_paid'):
+            flash(f"This query is already linked to PTP #{qry['ptp_id']}.", 'warning')
+            return back
+    _log_note(db, qid, 'PTP form opened from this query.', 'ptp')
     db.execute("""
-        UPDATE queries SET status='in_progress', category='ptp_collections',
-               updated_at=datetime('now','localtime')
-        WHERE id=?
+        UPDATE queries SET status='in_progress', updated_at=datetime('now','localtime')
+        WHERE id=? AND status IN ('open','arrears_confirmed','discount_offered','pending_member','pending_admin')
     """, (qid,))
     db.commit()
-    return redirect(url_for('members.member_detail', mid=qry['member_id']) + '#ptp')
+    return redirect(url_for('members.member_detail', mid=qry['member_id'], from_query=qid) + '#ptp')

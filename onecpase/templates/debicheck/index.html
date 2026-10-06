@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% block title %}DebiCheck | 1Cpase{% endblock %}
+{% block title %}DebiCheck | 1Cpace{% endblock %}
 {% block page_title %}DebiCheck{% endblock %}
 {% block content %}
+<header class="page-header"><div><h1>DebiCheck</h1></div></header>
 <div class="kpi-grid">
   <div class="kpi-card blue"><div class="kpi-label">Total Mandates</div><div class="kpi-value">{{ mandates|length }}</div></div>
   <div class="kpi-card orange"><div class="kpi-label">Pending</div><div class="kpi-value">{{ counts.get('pending',0) }}</div></div>
@@ -27,19 +28,19 @@
   </div>
   <div class="card-body">
     {% if mandates %}
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead><tr><th>#</th><th>Member</th><th>Staff No.</th><th>Amount</th><th>Submit Date</th><th>Status</th><th></th></tr></thead>
       <tbody>{% for d in mandates %}<tr>
         <td>{{ d.id }}</td>
         <td>{{ d.first_name }} {{ d.last_name }}</td>
         <td><strong>{{ d.client_ref2 }}</strong></td>
-        <td>R{{ '%.2f'|format(d.instalment_amount or 0) }}</td>
+        <td class="num">R{{ '%.2f'|format(d.instalment_amount or 0) }}</td>
         <td>{{ d.submit_date }}</td>
         <td><span class="badge {% if d.status=='active' %}badge-success{% elif d.status in ('failed','rejected') %}badge-danger{% else %}badge-warning{% endif %}">{{ d.status }}</span></td>
         <td><a href="{{ url_for('debicheck.detail',mandate_id=d.id) }}" class="btn btn-ghost btn-sm">View</a></td>
       </tr>{% endfor %}</tbody>
-    </table>
-    {% else %}<div class="empty-state"><div class="empty-icon">🏦</div><p>{% if search %}No mandates match "{{ search }}".{% else %}No DebiCheck mandates yet.{% endif %}</p>{% if not search %}<a href="{{ url_for('debicheck.add') }}" class="btn btn-primary">Create First Mandate</a>{% endif %}</div>{% endif %}
+    </table></div>
+    {% else %}<div class="empty-state"><div class="empty-icon"></div><p>{% if search %}No mandates match "{{ search }}".{% else %}No DebiCheck mandates yet.{% endif %}</p>{% if not search %}<a href="{{ url_for('debicheck.add') }}" class="btn btn-primary">Create First Mandate</a>{% endif %}</div>{% endif %}
   </div>
 </div>
 {% endblock %}

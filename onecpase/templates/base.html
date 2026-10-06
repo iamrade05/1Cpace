@@ -1,587 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-ZA">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>{% block title %}1Cpase{% endblock %}</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <title>{% block title %}1Cpace{% endblock %}</title>
 
-    body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      background: #002e45;
-      color: #002e45;
-      display: flex;
-      min-height: 100vh;
-      overflow-x: hidden;
-    }
-
-    /* ── Sidebar ── */
-    .sidebar {
-      width: 230px;
-      min-height: 100vh;
-      background: #002e45;
-      color: #fff;
-      display: flex;
-      flex-direction: column;
-      position: fixed;
-      top: 0; left: 0; bottom: 0;
-      z-index: 100;
-    }
-    .sidebar-brand {
-      padding: 24px 20px 16px;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-    }
-    .sidebar-brand h1 {
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: #b0842d;
-      letter-spacing: 1px;
-    }
-    .sidebar-brand small {
-      font-size: 0.7rem;
-      color: rgba(255,255,255,0.5);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .sidebar-user {
-      padding: 12px 20px;
-      font-size: 0.8rem;
-      color: rgba(255,255,255,0.6);
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-    }
-    .sidebar-user strong { color: #fff; display: block; font-size: 0.85rem; }
-    .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
-    .nav-section {
-      padding: 8px 20px 4px;
-      font-size: 0.65rem;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      color: rgba(255,255,255,0.35);
-      font-weight: 600;
-    }
-    .nav-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 20px;
-      color: rgba(255,255,255,0.75);
-      text-decoration: none;
-      font-size: 0.875rem;
-      transition: all 0.15s;
-      border-left: 3px solid transparent;
-    }
-    .nav-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
-    .nav-item.active {
-      background: rgba(176,132,45,0.16);
-      color: #b0842d;
-      border-left-color: #b0842d;
-      font-weight: 600;
-    }
-    .nav-item .icon { width: 18px; text-align: center; font-size: 1rem; }
-    .nav-accordion-toggle {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      width: 100%;
-      background: none;
-      border: none;
-      font: inherit;
-      cursor: pointer;
-      text-align: left;
-    }
-    .nav-accordion-toggle:hover { color: rgba(255,255,255,0.6); }
-    .nav-accordion-toggle:focus-visible { outline: 2px solid #b0842d; outline-offset: 2px; }
-    .nav-accordion-chevron { font-size: 0.6rem; transition: transform 0.15s; }
-    .nav-accordion-toggle[aria-expanded="true"] .nav-accordion-chevron { transform: rotate(90deg); }
-    .nav-accordion-panel[hidden] { display: none; }
-    @media (prefers-reduced-motion: reduce) {
-      .nav-accordion-chevron { transition: none; }
-    }
-    .sidebar-footer {
-      padding: 16px 20px;
-      border-top: 1px solid rgba(255,255,255,0.08);
-    }
-    .sidebar-footer a {
-      color: rgba(255,255,255,0.5);
-      text-decoration: none;
-      font-size: 0.8rem;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .sidebar-footer a:hover { color: #b0842d; }
-
-    /* ── Main content ── */
-    .main {
-      margin-left: 230px;
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
-    }
-    .topbar {
-      background: #fff;
-      padding: 14px 28px;
-      border-bottom: 1px solid #e5e7eb;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 58px;
-      position: sticky;
-      top: 0;
-      z-index: 50;
-    }
-    .topbar-leading { display: flex; align-items: center; gap: 12px; min-width: 0; }
-    .topbar-title { font-size: 1.1rem; font-weight: 600; color: #002e45; }
-    .topbar-meta { font-size: 0.8rem; color: #6b7280; }
-    .power-user-banner {
-      background: #fff3cd; color: #6b4f00; border-bottom: 1px solid #e8c75b;
-      padding: 9px 28px; display: flex; align-items: center;
-      justify-content: space-between; gap: 16px; font-size: 0.82rem; font-weight: 650;
-    }
-    .power-user-banner form { margin: 0; }
-    .power-user-banner button {
-      background: #6b4f00; color: #fff; border: 0; border-radius: 6px;
-      padding: 7px 11px; cursor: pointer; font-weight: 700;
-    }
-    .menu-toggle {
-      display: none;
-      width: 40px;
-      height: 40px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      background: #fff;
-      color: #002e45;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      flex: 0 0 auto;
-    }
-    .menu-toggle svg { width: 21px; height: 21px; }
-    .sidebar-backdrop {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.52);
-      z-index: 90;
-      opacity: 0;
-      transition: opacity 0.2s ease;
-    }
-    .content { padding: 28px; flex: 1; }
-
-    /* ── Flash messages ── */
-    .alerts { margin-bottom: 20px; }
-    .alert {
-      padding: 12px 16px;
-      border-radius: 6px;
-      margin-bottom: 8px;
-      font-size: 0.875rem;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .alert-success { background: #d1fae5; color: #065f46; border-left: 4px solid #10b981; }
-    .alert-error   { background: #fee2e2; color: #991b1b; border-left: 4px solid #ef4444; }
-    .alert-warning { background: #fef3c7; color: #92400e; border-left: 4px solid #f59e0b; }
-    .alert-info    { background: #dbeafe; color: #1e40af; border-left: 4px solid #3b82f6; }
-
-    /* ── Cards & KPIs ── */
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 16px;
-      margin-bottom: 24px;
-    }
-    .kpi-card {
-      background: #fff;
-      border-radius: 10px;
-      padding: 20px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
-      border-top: 4px solid #b0842d;
-    }
-    .kpi-card.green  { border-top-color: #10b981; }
-    .kpi-card.blue   { border-top-color: #3b82f6; }
-    .kpi-card.orange { border-top-color: #f59e0b; }
-    .kpi-card.purple { border-top-color: #8b5cf6; }
-    .kpi-label { font-size: 0.75rem; text-transform: uppercase; color: #6b7280; letter-spacing: 0.5px; margin-bottom: 8px; }
-    .kpi-value { font-size: 2rem; font-weight: 700; color: #002e45; line-height: 1; }
-    .kpi-sub   { font-size: 0.75rem; color: #9ca3af; margin-top: 6px; }
-
-    /* ── Tables ── */
-    .card {
-      background: #fff;
-      border-radius: 10px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.07);
-      overflow: hidden;
-      margin-bottom: 24px;
-    }
-    .card-header {
-      padding: 16px 20px;
-      border-bottom: 1px solid #f3f4f6;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .card-header h2 { font-size: 0.95rem; font-weight: 600; color: #002e45; }
-    .card-body { padding: 0; }
-    table { width: 100%; border-collapse: collapse; }
-    thead th {
-      background: #f9fafb;
-      padding: 10px 16px;
-      text-align: left;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      color: #6b7280;
-      letter-spacing: 0.5px;
-      font-weight: 600;
-      border-bottom: 1px solid #e5e7eb;
-    }
-    tbody td {
-      padding: 12px 16px;
-      font-size: 0.875rem;
-      border-bottom: 1px solid #f3f4f6;
-      vertical-align: middle;
-    }
-    tbody tr:last-child td { border-bottom: none; }
-    tbody tr:hover { background: #f9fafb; }
-
-    /* ── Badges ── */
-    .badge {
-      display: inline-block;
-      padding: 3px 10px;
-      border-radius: 20px;
-      font-size: 0.72rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-    .badge-success { background: #d1fae5; color: #065f46; }
-    .badge-danger  { background: #fee2e2; color: #991b1b; }
-    .badge-warning { background: #fef3c7; color: #92400e; }
-    .badge-info    { background: #dbeafe; color: #1e40af; }
-    .badge-gray    { background: #f3f4f6; color: #6b7280; }
-
-    /* ── Buttons ── */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 16px;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      font-weight: 500;
-      text-decoration: none;
-      border: none;
-      cursor: pointer;
-      transition: opacity 0.15s;
-    }
-    .btn:hover { opacity: 0.85; }
-    .btn-primary  { background: #b0842d; color: #fff; }
-    .btn-secondary{ background: #002e45; color: #fff; }
-    .btn-success  { background: #10b981; color: #fff; }
-    .btn-warning  { background: #f59e0b; color: #fff; }
-    .btn-danger   { background: #ef4444; color: #fff; }
-    .btn-ghost    { background: #f3f4f6; color: #374151; }
-    .btn-sm { padding: 5px 10px; font-size: 0.78rem; }
-
-    /* ── Forms ── */
-    .form-card { background: #002e45; border-radius: 12px; padding: 28px 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border: 1px solid #e5e7eb; }
-    .form-group { margin-bottom: 0; }
-    .form-group label { display: block; font-size: 0.825rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
-    .form-group input,
-    .form-group select,
-    .form-group textarea {
-      width: 100%;
-      padding: 9px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: 0.875rem;
-      color: #002e45;
-      background: #fff;
-      transition: border-color 0.15s;
-    }
-    .form-group input:focus,
-    .form-group select:focus,
-    .form-group textarea:focus {
-      outline: none;
-      border-color: #b0842d;
-      box-shadow: 0 0 0 3px rgba(24,95,165,0.1);
-    }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .form-actions { margin-top: 24px; display: flex; gap: 10px; }
-
-    /* ── Form helpers ── */
-    .form-label {
-      display: block; font-size: 0.8rem; font-weight: 700;
-      color: #a7afb8; margin-bottom: 7px; letter-spacing: 0.2px;
-    }
-    .form-card .form-label { color: #cbd5e1; }
-    .form-card .section-heading { color: #f8fafc; border-bottom-color: #475569; }
-    .form-card .light-panel .form-label { color: #374151; }
-    .form-label .req { color: #ef4444; margin-left: 2px; }
-    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px; }
-    @media (max-width: 640px) { .form-grid-2 { grid-template-columns: 1fr; } }
-    .form-group { display: flex; flex-direction: column; }
-    .form-control {
-      width: 100%; padding: 11px 14px;
-      border: 1.5px solid #d1d5db; border-radius: 8px;
-      font-size: 0.9rem; color: #002e45; background: #fff;
-      transition: border-color 0.15s, box-shadow 0.15s;
-      line-height: 1.4;
-    }
-    .form-control::placeholder { color: #e5e7ec; font-size:0.85rem; }
-    .form-control:focus { outline: none; border-color: #b0842d; box-shadow: 0 0 0 3px rgba(176,132,45,0.16); }
-    .form-control:hover:not(:focus) { border-color: #9ca3af; }
-    select.form-control { cursor: pointer; }
-    .form-hint { font-size: 0.75rem; color: #e5e7ec; margin-top: 4px; }
-
-    /* ── Table card ── */
-    .table-card {
-      background: #fff; border-radius: 10px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow: auto;
-    }
-    .data-table { width: 100%; border-collapse: collapse; }
-    .data-table thead th {
-      background: #f9fafb; padding: 10px 16px; text-align: left;
-      font-size: 0.75rem; text-transform: uppercase; color: #e5e7ec;
-      letter-spacing: 0.5px; font-weight: 600; border-bottom: 1px solid #e5e7eb;
-    }
-    .data-table tbody td {
-      padding: 11px 16px; font-size: 0.875rem;
-      border-bottom: 1px solid #f3f4f6; vertical-align: middle;
-    }
-    .data-table tbody tr:last-child td { border-bottom: none; }
-    .data-table tbody tr:hover { background: #f9fafb; }
-
-    /* ── Empty state ── */
-    .empty-state {
-      text-align: center;
-      padding: 48px 20px;
-      color: #9ca3af;
-    }
-    .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; }
-    .empty-state p { margin-bottom: 16px; }
-
-    /* ── Responsive app shell ── */
-    @media (max-width: 1024px) {
-      .sidebar {
-        width: min(290px, 86vw);
-        transform: translateX(-100%);
-        box-shadow: 12px 0 32px rgba(0,0,0,0.24);
-        transition: transform 0.22s ease;
-      }
-      .sidebar.is-open { transform: translateX(0); }
-      .sidebar-backdrop { display: block; pointer-events: none; }
-      .sidebar-backdrop.is-open { opacity: 1; pointer-events: auto; }
-      body.nav-open { overflow: hidden; }
-      .main { margin-left: 0; width: 100%; min-width: 0; }
-      .menu-toggle { display: inline-flex; }
-      .content { padding: 22px; min-width: 0; }
-      .card-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-      .card-body > table { min-width: 680px; }
-      .table-card { -webkit-overflow-scrolling: touch; }
-      .data-table { min-width: 680px; }
-      .content [style*="grid-template-columns:1fr 360px"],
-      .content [style*="grid-template-columns:1fr 340px"],
-      .content [style*="grid-template-columns:repeat(3,1fr)"] {
-        grid-template-columns: 1fr !important;
-      }
-    }
-
-    @media (max-width: 768px) {
-      .topbar { padding: 10px 16px; }
-      .topbar-title { font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .topbar-meta { display: none; }
-      .content { padding: 16px; }
-      .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-      .kpi-card { padding: 16px; }
-      .kpi-value { font-size: 1.65rem; }
-      .form-card { padding: 20px; }
-      .form-row, .form-grid-2 { grid-template-columns: 1fr; }
-      .form-actions { flex-wrap: wrap; }
-      .card-header { align-items: flex-start; gap: 12px; flex-wrap: wrap; }
-      .content [style*="grid-template-columns:1fr 1fr"],
-      .content [style*="grid-template-columns:1fr 1fr 1fr"] {
-        grid-template-columns: 1fr !important;
-      }
-      .content [style*="justify-content:space-between"] { flex-wrap: wrap; gap: 10px; }
-      .content [style*="min-width:300px"],
-      .content [style*="min-width:280px"],
-      .content [style*="min-width:260px"],
-      .content [style*="min-width:240px"] { min-width: 0 !important; width: 100%; }
-      .tab-nav { scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
-      .tab-btn { flex: 0 0 auto !important; min-width: 108px; scroll-snap-align: start; }
-      input, select, textarea { max-width: 100%; }
-    }
-
-    @media (max-width: 480px) {
-      .content { padding: 12px; }
-      .kpi-grid { grid-template-columns: 1fr; }
-      .form-card { padding: 16px; border-radius: 10px; }
-      .btn { min-height: 40px; justify-content: center; }
-      .form-actions .btn { flex: 1 1 140px; }
-      .alert { align-items: flex-start; }
-      .card, .table-card { border-radius: 8px; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .sidebar, .sidebar-backdrop { transition: none; }
-    }
-
-    /* -- 1Cpase UI refresh -- */
-    :root {
-      --fp-bg: #f4f5f6;
-      --fp-sidebar: #002e45;
-      --fp-sidebar-2: #001f30;
-      --fp-surface: #ffffff;
-      --fp-text: #002e45;
-      --fp-muted: #65717a;
-      --fp-border: #dfe2e6;
-      --fp-primary: #b0842d;
-      --fp-primary-strong: #8d6720;
-      --fp-green: #05835f;
-      --fp-orange: #b0842d;
-      --fp-blue: #002e45;
-      --fp-purple: #6f6071;
-      --fp-shadow: 0 14px 34px rgba(0, 46, 69, 0.10);
-      --fp-shadow-sm: 0 4px 14px rgba(0, 46, 69, 0.08);
-    }
-
-    body {
-      background: radial-gradient(circle at top left, rgba(176, 132, 45, 0.16), transparent 30rem), var(--fp-bg);
-      color: var(--fp-text);
-      font-family: "Segoe UI", "Inter", Arial, sans-serif;
-    }
-
-    .sidebar {
-      background: linear-gradient(180deg, var(--fp-sidebar) 0%, var(--fp-sidebar-2) 100%);
-      border-right: 1px solid rgba(193,194,197,0.16);
-      box-shadow: 10px 0 30px rgba(0, 46, 69, 0.18);
-    }
-    .sidebar-brand { padding: 22px 22px 18px; border-bottom-color: rgba(193,194,197,0.16); }
-    .sidebar-brand h1 { color: #fff; letter-spacing: 0; font-size: 1.45rem; }
-    .sidebar-brand small { color: rgba(255,255,255,0.52); letter-spacing: 1.2px; }
-    .sidebar-brand .brand-logo {
-      width: 58px; height: 58px; border-radius: 13px; background: #fff;
-      display: flex; align-items: center; justify-content: center;
-      padding: 8px; margin-bottom: 12px; box-shadow: 0 6px 16px rgba(0,0,0,0.22);
-      border: 1px solid rgba(176,132,45,0.34);
-    }
-    .sidebar-brand .brand-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
-    .sidebar-user {
-      margin: 14px 14px 8px;
-      padding: 13px 14px;
-      border: 1px solid rgba(193,194,197,0.16);
-      border-radius: 8px;
-      background: rgba(255,255,255,0.04);
-    }
-    .nav-section { color: rgba(193,194,197,0.72); padding-top: 14px; }
-    .nav-badge { margin-left:auto; background:#e94560; color:#fff; border-radius:20px;
-                 padding:0 7px; font-size:.7rem; font-weight:700; line-height:1.6; }
-    .nav-item {
-      margin: 3px 10px;
-      padding: 10px 12px;
-      border-left: 0;
-      border-radius: 8px;
-      color: rgba(255,255,255,0.76);
-      font-weight: 550;
-    }
-    .nav-item:hover { background: rgba(176,132,45,0.14); transform: translateX(1px); }
-    .nav-item.active {
-      background: rgba(176,132,45,0.22);
-      color: #fff;
-      border-left-color: transparent;
-      box-shadow: inset 0 0 0 1px rgba(176,132,45,0.36);
-    }
-    .nav-item .icon {
-      width: 28px;
-      height: 28px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 7px;
-      background: rgba(193,194,197,0.12);
-      font-size: 0.95rem;
-    }
-
-    .main { background: transparent; }
-    .topbar {
-      margin: 14px 18px 0;
-      min-height: 64px;
-      border: 1px solid var(--fp-border);
-      border-radius: 8px;
-      background: rgba(255,255,255,0.94);
-      box-shadow: var(--fp-shadow-sm);
-      backdrop-filter: blur(12px);
-    }
-    .topbar-title { color: var(--fp-text); font-weight: 750; letter-spacing: 0; }
-    .topbar-meta { color: var(--fp-muted); }
-    .content { padding: 24px 28px 32px; }
-
-    .card, .table-card, .kpi-card, .form-card {
-      border: 1px solid var(--fp-border);
-      border-radius: 8px;
-      box-shadow: var(--fp-shadow-sm);
-    }
-    .card, .table-card, .kpi-card { background: var(--fp-surface); }
-    .card-header { background: linear-gradient(180deg, #fff, #f8f8f7); border-bottom-color: var(--fp-border); }
-    .card-header h2 { font-weight: 750; color: var(--fp-text); }
-    .kpi-card { border-top-width: 0; position: relative; overflow: hidden; }
-    .kpi-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--fp-primary); }
-    .kpi-card.green::before { background: var(--fp-green); }
-    .kpi-card.blue::before { background: var(--fp-blue); }
-    .kpi-card.orange::before { background: var(--fp-orange); }
-    .kpi-card.purple::before { background: var(--fp-purple); }
-    .kpi-label, thead th, .data-table thead th { color: #7d858a; letter-spacing: 0.08em; font-weight: 800; }
-    .kpi-value { color: var(--fp-text); letter-spacing: 0; }
-
-    table { background: #fff; }
-    thead th, .data-table thead th { background: #f6f6f4; border-bottom-color: var(--fp-border); }
-    tbody td, .data-table tbody td { border-bottom-color: #eceeef; color: #17394a; }
-    tbody tr:hover, .data-table tbody tr:hover { background: #fbf8f0; }
-
-    .btn {
-      border-radius: 8px;
-      min-height: 38px;
-      padding: 8px 14px;
-      font-weight: 750;
-      letter-spacing: 0;
-      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, opacity 0.15s ease;
-    }
-    .btn:hover { opacity: 1; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0, 46, 69, 0.12); }
-    .btn-primary { background: var(--fp-primary); color: #fff; }
-    .btn-primary:hover { background: var(--fp-primary-strong); }
-    .btn-secondary { background: #002e45; color: #fff; }
-    .btn-ghost { background: #f2f0ea; color: #002e45; box-shadow: inset 0 0 0 1px #ded6c6; }
-    .btn-sm { min-height: 34px; padding: 6px 11px; font-size: 0.78rem; }
-
-    .badge { border-radius: 999px; padding: 4px 9px; font-size: 0.68rem; letter-spacing: 0.06em; font-weight: 800; }
-    .badge-success { background: #dcfce7; color: #166534; }
-    .badge-danger { background: #fee2e2; color: #991b1b; }
-    .badge-warning { background: #fef3c7; color: #92400e; }
-    .badge-info { background: #edf0f1; color: #002e45; }
-    .badge-gray { background: #f1f2f3; color: #4f5a62; }
-
-    .form-card { background: #002e45; }
-    .form-control,
-    .form-group input,
-    .form-group select,
-    .form-group textarea { border-color: #d9e0ea; border-radius: 8px; }
-    .form-control:focus,
-    .form-group input:focus,
-    .form-group select:focus,
-    .form-group textarea:focus { border-color: var(--fp-primary); box-shadow: 0 0 0 4px rgba(176, 132, 45, 0.16); }
-  </style>
-  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
 </head>
-<body>
+<body class="oc">
 
 <aside class="sidebar" id="app-sidebar" aria-label="Primary navigation">
   <div class="sidebar-brand">
     <div class="brand-logo">
-      <img src="{{ url_for('static', filename='images/1cpase-logo.svg') }}" alt="1Cpase logo">
+      <img src="{{ url_for('static', filename='images/1cpase-logo.svg') }}" alt="1Cpace logo">
     </div>
     <h1>1Cpace</h1>
     <small>Gym Management</small>
@@ -595,7 +31,7 @@
   <nav class="sidebar-nav">
     <a href="{{ url_for('dashboard.dashboard') }}"
        class="nav-item {% if request.endpoint == 'dashboard.dashboard' %}active{% endif %}">
-      <span class="icon">📊</span> Dashboard
+      <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Dashboard
     </a>
 
     {# Top-level so reception can capture walk-ins without opening Sales CRM.
@@ -603,7 +39,7 @@
     {% if phase_open('sales') and has_perm('capture_leads') %}
     <a href="{{ url_for('leads.leads_add') }}"
        class="nav-item {% if request.endpoint == 'leads.leads_add' %}active{% endif %}">
-      <span class="icon">➕</span> Capture Prospect
+      <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Capture Prospect
     </a>
     {% endif %}
 
@@ -615,25 +51,25 @@
       {% if has_perm('view_leads') or has_perm('capture_leads') %}
       <a href="{{ url_for('leads.leads_index') }}"
          class="nav-item {% if request.blueprint == 'leads' %}active{% endif %}">
-        <span class="icon">🎯</span> Sales CRM
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Sales CRM
       </a>
       <a href="{{ url_for('dashboard.sales_dashboard') }}"
          class="nav-item {% if request.endpoint == 'dashboard.sales_dashboard' %}active{% endif %}">
-        <span class="icon">📈</span> Sales Funnel
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Sales Funnel
       </a>
       <a href="{{ url_for('call_list.index') }}"
          class="nav-item {% if request.blueprint == 'call_list' %}active{% endif %}">
-        <span class="icon">📋</span> Call List Upload
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Call List Upload
       </a>
       <a href="{{ url_for('first_month_collections.index') }}"
          class="nav-item {% if request.blueprint == 'first_month_collections' %}active{% endif %}">
-        <span class="icon">⚠️</span> First-Month Failed Debits
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> First-Month Failed Debits
       </a>
       {% endif %}
       {% if has_perm('all_members') %}
       <a href="{{ url_for('applications.applications_index') }}"
          class="nav-item {% if request.blueprint == 'applications' %}active{% endif %}">
-        <span class="icon">📋</span> Applications
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Applications
       </a>
       {% endif %}
     </div>
@@ -653,36 +89,36 @@
          of whether the WhatsApp/Facebook credentials are configured. #}
       <a href="{{ url_for('internal_comms.messages_index') }}"
          class="nav-item {% if request.endpoint and request.endpoint.startswith('internal_comms.') and 'announce' not in request.endpoint %}active{% endif %}">
-        <span class="icon">💬</span> Staff Messages
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Staff Messages
         {% if internal_unread.messages %}<span class="nav-badge">{{ internal_unread.messages }}</span>{% endif %}
       </a>
       <a href="{{ url_for('internal_comms.announcements_index') }}"
          class="nav-item {% if request.endpoint and 'announce' in request.endpoint %}active{% endif %}">
-        <span class="icon">📣</span> Announcements
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Announcements
         {% if internal_unread.announcements %}<span class="nav-badge">{{ internal_unread.announcements }}</span>{% endif %}
       </a>
       {% if has_perm('reception_whatsapp') %}
       <a href="{{ url_for('comms.whatsapp_inbox', number='reception') }}"
          class="nav-item {% if request.endpoint and request.endpoint.startswith('comms.whatsapp') and request.view_args and request.view_args.get('number')=='reception' %}active{% endif %}">
-        <span class="icon">💬</span> WhatsApp Reception
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> WhatsApp Reception
       </a>
       {% endif %}
       {% if has_perm('sales_whatsapp') %}
       <a href="{{ url_for('comms.whatsapp_inbox', number='sales') }}"
          class="nav-item {% if request.endpoint and request.endpoint.startswith('comms.whatsapp') and request.view_args and request.view_args.get('number')=='sales' %}active{% endif %}">
-        <span class="icon">💬</span> WhatsApp Sales
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> WhatsApp Sales
       </a>
       {% endif %}
       {% if has_perm('facebook_messages') %}
       <a href="{{ url_for('comms.facebook_messages_inbox') }}"
          class="nav-item {% if request.endpoint and request.endpoint.startswith('comms.facebook_') and request.endpoint != 'comms.facebook_comments_view' and 'comment' not in request.endpoint %}active{% endif %}">
-        <span class="icon">📨</span> Facebook Messages
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Facebook Messages
       </a>
       {% endif %}
       {% if has_perm('facebook_comments') %}
       <a href="{{ url_for('comms.facebook_comments_view') }}"
          class="nav-item {% if request.endpoint and 'comment' in request.endpoint %}active{% endif %}">
-        <span class="icon">💭</span> Facebook Comments
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Facebook Comments
       </a>
       {% endif %}
     </div>
@@ -695,18 +131,18 @@
     <div class="nav-accordion-panel" data-section-panel="members" hidden>
       <a href="{{ url_for('members.members_index') }}"
          class="nav-item {% if request.blueprint == 'members' %}active{% endif %}">
-        <span class="icon">👥</span> Members
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Members
       </a>
-      {% if phase_open('queries') %}
+      {% if phase_open('queries') and has_perm('daily_queries') %}
       <a href="{{ url_for('queries.index') }}"
          class="nav-item {% if request.blueprint == 'queries' %}active{% endif %}">
-        <span class="icon">🎫</span> Queries & Tickets
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Queries & Tickets
       </a>
       {% endif %}
       {% if phase_open('turnstile') %}
       <a href="{{ url_for('turnstile.index') }}"
          class="nav-item {% if request.blueprint == 'turnstile' %}active{% endif %}">
-        <span class="icon">🚪</span> Turnstile
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Turnstile
       </a>
       {% endif %}
     </div>
@@ -719,36 +155,40 @@
     <div class="nav-accordion-panel" data-section-panel="connections" hidden>
       <a href="{{ url_for('collections.dashboard') }}"
          class="nav-item {% if request.endpoint == 'collections.dashboard' %}active{% endif %}">
-        <span class="icon">📊</span> Collections Dashboard
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Collections Dashboard
       </a>
       <a href="{{ url_for('collections.case_queue') }}"
          class="nav-item {% if request.endpoint == 'collections.case_queue' %}active{% endif %}">
-        <span class="icon">🗂</span> Case Queue
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Case Queue
       </a>
       <a href="{{ url_for('collections.reports') }}"
          class="nav-item {% if request.endpoint == 'collections.reports' %}active{% endif %}">
-        <span class="icon">📑</span> Collections Reports
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Collections Reports
       </a>
       <a href="{{ url_for('collections.collections_index') }}"
          class="nav-item {% if request.blueprint == 'collections' and request.endpoint not in ('collections.call_queue', 'collections.call_profile', 'collections.dashboard', 'collections.case_queue', 'collections.reports') %}active{% endif %}">
-        <span class="icon">💳</span> Payment Records
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Payment Records
       </a>
       <a href="{{ url_for('collections.call_queue') }}"
          class="nav-item {% if request.endpoint == 'collections.call_queue' or request.endpoint == 'collections.call_profile' %}active{% endif %}">
-        <span class="icon">☎</span> Collections Call Queue
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Collections Call Queue
       </a>
       <a href="{{ url_for('ptp.ptp_dashboard') }}"
          class="nav-item {% if request.blueprint == 'ptp' and request.endpoint != 'ptp.legal_referrals' %}active{% endif %}">
-        <span class="icon">🔴</span> PTP / Collection
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> PTP / Collection
       </a>
       <a href="{{ url_for('ptp.legal_referrals') }}"
          class="nav-item {% if request.endpoint in ('ptp.legal_referrals', 'ptp.refer_to_legal', 'ptp.resolve_legal_referral') %}active{% endif %}">
-        <span class="icon">⚖</span> Legal Referrals
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Legal Referrals
+      </a>
+      <a href="{{ url_for('reconciliation.overview') }}"
+         class="nav-item {% if request.blueprint == 'reconciliation' %}active{% endif %}">
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Reconciliation
       </a>
       {% if session.get('role') in ('admin', 'manager') %}
       <a href="{{ url_for('collections.exception_queue') }}"
          class="nav-item {% if request.endpoint in ('collections.exception_queue', 'collections.exception_decide') %}active{% endif %}">
-        <span class="icon">⚠</span> Exception Queue
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Exception Queue
       </a>
       {% endif %}
     </div>
@@ -762,17 +202,17 @@
       {% if phase_open('access_report') and has_perm('all_collections') %}
       <a href="{{ url_for('access_report.index') }}"
          class="nav-item {% if request.blueprint == 'access_report' %}active{% endif %}">
-        <span class="icon">📋</span> Access Report
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Access Report
       </a>
       {% endif %}
       <a href="{{ url_for('debicheck.index') }}"
          class="nav-item {% if request.blueprint == 'debicheck' %}active{% endif %}">
-        <span class="icon">🏦</span> DebiCheck
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> DebiCheck
       </a>
       {% if has_perm('new_debicheck') %}
       <a href="{{ url_for('debicheck.add') }}"
          class="nav-item {% if request.endpoint == 'debicheck.add' %}active{% endif %}">
-        <span class="icon">＋</span> New DebiCheck
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> New DebiCheck
       </a>
       {% endif %}
     </div>
@@ -786,55 +226,55 @@
       {% if has_perm('fitness_module') %}
       <a href="{{ url_for('onboarding.today_list') }}"
          class="nav-item {% if request.blueprint == 'onboarding' %}active{% endif %}">
-        <span class="icon">🧭</span> New Member Onboarding
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> New Member Onboarding
       </a>
       {% endif %}
       {% if has_perm('classes') %}
       <a href="{{ url_for('fitness.fitness_index') }}"
          class="nav-item {% if request.endpoint and request.endpoint.startswith('fitness.fitness_') or request.endpoint in ('fitness.fitness_bookings', 'fitness.fitness_book', 'fitness.booking_cancel') %}active{% endif %}">
-        <span class="icon">🏋️</span> Classes
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Classes
       </a>
       {% endif %}
       {% if has_perm('assessments') %}
       <a href="{{ url_for('fitness.assessments_index') }}"
          class="nav-item {% if request.endpoint in ('fitness.assessments_index', 'fitness.assessment_add') %}active{% endif %}">
-        <span class="icon">📏</span> Assessments
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Assessments
       </a>
       {% endif %}
       {% if has_perm('workout_plans') %}
       <a href="{{ url_for('fitness.workout_plans_index') }}"
          class="nav-item {% if request.endpoint in ('fitness.workout_plans_index', 'fitness.workout_plan_add') %}active{% endif %}">
-        <span class="icon">📋</span> Workout Plans
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Workout Plans
       </a>
       {% endif %}
       {% if has_perm('dailies') %}
       <a href="{{ url_for('fitness.dailies_index') }}"
          class="nav-item {% if request.endpoint in ('fitness.dailies_index', 'fitness.daily_add') %}active{% endif %}">
-        <span class="icon">🗓️</span> Dailies
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Dailies
       </a>
       {% endif %}
       {% if has_perm('incident_log') %}
       <a href="{{ url_for('fitness.incidents_index') }}"
          class="nav-item {% if request.blueprint == 'fitness' and request.endpoint.startswith('fitness.incident') %}active{% endif %}">
-        <span class="icon">🚨</span> Incident Log
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Incident Log
       </a>
       {% endif %}
       {% if has_perm('body_matrix') %}
       <a href="{{ url_for('fitness.body_matrix_index') }}"
          class="nav-item {% if request.blueprint == 'fitness' and request.endpoint.startswith('fitness.body_matrix') %}active{% endif %}">
-        <span class="icon">📊</span> Body Matrix
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Body Matrix
       </a>
       {% endif %}
       {% if has_perm('nutrition_guide') %}
       <a href="{{ url_for('fitness.nutrition_index') }}"
          class="nav-item {% if request.endpoint in ('fitness.nutrition_index', 'fitness.nutrition_add') %}active{% endif %}">
-        <span class="icon">🥗</span> Nutrition Guide
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Nutrition Guide
       </a>
       {% endif %}
       {% if has_perm('supplements') %}
       <a href="{{ url_for('fitness.supplements_index') }}"
          class="nav-item {% if request.blueprint == 'fitness' and request.endpoint.startswith('fitness.supplement') %}active{% endif %}">
-        <span class="icon">💊</span> Supplements
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Supplements
       </a>
       {% endif %}
     </div>
@@ -847,7 +287,7 @@
     <div class="nav-accordion-panel" data-section-panel="operations" hidden>
       <a href="{{ url_for('operations.equipment_index') }}"
          class="nav-item {% if request.blueprint == 'operations' %}active{% endif %}">
-        <span class="icon">🏗️</span> Equipment
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Equipment
       </a>
     </div>
     {% endif %}
@@ -860,29 +300,29 @@
       {% if has_perm('hr_staff') %}
       <a href="{{ url_for('hr.staff_index') }}"
          class="nav-item {% if request.endpoint == 'hr.staff_index' or request.endpoint == 'hr.staff_add' or request.endpoint == 'hr.staff_edit' %}active{% endif %}">
-        <span class="icon">🧑‍💼</span> HR & Staff
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> HR & Staff
       </a>
       <a href="{{ url_for('hr.employee_index') }}"
          class="nav-item {% if request.blueprint == 'hr' and request.endpoint.startswith('hr.employee') %}active{% endif %}">
-        <span class="icon">📇</span> Employee Register
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Employee Register
       </a>
       {% endif %}
       {% if has_perm('hr_leave') or session.user_id %}
       <a href="{{ url_for('hr.leave_index') }}"
          class="nav-item {% if request.endpoint in ('hr.leave_index', 'hr.leave_request') %}active{% endif %}">
-        <span class="icon">🗓️</span> Leave
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Leave
       </a>
       {% endif %}
       {% if has_perm('hr_payroll') %}
       <a href="{{ url_for('hr.payroll_index') }}"
          class="nav-item {% if request.endpoint == 'hr.payroll_index' %}active{% endif %}">
-        <span class="icon">💰</span> Payroll
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Payroll
       </a>
       {% endif %}
       {% if has_perm('hr_timesheets') %}
       <a href="{{ url_for('hr.timesheets_index') }}"
          class="nav-item {% if request.blueprint == 'hr' and request.endpoint.startswith('hr.timesheet') %}active{% endif %}">
-        <span class="icon">⏱️</span> Timesheets
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Timesheets
       </a>
       {% endif %}
     </div>
@@ -895,31 +335,31 @@
     <div class="nav-accordion-panel" data-section-panel="analytics" hidden>
       <a href="{{ url_for('reports.index') }}?tab=overview"
          class="nav-item {% if request.endpoint == 'reports.index' and (request.args.get('tab','overview') == 'overview') %}active{% endif %}">
-        <span class="icon">📊</span> Overview
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Overview
       </a>
       <a href="{{ url_for('reports.index') }}?tab=membership"
          class="nav-item {% if request.endpoint == 'reports.index' and request.args.get('tab') == 'membership' %}active{% endif %}">
-        <span class="icon">👥</span> Membership
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Membership
       </a>
       <a href="{{ url_for('reports.index') }}?tab=finance"
          class="nav-item {% if request.endpoint == 'reports.index' and request.args.get('tab') == 'finance' %}active{% endif %}">
-        <span class="icon">💰</span> Finance
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Finance
       </a>
       <a href="{{ url_for('reports.index') }}?tab=arrears"
          class="nav-item {% if request.endpoint == 'reports.index' and request.args.get('tab') == 'arrears' %}active{% endif %}">
-        <span class="icon">📋</span> Arrears &amp; PTP
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Arrears &amp; PTP
       </a>
       <a href="{{ url_for('reports.index') }}?tab=queries"
          class="nav-item {% if request.endpoint == 'reports.index' and request.args.get('tab') == 'queries' %}active{% endif %}">
-        <span class="icon">🎫</span> Queries
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Queries
       </a>
       <a href="{{ url_for('access_report.index') }}"
          class="nav-item {% if request.blueprint == 'access_report' %}active{% endif %}">
-        <span class="icon">🚪</span> Access
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Access
       </a>
       <a href="{{ url_for('reports.index') }}?tab=custom"
          class="nav-item {% if request.endpoint == 'reports.index' and request.args.get('tab') == 'custom' %}active{% endif %}">
-        <span class="icon">⚙</span> Custom Report
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Custom Report
       </a>
     </div>
     {% endif %}
@@ -931,46 +371,46 @@
     <div class="nav-accordion-panel" data-section-panel="admin" hidden>
       <a href="{{ url_for('admin.admin_index') }}"
          class="nav-item {% if request.blueprint == 'admin' and request.endpoint == 'admin.admin_index' %}active{% endif %}">
-        <span class="icon">⚙️</span> Admin Panel
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Admin Panel
       </a>
       <a href="{{ url_for('admin.tariffs_index') }}"
          class="nav-item {% if request.blueprint == 'admin' and 'tariff' in request.endpoint %}active{% endif %}">
-        <span class="icon">💳</span> Membership Plans
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Membership Plans
       </a>
       <a href="{{ url_for('admin_events.events_index') }}"
          class="nav-item {% if request.blueprint == 'admin_events' %}active{% endif %}">
-        <span class="icon">🏃</span> Events
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Events
       </a>
       <a href="{{ url_for('admin.contract_templates_index') }}"
          class="nav-item {% if request.blueprint == 'admin' and 'contract_template' in request.endpoint %}active{% endif %}">
-        <span class="icon">📄</span> Contract Templates
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Contract Templates
       </a>
       <a href="{{ url_for('admin.pbx_codes_index') }}"
          class="nav-item {% if request.blueprint == 'admin' and 'pbx_code' in request.endpoint %}active{% endif %}">
-        <span class="icon">☎️</span> PBX Account Codes
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> PBX Account Codes
       </a>
       <a href="{{ url_for('whatsapp_web.status_page') }}"
          class="nav-item {% if request.blueprint == 'whatsapp_web' %}active{% endif %}">
-        <span class="icon">📱</span> WhatsApp Web Sender
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> WhatsApp Web Sender
       </a>
       <a href="{{ url_for('admin.report_definitions_index') }}"
          class="nav-item {% if request.blueprint == 'admin' and 'report_definition' in request.endpoint %}active{% endif %}">
-        <span class="icon">📊</span> Saved Reports
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Saved Reports
       </a>
       <a href="{{ url_for('admin.users_index') }}"
          class="nav-item {% if request.blueprint == 'admin' and 'user' in request.endpoint %}active{% endif %}">
-        <span class="icon">👤</span> Users
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Users
       </a>
       <a href="{{ url_for('screen_recordings.index') }}"
          class="nav-item {% if request.blueprint == 'screen_recordings' %}active{% endif %}">
-        <span class="icon">⏺</span> Screen Recordings
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Screen Recordings
       </a>
     </div>
     {% endif %}
   </nav>
   <div class="sidebar-footer">
     {% if session.get('is_power_user') %}
-    <span style="color:rgba(255,255,255,.55);font-size:.75rem;">Tenant session is temporary</span>
+    <span class="sidebar-session-note">Tenant session is temporary</span>
     {% else %}
     <a href="{{ url_for('auth.logout') }}">⬅ Sign Out</a>
     {% endif %}
@@ -997,71 +437,44 @@
           <path d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
       </button>
-      <span class="topbar-title">{% block page_title %}1Cpase{% endblock %}</span>
+      <form class="topbar-search" action="{{ url_for('members.members_index') }}" method="get">
+        <label class="sr-only" for="global-member-search">Search members, ID or reference</label>
+        <input id="global-member-search" name="q" type="search" placeholder="Search members, ID or reference">
+      </form>
     </div>
-    <span class="topbar-meta">{{ self.page_title() }}</span>
-  </div>
-  <div class="content">
-    {% if get_flashed_messages() %}
-    <div class="alerts">
-      {% for category, msg in get_flashed_messages(with_categories=true) %}
-      <div class="alert alert-{{ category }}">
-        {% if category == 'success' %}✅{% elif category == 'error' %}❌{% elif category == 'warning' %}⚠️{% else %}ℹ️{% endif %}
-        {{ msg }}
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-    {% block content %}{% endblock %}
-  </div>
-</div>
-
-{# The follow-up FAB links into Queries, which opens at phase 3. It sits
+    {# The follow-up FAB links into Queries, which opens at phase 3. It sits
    outside the nav accordion, so the section gate above does not cover it. #}
-{% if session.user_id and phase_open('queries') %}
+{% if session.user_id and phase_open('queries') and has_perm('daily_queries') %}
 <a href="{{ url_for('queries.index') }}?followup=due"
-   class="followup-fab {% if followup_due_count > 0 %}is-due{% endif %}"
+   class="followup-button {% if followup_due_count > 0 %}is-due{% endif %}"
    title="{{ followup_due_count }} {{ 'account' if followup_due_count == 1 else 'accounts' }} need follow-up{% if followup_scope == 'all' %} (gym-wide){% else %} (assigned to you){% endif %}">
-  <span class="fab-icon">🔔</span>
+
   <span class="fab-text">
     Follow-ups
     <small>{% if followup_scope == 'all' %}all staff{% else %}mine{% endif %}</small>
   </span>
   <span class="fab-count">{{ followup_due_count }}</span>
 </a>
-<style>
-  .followup-fab {
-    position: fixed; right: 22px; bottom: 22px; z-index: 95;
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 14px; border-radius: 999px; text-decoration: none;
-    background: #475467; color: #fff;
-    box-shadow: 0 10px 26px rgba(16,24,40,0.28);
-    transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
-  }
-  .followup-fab:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(16,24,40,0.34); }
-  .followup-fab .fab-icon { font-size: 1.1rem; line-height: 1; }
-  .followup-fab .fab-text { display: flex; flex-direction: column; font-size: .82rem; font-weight: 750; letter-spacing: .01em; }
-  .followup-fab .fab-text small { font-size: .62rem; font-weight: 600; opacity: .8; text-transform: uppercase; letter-spacing: .06em; }
-  .followup-fab .fab-count {
-    min-width: 26px; height: 26px; padding: 0 7px; border-radius: 999px;
-    background: rgba(255,255,255,0.22); color: #fff;
-    display: inline-flex; align-items: center; justify-content: center;
-    font-size: .85rem; font-weight: 800;
-  }
-  /* Active state: something needs attention */
-  .followup-fab.is-due { background: #dc2626; animation: fab-pulse 2.2s ease-in-out infinite; }
-  .followup-fab.is-due .fab-count { background: #fff; color: #dc2626; }
-  @keyframes fab-pulse {
-    0%, 100% { box-shadow: 0 10px 26px rgba(220,38,38,0.45); }
-    50%      { box-shadow: 0 10px 26px rgba(220,38,38,0.85), 0 0 0 6px rgba(220,38,38,0.16); }
-  }
-  @media (max-width: 768px) {
-    .followup-fab { right: 14px; bottom: 14px; padding: 9px 12px; }
-    .followup-fab .fab-text { display: none; }
-  }
-  @media (prefers-reduced-motion: reduce) { .followup-fab.is-due { animation: none; } }
-</style>
+
 {% endif %}
+
+<span class="topbar-user">{{ session.get("full_name", "") }}</span>
+  </div>
+  <div class="content">
+    {% if get_flashed_messages() %}
+    <div class="alerts">
+      {% for category, msg in get_flashed_messages(with_categories=true) %}
+      <div class="callout callout-{{ category }}" role="status">
+
+        {{ msg }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <span hidden>{% block page_title %}{% endblock %}</span>
+    {% block content %}{% endblock %}
+  </div>
+</div>
 
 <script>
   (() => {
@@ -1175,10 +588,10 @@
       select.dataset.searchable = '1';
 
       const wrap = document.createElement('div');
-      wrap.style.position = 'relative';
+      wrap.className = 'member-picker-wrap';
       select.parentNode.insertBefore(wrap, select);
       wrap.appendChild(select);
-      select.style.display = 'none';
+      select.hidden = true;
 
       const input = document.createElement('input');
       input.type = 'text';
@@ -1188,9 +601,8 @@
       wrap.appendChild(input);
 
       const list = document.createElement('div');
-      list.style.cssText = 'display:none;position:absolute;z-index:200;background:#fff;'
-        + 'border:1px solid #e5e7eb;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.12);'
-        + 'width:100%;max-height:260px;overflow-y:auto;margin-top:2px;';
+      list.className = 'member-picker-list';
+      list.hidden = true;
       wrap.appendChild(list);
 
       const options = Array.from(select.options).filter(o => o.value);
@@ -1202,30 +614,28 @@
         const matches = options.filter(o => !q || o.textContent.toLowerCase().includes(q)).slice(0, 50);
         list.innerHTML = '';
         if (!matches.length) {
-          list.innerHTML = '<div style="padding:8px 12px;font-size:0.8rem;color:#9ca3af;">No matches</div>';
+          list.innerHTML = '<div class="member-picker-empty">No matches</div>';
         }
         matches.forEach(o => {
           const row = document.createElement('div');
           row.textContent = o.textContent.trim();
-          row.style.cssText = 'padding:8px 12px;font-size:0.82rem;cursor:pointer;border-bottom:1px solid #f3f4f6;color:#374151;';
-          row.addEventListener('mouseenter', () => row.style.background = '#EEF4FA');
-          row.addEventListener('mouseleave', () => row.style.background = '');
+          row.className = 'member-picker-option';
           row.addEventListener('mousedown', e => {
             e.preventDefault();
             select.value = o.value;
             input.value = o.textContent.trim();
-            list.style.display = 'none';
+            list.hidden = true;
             select.dispatchEvent(new Event('change', { bubbles: true }));
           });
           list.appendChild(row);
         });
-        list.style.display = 'block';
+        list.hidden = false;
       }
 
       input.addEventListener('focus', () => render(''));
       input.addEventListener('input', () => { select.value = ''; render(input.value); });
       document.addEventListener('click', e => {
-        if (!wrap.contains(e.target)) list.style.display = 'none';
+        if (!wrap.contains(e.target)) list.hidden = true;
       });
     }
 
@@ -1233,6 +643,7 @@
   })();
 </script>
 
+<script src="{{ url_for('static', filename='js/ui.js') }}"></script>
 {% block scripts %}{% endblock %}
 {% if config.INSPECT_MODE %}
 <script>window.__INSPECT_META__ = {{ inspect_meta | tojson }};</script>

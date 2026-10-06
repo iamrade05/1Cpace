@@ -2,7 +2,7 @@
 {% block title %}Reports – Arrears &amp; PTP{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>📊 Reports – Arrears &amp; PTP</h1>
+  <h1> Reports – Arrears &amp; PTP</h1>
 </div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center;">
   <a href="{{ url_for('reports.overview') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Overview</a>
@@ -58,7 +58,7 @@
   <div class="card">
     <div class="card-header"><h3 class="card-title">PTP Status</h3></div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.83rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
         <thead><tr><th>Status</th><th class="text-right">Count</th><th class="text-right">Promised</th></tr></thead>
         <tbody>
           {% for r in ptp_status_breakdown %}
@@ -79,7 +79,7 @@
           <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -87,7 +87,7 @@
   <div class="card">
     <div class="card-header"><h3 class="card-title">Arrangement Type</h3></div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.83rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
         <thead><tr><th>Type</th><th class="text-right">Total</th><th class="text-right">Paid</th></tr></thead>
         <tbody>
           {% for r in ptp_by_arrangement %}
@@ -100,7 +100,7 @@
           <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -108,7 +108,7 @@
   <div class="card">
     <div class="card-header"><h3 class="card-title">PTP Payment Method</h3></div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.83rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
         <thead><tr><th>Method</th><th class="text-right">Count</th><th class="text-right">Total</th></tr></thead>
         <tbody>
           {% for r in ptp_by_payment_method %}
@@ -121,7 +121,7 @@
           <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -133,7 +133,7 @@
   <div class="card">
     <div class="card-header"><h3 class="card-title">PTP Trend — Last 6 Months</h3></div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.83rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
         <thead><tr><th>Month</th><th class="text-right">Created</th><th class="text-right">Paid</th><th class="text-right">Broken</th></tr></thead>
         <tbody>
           {% for r in ptp_monthly %}
@@ -147,7 +147,7 @@
           <tr><td colspan="4" class="text-center text-muted">No data</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -155,7 +155,7 @@
   <div class="card">
     <div class="card-header"><h3 class="card-title">Call Log Summary — Last 30 Days</h3></div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.83rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
         <thead><tr><th>Call Code</th><th class="text-right">Count</th></tr></thead>
         <tbody>
           {% for r in contact_log_summary %}
@@ -167,7 +167,7 @@
           <tr><td colspan="2" class="text-center text-muted">No call logs in last 30 days</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -177,7 +177,7 @@
 <div class="card" style="margin-bottom:1rem;">
   <div class="card-header"><h3 class="card-title">Top 25 Members by Arrears</h3></div>
   <div class="card-body" style="padding:0;">
-    <table class="data-table" style="font-size:.82rem;">
+    <div class="table-wrap"><table class="data-table table" style="font-size:.82rem;">
       <thead>
         <tr><th>#</th><th>Name</th><th>Package</th><th>Status</th><th>Access</th><th class="text-right">Arrears</th><th class="text-right">PTPs</th><th class="text-right">Broken</th><th>Contact</th></tr>
       </thead>
@@ -206,7 +206,7 @@
         <tr><td colspan="9" class="text-center text-muted">No arrears data</td></tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 
@@ -217,7 +217,7 @@
     <span class="badge badge-danger">{{ overdue_ptps | length }}</span>
   </div>
   <div class="card-body" style="padding:0;">
-    <table class="data-table" style="font-size:.82rem;">
+    <div class="table-wrap"><table class="data-table table" style="font-size:.82rem;">
       <thead>
         <tr><th>Member</th><th>Package</th><th>Promise Date</th><th class="text-right">Arrears</th><th class="text-right">Promised</th><th>Status</th><th>Contact</th></tr>
       </thead>
@@ -236,7 +236,7 @@
         <tr><td colspan="7" class="text-center text-muted">No overdue PTPs</td></tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 
@@ -247,7 +247,7 @@
     <span class="badge badge-danger">{{ broken_ptps | length }}</span>
   </div>
   <div class="card-body" style="padding:0;">
-    <table class="data-table" style="font-size:.82rem;">
+    <div class="table-wrap"><table class="data-table table" style="font-size:.82rem;">
       <thead>
         <tr><th>Member</th><th>Package</th><th>Promise Date</th><th class="text-right">Arrears</th><th class="text-right">Promised</th><th>Created By</th><th>Contact</th></tr>
       </thead>
@@ -266,7 +266,7 @@
         <tr><td colspan="7" class="text-center text-muted">No broken PTPs</td></tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 
@@ -278,7 +278,7 @@
     <span class="badge badge-danger">{{ access_blocked | length }}</span>
   </div>
   <div class="card-body" style="padding:0;">
-    <table class="data-table" style="font-size:.82rem;">
+    <div class="table-wrap"><table class="data-table table" style="font-size:.82rem;">
       <thead>
         <tr><th>Name</th><th>Package</th><th>Access Status</th><th>Blocked Until</th><th>Contact</th></tr>
       </thead>
@@ -293,7 +293,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% endif %}

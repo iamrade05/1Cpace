@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ s.first_name }} {{ s.last_name }} — Timesheet | 1Cpase{% endblock %}
+{% block title %}{{ s.first_name }} {{ s.last_name }} — Timesheet | 1Cpace{% endblock %}
 {% block page_title %}{{ s.first_name }} {{ s.last_name }} — Weekly Timesheet{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>{{ s.first_name }} {{ s.last_name }} — Weekly Timesheet</h1></div></header>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
   <div style="display:flex; gap:8px;">
     <a href="{{ url_for('hr.timesheet_staff_week', sid=s.id, week=prev_week) }}" class="btn btn-ghost btn-sm">&larr; Prev Week</a>
@@ -25,7 +26,7 @@
 
 <div class="card">
   <div class="card-body">
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr><th>Day</th><th>Time In</th><th>Lunch Out</th><th>Lunch In</th><th>Time Out</th><th>Hours</th><th>Notes</th></tr>
       </thead>
@@ -44,7 +45,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% endblock %}

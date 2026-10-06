@@ -1,0 +1,159 @@
+{
+  "pages": [
+    {
+      "page": "profile",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "members",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "member-add",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "member-edit",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "dashboard",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "collections-dashboard",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "sales-dashboard",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "welcome",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "login",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "otp",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "event",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "profile",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "members",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "member-add",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "member-edit",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "dashboard",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "collections-dashboard",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "sales-dashboard",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "welcome",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "login",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "otp",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "event",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    }
+  ],
+  "javascript_errors": []
+}

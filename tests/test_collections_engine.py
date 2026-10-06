@@ -1,3 +1,4 @@
+import pytest
 from datetime import date
 from decimal import Decimal
 
@@ -144,28 +145,35 @@ def test_realistic_recovery_plan_discounts_before_upfront():
     assert plan["monthly_amount_during_recovery"] == Decimal("690.00")
 
 
-def test_arrears_discount_policy_requires_manager_at_four_months():
-    assert arrears_discount_policy(2) == {
-        "discount_percent": 25,
-        "manager_approval_required": False,
-    }
-    assert arrears_discount_policy(3) == {
-        "discount_percent": 35,
-        "manager_approval_required": False,
-    }
-    assert arrears_discount_policy(4) == {
-        "discount_percent": 35,
-        "manager_approval_required": True,
-    }
-    assert arrears_discount_policy(5) == {
-        "discount_percent": 40,
-        "manager_approval_required": True,
-    }
-    assert arrears_discount_policy(6) == {
-        "discount_percent": 50,
-        "manager_approval_required": True,
-    }
-    assert arrears_discount_policy(9)["discount_percent"] == 50
+@pytest.mark.parametrize(
+    "months,recommended,lo,hi,label,manager",
+    [
+        (0, 0, 0, 0, "0%", False),
+        (1, 0, 0, 0, "0%", False),
+        (2, 25, 25, 25, "25%", False),
+        (3, 25, 25, 25, "25%", False),
+        (4, 50, 35, 50, "35%–50%", False),
+        (5, 50, 35, 50, "35%–50%", False),
+        (6, 75, 60, 75, "60%–75%", True),
+        (8, 75, 60, 75, "60%–75%", True),
+        (9, 0, 0, 100, "Manager discretion", True),
+        (14, 0, 0, 100, "Manager discretion", True),
+    ],
+)
+def test_arrears_discount_policy_ranges(months, recommended, lo, hi, label, manager):
+    policy = arrears_discount_policy(months)
+    assert policy["discount_percent"] == recommended
+    assert (policy["min_percent"], policy["max_percent"]) == (lo, hi)
+    assert policy["range_label"] == label
+    assert policy["manager_approval_required"] is manager
+
+
+def test_staff_discount_ceiling_is_fifty_percent():
+    from onecpase.collections_engine import discount_needs_manager
+
+    assert discount_needs_manager(50, 5) is False
+    assert discount_needs_manager(50.01, 5) is True
+    assert discount_needs_manager(0, 9) is True
 
 
 def test_queries_account_decision_follows_the_shared_arrears_policy():

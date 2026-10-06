@@ -1,10 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Queries & Tickets | 1Cpase{% endblock %}
+{% block title %}Queries & Tickets | 1Cpace{% endblock %}
 {% block page_title %}Queries & Tickets{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Queries & Tickets</h1></div></header>
 <style>
-.q-kpi { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:22px; }
+.q-kpi { display:grid; grid-template-columns:repeat(6,1fr); gap:14px; margin-bottom:22px; }
 .q-kpi-card {
   background:#fff; border:1px solid #e4e8f0; border-radius:8px;
   padding:14px 18px; position:relative; overflow:hidden;
@@ -49,7 +50,7 @@
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
   <div>
     <h2 style="font-size:1.1rem;font-weight:800;color:#172033;margin:0;">Queries & Tickets</h2>
-    <div style="font-size:.78rem;color:#667085;margin-top:2px;">{{ today }} &bull; {{ rows|length }} result{{ 's' if rows|length != 1 }}</div>
+    <div style="font-size:.78rem;color:#667085;margin-top:2px;">{{ today }} &bull; {{ rows|length }} result{{ 's' if rows|length != 1 }}{% if member_f %} &bull; one member only{% endif %}</div>
   </div>
   <a href="{{ url_for('queries.add') }}" class="btn btn-primary btn-sm">+ New Query</a>
 </div>
@@ -72,6 +73,10 @@
     <div class="q-kpi-label">Urgent</div>
     <div class="q-kpi-value">{{ kpi_urgent }}</div>
   </div>
+  <a class="q-kpi-card purple" href="{{ url_for('queries.index', approval='pending') }}" style="text-decoration:none;">
+    <div class="q-kpi-label">Pending Approval</div>
+    <div class="q-kpi-value">{{ kpi_pending_approval }}</div>
+  </a>
   <div class="q-kpi-card green">
     <div class="q-kpi-label">Resolved Today</div>
     <div class="q-kpi-value">{{ kpi_resolved_today }}</div>
@@ -103,20 +108,24 @@
         <option value="">All Priorities</option>
         {% for k,v in priorities %}<option value="{{ k }}" {% if priority_f==k %}selected{% endif %}>{{ v }}</option>{% endfor %}
       </select>
+      {% if member_f %}<input type="hidden" name="member_id" value="{{ member_f }}">{% endif %}
       <button type="submit" class="btn btn-ghost btn-sm">Filter</button>
-      {% if q or cat or status_f or priority_f or assigned_f %}
-      <a href="{{ url_for('queries.index') }}" class="btn btn-ghost btn-sm">✕ Clear</a>
+      {% if q or cat or status_f or priority_f or assigned_f or approval_f or member_f %}
+      <a href="{{ url_for('queries.index') }}" class="btn btn-ghost btn-sm"> Clear</a>
       {% endif %}
     </form>
   </div>
 
   <!-- Quick chips -->
   <div style="padding:8px 20px;background:#f9fafb;border-bottom:1px solid #e5e7eb;display:flex;gap:6px;flex-wrap:wrap;">
-    <a href="{{ url_for('queries.index') }}" class="q-chip {% if not status_f and not priority_f and not assigned_f %}active{% endif %}">
+    <a href="{{ url_for('queries.index') }}" class="q-chip {% if not status_f and not priority_f and not assigned_f and not approval_f %}active{% endif %}">
       All ({{ kpi_open + kpi_resolved_today }})
     </a>
     <a href="{{ url_for('queries.index', status='open') }}" class="q-chip {% if status_f=='open' %}active{% endif %}">
       Open ({{ kpi_open }})
+    </a>
+    <a href="{{ url_for('queries.index', approval='pending') }}" class="q-chip purple {% if approval_f=='pending' %}active{% endif %}">
+      Pending Approval ({{ kpi_pending_approval }})
     </a>
     <a href="{{ url_for('queries.index', status='escalated') }}" class="q-chip purple {% if status_f=='escalated' %}active{% endif %}">
       Escalated ({{ kpi_escalated }})
@@ -142,7 +151,7 @@
   <div class="card-body">
     {% if rows %}
     <div style="overflow-x:auto;">
-      <table>
+      <div class="table-wrap"><table class="table">
         <thead>
           <tr>
             <th>Ref</th>
@@ -192,20 +201,20 @@
                   <span class="aflag ok" title="Zero balance">R0</span>
                 {% endif %}
                 {% if s.has_debit_order %}
-                  <span class="aflag do" title="Debit order on file">🏦</span>
+                  <span class="aflag do" title="Debit order on file"></span>
                 {% endif %}
                 {% if s.is_blocked %}
-                  <span class="aflag block" title="Gym access blocked">🚫</span>
+                  <span class="aflag block" title="Gym access blocked"></span>
                 {% endif %}
                 {% if s.dispute_count %}
-                  <span class="aflag disp" title="{{ s.dispute_count }} dispute(s) on record">⚠ {{ s.dispute_count }}</span>
+                  <span class="aflag disp" title="{{ s.dispute_count }} dispute(s) on record"> {{ s.dispute_count }}</span>
                 {% endif %}
               </div>
               {% if s.is_owing %}
               <div style="font-size:.66rem;color:#94a3b8;margin-top:3px;white-space:nowrap;"
                    title="Months in arrears · settlement discount · amount member can settle with">
                 {{ s.arrears_months }}mo
-                {% if s.discount_percent %} · {{ s.discount_percent }}% off · pay R{{ '%.0f'|format(s.settlement_amount) }}{% endif %}
+                {% if s.manager_discretion %} · manager discretion{% elif s.discount_percent %} · {{ s.discount_range_label }} off · pay R{{ '%.0f'|format(s.settlement_amount) }}{% endif %}
               </div>
               {% endif %}
               {% else %}
@@ -223,8 +232,9 @@
             </td>
             <td>
               <span class="pbadge" style="background:{{ sc }}22;color:{{ sc }};">
-                {{ r.status|replace('_',' ')|title }}
+                {% for k,v in statuses %}{% if k==r.status %}{{ v }}{% endif %}{% endfor %}
               </span>
+              {% if r.ptp_id %}<div style="font-size:.66rem;color:#1769aa;margin-top:2px;">PTP #{{ r.ptp_id }}</div>{% endif %}
             </td>
             <td style="font-size:.78rem;color:#6b7280;white-space:nowrap;">
               {{ r.assigned_to_name or '—' }}
@@ -247,12 +257,12 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
     <div style="padding:8px 0;font-size:.75rem;color:#9ca3af;">{{ rows|length }} record{{ 's' if rows|length != 1 }}</div>
     {% else %}
     <div class="empty-state" style="padding:48px 24px;">
-      <div class="empty-icon">🎫</div>
+      <div class="empty-icon"></div>
       <p>{% if q or cat or status_f %}No queries match your filters.
          {% else %}No queries yet.{% endif %}</p>
       {% if q or cat or status_f %}

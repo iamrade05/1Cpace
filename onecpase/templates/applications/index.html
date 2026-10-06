@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Applications | 1Cpase{% endblock %}
+{% block title %}Applications | 1Cpace{% endblock %}
 {% block page_title %}Membership Applications{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Membership Applications</h1></div></header>
 
 <!-- Status filter tabs -->
 <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px; align-items:center;">
@@ -28,7 +29,7 @@
   <a href="{{ url_for('applications.approvals_queue') }}"
      style="margin-left:auto; padding:6px 14px; border-radius:20px; font-size:0.78rem; font-weight:700;
             text-decoration:none; background:#f97316; color:#fff;">
-    ⚠️ {{ pending_approvals }} Pending Approval{{ 's' if pending_approvals != 1 }}
+     {{ pending_approvals }} Pending Approval{{ 's' if pending_approvals != 1 }}
   </a>
   {% endif %}
 </div>
@@ -44,7 +45,7 @@
 
 <!-- Table -->
 <div class="table-card">
-  <table class="data-table">
+  <div class="table-wrap"><table class="data-table table">
     <thead>
       <tr>
         <th>#</th>
@@ -99,11 +100,11 @@
           <div style="display:flex;gap:4px;flex-wrap:wrap;">
             {% for label, done in requirements %}
               {% if done %}
-              <span style="padding:3px 7px;border-radius:12px;background:#dcfce7;color:#166534;font-size:.69rem;font-weight:700;">✓ {{ label }}</span>
+              <span style="padding:3px 7px;border-radius:12px;background:#dcfce7;color:#166534;font-size:.69rem;font-weight:700;"> {{ label }}</span>
               {% endif %}
             {% endfor %}
             {% if a.guardian_required == 'required' and a.guardian_status == 'approved' %}
-              <span style="padding:3px 7px;border-radius:12px;background:#dcfce7;color:#166534;font-size:.69rem;font-weight:700;">✓ Guardian consent</span>
+              <span style="padding:3px 7px;border-radius:12px;background:#dcfce7;color:#166534;font-size:.69rem;font-weight:700;"> Guardian consent</span>
             {% endif %}
           </div>
         </td>
@@ -136,6 +137,6 @@
       </td></tr>
       {% endif %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 {% endblock %}

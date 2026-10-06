@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Collections Dashboard | 1Cpase{% endblock %}
+{% block title %}Collections Dashboard | 1Cpace{% endblock %}
 {% block page_title %}Collections Dashboard{% endblock %}
 
 {% macro talk_time(seconds) -%}
@@ -25,59 +25,13 @@
 {% set call_pct = [progress.target_progress_pct, 100]|min %}
 {% set reach_pct = ((progress.contacts / progress.contact_target * 100)|round(1)) if progress.contact_target else 0 %}
 
-{% include '_future_dashboard_styles.html' %}
-<style>
-  /* Collections accent: warm amber/coral in place of the Command Center cyan. */
-  .fd-collections {
-    --fd-cyan: #ff9a5c;
-    --fd-cyan-soft: rgba(255, 154, 92, 0.12);
-    --fd-line: rgba(255, 170, 120, 0.13);
-    background:
-      radial-gradient(circle at 78% -12%, rgba(255, 128, 72, 0.17), transparent 30%),
-      radial-gradient(circle at 8% 28%, rgba(215, 173, 83, 0.10), transparent 28%),
-      linear-gradient(145deg, #1a0f0b 0%, #120a08 55%, #190f0b 100%);
-  }
-  .fd-collections::before {
-    background-image:
-      linear-gradient(rgba(255, 154, 92, .035) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 154, 92, .035) 1px, transparent 1px);
-  }
-  .fd-collections .fd-title span { background: linear-gradient(90deg, #ff9a5c, #ffd0a8); background-clip: text; }
-  .fd-collections .fd-kpi, .fd-collections .fd-panel {
-    background: linear-gradient(155deg, rgba(48, 29, 22, .90), rgba(30, 18, 14, .78));
-  }
-  .fd-collections .fd-kpi:hover { border-color: rgba(255, 154, 92, .30); box-shadow: 0 24px 54px rgba(0,0,0,.24), 0 0 30px rgba(255,154,92,.04); }
-  .fd-collections .fd-panel::before { background: linear-gradient(90deg, transparent, rgba(255,154,92,.30), transparent); }
-  .fd-collections .fd-panel-tag { border-color: rgba(255,154,92,.14); color: #ffb98a; background: rgba(255,154,92,.06); }
-  .fd-collections .fd-orbit { box-shadow: 0 0 45px rgba(255,154,92,.10); background: conic-gradient(var(--fd-cyan) calc(var(--score) * 1%), rgba(255,154,92,.08) 0); }
-  .fd-collections .fd-orbit::before { background: #1d110c; border-color: rgba(255,154,92,.12); }
-  .fd-collections .fd-live-dot { background: var(--fd-cyan); box-shadow: 0 0 0 5px rgba(255,154,92,.12), 0 0 18px var(--fd-cyan); }
-  .fd-collections .fd-description, .fd-collections .fd-kpi-label, .fd-collections .fd-panel-sub { color: #a89080; }
-  .fd-collections .fd-kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .fd-collections .fd-kpi-grid.is-six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .fd-btn {
-    display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border-radius: 10px;
-    border: 1px solid var(--fd-line); color: #ffe6d4; background: rgba(0,0,0,.25);
-    font-size: .74rem; font-weight: 800; letter-spacing: .05em; text-decoration: none;
-  }
-  .fd-btn:hover { background: rgba(255,154,92,.10); }
-  .fd-btn.is-primary { color: #1a0f0b; background: linear-gradient(135deg, #ffb583, #ff8a4a); border-color: transparent; }
-  .fd-section-label { margin: 6px 0 12px; color: #ffb98a; font-size: .68rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
-  .fd-chip { display: inline-block; margin: 3px 6px 3px 0; padding: 7px 11px; border-radius: 9px; border: 1px solid var(--fd-line); background: rgba(0,0,0,.2); color: #e8d3c6; font-size: .72rem; }
-  .fd-chip strong { color: #fff; margin-left: 4px; }
-  .fd-stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
-  .fd-stat span { display: block; color: #a89080; font-size: .62rem; text-transform: uppercase; letter-spacing: .1em; }
-  .fd-stat strong { display: block; margin-top: 4px; color: #fff; font-size: 1.35rem; letter-spacing: -.03em; }
-  .fd-note { margin-top: 14px; color: #8f7869; font-size: .7rem; }
-  .fd-link { color: #ffb98a; text-decoration: none; font-weight: 700; }
-  @media (max-width: 1240px) { .fd-collections .fd-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-  @media (max-width: 680px) { .fd-collections .fd-kpi-grid, .fd-collections .fd-kpi-grid.is-six { grid-template-columns: 1fr 1fr; } }
-</style>
+
+
 
 <div class="future-dashboard fd-collections">
-  <header class="fd-topline">
+  <header class="fd-topline page-header">
     <div>
-      <div class="fd-eyebrow"><span class="fd-live-dot" aria-hidden="true"></span> 1Cpase collections layer</div>
+      <div class="fd-eyebrow"><span class="fd-live-dot" aria-hidden="true"></span> 1Cpace collections layer</div>
       <h1 class="fd-title">Collections <span>command center</span></h1>
       <p class="fd-description">Where the money stands, and the work that has to happen today.</p>
     </div>

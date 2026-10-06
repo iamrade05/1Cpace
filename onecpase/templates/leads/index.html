@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Sales CRM | 1Cpase{% endblock %}
+{% block title %}Sales CRM | 1Cpace{% endblock %}
 {% block page_title %}Prospect Sales CRM{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Prospect Sales CRM</h1></div></header>
 {% if available_consultants %}
 <div class="alert alert-success" style="margin-bottom:16px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
   <strong>Automatic lead rotation is active</strong>
@@ -135,10 +136,10 @@
   <summary style="cursor:pointer;font-weight:700;">Closed prospects ({{ closed }})</summary>
   <p style="margin:12px 0;color:var(--t2);font-size:.8rem;line-height:1.5;"><strong>Recycle</strong> prospects automatically return to Recall Queue on the date shown. <strong>Do Not Contact</strong> prospects remain closed until the client gives permission to contact them again. Invalid numbers, duplicates and existing members do not return automatically.</p>
   <div style="overflow-x:auto;margin-top:14px;">
-    <table style="width:100%;font-size:.82rem;">
+    <div class="table-wrap"><table style="width:100%;font-size:.82rem;" class="table">
       <thead><tr><th>Prospect</th><th>Outcome</th><th>Reason</th><th>Returns to Recall</th><th>Consultant</th><th>Updated</th></tr></thead>
       <tbody>{% for prospect in closed_prospects %}<tr><td><a href="{{ url_for('leads.lead_detail', lid=prospect.id) }}">{{ prospect.full_name }}</a></td><td>{{ prospect.lead_status|replace('_',' ')|title }}</td><td>{{ recycle_reason_labels.get(prospect.recycle_reason, prospect.objection_reason or prospect.closure_reason or '—') }}</td><td>{% if prospect.recycle_due_at %}<strong style="color:var(--warn);">{{ prospect.recycle_due_at|string|truncate(16, true, '') }}</strong>{% elif prospect.lead_status == 'do_not_contact' %}Only after new consent{% else %}Does not auto-return{% endif %}</td><td>{{ prospect.salesperson_name or 'Unassigned' }}</td><td>{{ prospect.updated_at|string|truncate(16, true, '') }}</td></tr>{% else %}<tr><td colspan="6">No closed prospects.</td></tr>{% endfor %}</tbody>
-    </table>
+    </table></div>
   </div>
 </details>
 <script>
@@ -152,8 +153,8 @@ async function startPbxCall(phone) {
     });
     const data = await r.json();
     if (!data.ok) throw new Error(data.error || 'PBX call failed');
-    alert('Call started.');
-  } catch (e) { alert(e.message); }
+    showUiMessage('Call started.');
+  } catch (e) { showUiMessage('The call could not start. Please try again or ask an admin to check the phone connection.', 'error'); }
 }
 </script>
 {% endblock %}

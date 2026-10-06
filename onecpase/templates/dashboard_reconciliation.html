@@ -3,6 +3,7 @@
 {% block title %}Itensity Reconciliation{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Itensity Reconciliation</h1></div></header>
 <section class="fd-panel" style="max-width:1000px;margin:24px auto;">
   <div class="fd-panel-head">
     <div>
@@ -35,7 +36,7 @@
     </div>
   </div>
 
-  <table class="fd-table" style="width:100%;border-collapse:collapse;">
+  <div class="table-wrap"><table class="fd-table table" style="width:100%;border-collapse:collapse;">
     <thead>
       <tr>
         <th>Status</th>
@@ -56,6 +57,6 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </section>
 {% endblock %}

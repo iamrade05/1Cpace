@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Sync with NuPay | 1Cpase{% endblock %}
+{% block title %}Sync with NuPay | 1Cpace{% endblock %}
 {% block page_title %}Sync with NuPay{% endblock %}
 {% block content %}
+<header class="page-header"><div><h1>Sync with NuPay</h1></div></header>
 <div class="card" style="margin-bottom:16px;">
   <div class="card-header">
     <div>
@@ -18,9 +19,9 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn btn-secondary" name="action" value="preview" type="submit">Preview (no changes)</button>
       <button class="btn btn-primary" name="action" value="apply" type="submit"
-              onclick="return confirm('Update mandate statuses from NuPay now?');">Apply status changes</button>
+              data-confirm="Update mandate statuses from NuPay now?">Apply status changes</button>
       <button class="btn btn-primary" name="action" value="import" type="submit"
-              onclick="return confirm('Record the live NuPay mandates V8 does not have? Each is marked as imported and never sent to NuPay again.');">Record missing mandates</button>
+              data-confirm="Record the live NuPay mandates V8 does not have? Each is marked as imported and never sent to NuPay again.">Record missing mandates</button>
     </form>
   </div>
 </div>
@@ -47,7 +48,7 @@
     </p>
 
     {% if result.changes %}
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead><tr><th>Member</th><th>Mandate</th><th>Was</th><th>Now</th></tr></thead>
       <tbody>
         {% for change in result.changes[:200] %}
@@ -58,7 +59,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% if result.changes|length > 200 %}<p style="color:#6b7280;">Showing the first 200 of {{ result.changes|length }}.</p>{% endif %}
     {% endif %}
   </div>
@@ -78,7 +79,7 @@
       The next card shows which of these can be recorded.
     </p>
     {% if result.unrecorded.examples %}
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead><tr><th>Member</th><th>NuPay contract</th></tr></thead>
       <tbody>
         {% for example in result.unrecorded.examples %}
@@ -88,7 +89,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     <p style="color:#6b7280;">Showing the first {{ result.unrecorded.examples|length }}.</p>
     {% endif %}
   </div>
@@ -111,7 +112,7 @@
       {{ imp.no_member }} for nobody in V8.
     </p>
     {% if imp.examples %}
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead><tr><th>Member</th><th>NuPay contract</th></tr></thead>
       <tbody>
         {% for example in imp.examples %}
@@ -121,7 +122,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     <p style="color:#6b7280;">Showing the first {{ imp.examples|length }}.</p>
     {% endif %}
   </div>
@@ -135,7 +136,7 @@
       NuPay's report lists only active mandates, so these may have been cancelled at NuPay, or may simply not
       match. Nothing has been changed &mdash; check them.
     </p>
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead><tr><th>Member</th><th>Mandate</th><th>V8 status</th></tr></thead>
       <tbody>
         {% for item in result.missing_from_active_list.examples %}
@@ -146,7 +147,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% if result.missing_from_active_list.count > result.missing_from_active_list.examples|length %}
     <p style="color:#6b7280;">Showing the first {{ result.missing_from_active_list.examples|length }} of {{ result.missing_from_active_list.count }}.</p>
     {% endif %}

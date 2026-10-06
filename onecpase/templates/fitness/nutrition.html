@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Nutrition Guide | 1Cpase{% endblock %}
+{% block title %}Nutrition Guide | 1Cpace{% endblock %}
 {% block page_title %}Nutrition Guide{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Nutrition Guide</h1></div></header>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
   <form method="get" style="display:flex; gap:8px;">
     <select name="category" onchange="this.form.submit()">
@@ -17,7 +18,7 @@
 {% if foods %}
 <div class="card">
   <div class="card-body">
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr>
           <th>Name</th><th>Category</th><th>Serving</th>
@@ -42,12 +43,12 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% else %}
 <div class="empty-state">
-  <div class="empty-icon">🥗</div>
+  <div class="empty-icon"></div>
   <p>No nutrition items found.</p>
   <a href="{{ url_for('fitness.nutrition_add') }}" class="btn btn-primary">Add First Item</a>
 </div>

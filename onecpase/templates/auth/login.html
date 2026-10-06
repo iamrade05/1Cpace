@@ -1,115 +1,14 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>{{ tenant.name if tenant else '1Cpase' }} — Sign In</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      background: radial-gradient(circle at top left, rgba(176,132,45,0.24), transparent 24rem),
-                  linear-gradient(135deg, #002e45 0%, #001f30 100%);
-      min-height: 100vh;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .card {
-      background: #fff; border-radius: 16px;
-      padding: 44px 40px; width: 100%; max-width: 400px;
-      box-shadow: 0 24px 64px rgba(0,46,69,0.34);
-      border: 1px solid rgba(193,194,197,0.75);
-    }
-    .brand { text-align: center; margin-bottom: 32px; }
-    .brand img { width: 78px; height: 78px; object-fit: contain; margin-bottom: 12px; }
-    .brand h1 {
-      font-size: 2.2rem; font-weight: 800; color: #002e45; letter-spacing: 1px;
-    }
-    .brand p { font-size: 0.78rem; color: #9ca3af; margin-top: 5px;
-               text-transform: uppercase; letter-spacing: 1.5px; }
-
-    .form-group { margin-bottom: 18px; }
-    .form-group label {
-      display: block; font-size: 0.8rem; font-weight: 700;
-      color: #002e45; margin-bottom: 7px; letter-spacing: 0.2px;
-    }
-    .form-group input {
-      width: 100%; padding: 12px 14px;
-      border: 1.5px solid #c1c2c5; border-radius: 8px;
-      font-size: 0.9rem; color: #002e45; background: #fff;
-      transition: border-color .15s, box-shadow .15s;
-    }
-    .form-group input:focus {
-      outline: none; border-color: #b0842d;
-      box-shadow: 0 0 0 3px rgba(176,132,45,0.16);
-    }
-    .form-group input::placeholder { color: #9ca3af; }
-
-    .btn-login {
-      width: 100%; padding: 13px;
-      background: #002e45; color: #fff; border: none;
-      border-radius: 9px; font-size: 0.95rem; font-weight: 700;
-      cursor: pointer; margin-top: 6px; letter-spacing: 0.3px;
-      transition: background .15s;
-    }
-    .btn-login:hover { background: #001f30; }
-
-    .divider {
-      display: flex; align-items: center; gap: 12px;
-      margin: 20px 0 6px; color: #9ca3af; font-size: 0.75rem;
-    }
-    .divider::before, .divider::after {
-      content: ''; flex: 1; height: 1px; background: #e5e7eb;
-    }
-
-    .otp-note {
-      background: #f5f0e6; border: 1px solid #b0842d;
-      border-radius: 8px; padding: 10px 14px;
-      font-size: 0.8rem; color: #002e45; margin-top: 18px;
-      display: flex; gap: 8px; align-items: flex-start;
-    }
-    .otp-note .icon { flex-shrink: 0; font-size: 1rem; }
-
-    .powered-by {
-      text-align: center; margin-top: 6px; font-size: 0.7rem;
-      color: #9ca3af; letter-spacing: 0.3px;
-    }
-    .switch-tenant {
-      text-align: center; margin-top: 16px;
-      font-size: 0.8rem;
-    }
-    .switch-tenant a { color: #b0842d; text-decoration: none; font-weight: 600; }
-    .switch-tenant a:hover { text-decoration: underline; }
-
-    .alert-error {
-      background: #fee2e2; color: #991b1b;
-      border-left: 4px solid #ef4444;
-      padding: 10px 14px; border-radius: 6px;
-      font-size: 0.85rem; margin-bottom: 18px;
-    }
-    .alert-info {
-      background: #f5f0e6; color: #002e45;
-      border-left: 4px solid #b0842d;
-      padding: 10px 14px; border-radius: 6px;
-      font-size: 0.85rem; margin-bottom: 18px;
-    }
-    .alert-success {
-      background: #d1fae5; color: #065f46;
-      border-left: 4px solid #10b981;
-      padding: 10px 14px; border-radius: 6px;
-      font-size: 0.85rem; margin-bottom: 18px;
-    }
-  </style>
-  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
-</head>
-<body>
+{% extends "public.html" %}
+{% block title %}{{ tenant.name if tenant else '1Cpace' }} — Sign In{% endblock %}
+{% block content %}
 <div class="card">
   <div class="brand">
     {% if tenant and tenant.logo_filename %}
     <img src="{{ url_for('static', filename='tenant_logos/' + tenant.logo_filename) }}" alt="{{ tenant.name }} logo">
     <h1>{{ tenant.name }}</h1>
     {% else %}
-    <img src="{{ url_for('static', filename='images/1cpase-logo.svg') }}" alt="1Cpase logo">
-    <h1>{{ tenant.name if tenant else '1Cpase' }}</h1>
+    <img src="{{ url_for('static', filename='images/1cpase-logo.svg') }}" alt="1Cpace logo">
+    <h1>{{ tenant.name if tenant else '1Cpace' }}</h1>
     {% endif %}
     <p>Gym Management System</p>
   </div>
@@ -134,16 +33,15 @@
   </form>
 
   <div class="otp-note">
-    <span class="icon">🔐</span>
+    <span class="icon"></span>
     <span>A one-time code will be sent to your email address after sign-in to verify your identity.</span>
   </div>
 
   {% if tenant and tenant.logo_filename %}
-  <p class="powered-by">Powered by 1Cpase</p>
+  <p class="powered-by">Powered by 1Cpace</p>
   {% endif %}
   <div class="switch-tenant">
     <a href="{{ url_for('tenants.switch_tenant') }}">Not your gym? Choose again</a>
   </div>
 </div>
-</body>
-</html>
+{% endblock %}

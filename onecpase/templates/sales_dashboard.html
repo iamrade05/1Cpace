@@ -1,61 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Sales KPI | Sales Funnel | 1Cpase{% endblock %}
+{% block title %}Sales KPI | Sales Funnel | 1Cpace{% endblock %}
 {% block page_title %}Sales KPI{% endblock %}
 {% block content %}
-<style>
-  .sales-page { --sales-bg:#07131e; --sales-panel:rgba(15,31,45,.88); --sales-panel-strong:#102639; --sales-border:rgba(158,190,210,.16); --sales-muted:#91a8b8; --sales-text:#f2f7fa; --sales-cyan:#43d3e5; --sales-green:#57d39b; --sales-orange:#f2a66f; max-width:1480px; margin:-24px auto -32px; padding:30px 28px 52px; color:var(--sales-text); background:radial-gradient(circle at 12% 0%,rgba(42,116,142,.22),transparent 34%),linear-gradient(145deg,#07131e 0%,#0a1c2a 52%,#07131e 100%); min-height:calc(100vh - 64px); border-radius:18px; }
-  .sales-hero { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; margin-bottom:24px; }
-  .sales-eyebrow { color:var(--sales-cyan); font-size:.72rem; font-weight:800; letter-spacing:.16em; text-transform:uppercase; margin-bottom:8px; }
-  .sales-hero h1 { margin:0; font-size:clamp(1.8rem,3vw,2.7rem); letter-spacing:-.04em; line-height:1.05; }
-  .sales-hero p { color:var(--sales-muted); margin:10px 0 0; max-width:620px; }
-  .sales-period { padding:12px 15px; border:1px solid var(--sales-border); border-radius:12px; background:rgba(12,31,45,.72); color:var(--sales-muted); white-space:nowrap; font-size:.82rem; }
-  .sales-period strong { color:var(--sales-text); font-weight:700; }
-  .sales-filter { display:flex; align-items:end; gap:12px; flex-wrap:wrap; padding:15px; margin-bottom:24px; border:1px solid var(--sales-border); border-radius:14px; background:rgba(12,29,43,.72); box-shadow:0 18px 40px rgba(0,0,0,.14); }
-  .sales-filter label { display:grid; gap:6px; color:var(--sales-muted); font-size:.72rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
-  .sales-filter input, .sales-filter select { min-height:40px; min-width:155px; padding:8px 11px; border:1px solid var(--sales-border); border-radius:8px; background:#0b2233; color:var(--sales-text); color-scheme:dark; }
-  .sales-filter select { min-width:210px; }
-  .sales-filter .btn { min-height:40px; border:0; border-radius:8px; font-weight:800; }
-  .sales-filter .btn-primary { background:linear-gradient(135deg,#36c7d9,#238fae); color:#04121b; }
-  .sales-section { margin-top:28px; }
-  .sales-section-heading { display:flex; align-items:end; justify-content:space-between; gap:12px; margin-bottom:12px; }
-  .sales-section-heading h2 { margin:0; font-size:1.05rem; letter-spacing:-.02em; }
-  .sales-section-heading span { color:var(--sales-muted); font-size:.78rem; }
-  .sales-kpis { display:grid; grid-template-columns:repeat(6,minmax(120px,1fr)); gap:12px; }
-  .sales-kpi { min-height:112px; padding:16px; border:1px solid var(--sales-border); border-radius:13px; background:linear-gradient(145deg,rgba(21,48,67,.95),rgba(10,27,41,.95)); box-shadow:0 14px 28px rgba(0,0,0,.12); }
-  .sales-kpi .value { display:block; margin:9px 0 5px; font-size:1.9rem; font-weight:800; letter-spacing:-.05em; }
-  .sales-kpi .label { color:var(--sales-muted); font-size:.76rem; line-height:1.25; }
-  .sales-kpi .hint { color:var(--sales-green); font-size:.7rem; font-weight:700; }
-  .sales-funnel { display:grid; grid-template-columns:repeat(7,minmax(112px,1fr)); gap:10px; }
-  .sales-stage { position:relative; min-height:148px; padding:17px 15px; overflow:visible; border:1px solid var(--sales-border); border-top:3px solid var(--stage-color,var(--sales-cyan)); border-radius:12px; background:var(--sales-panel); }
-  .sales-stage:not(:last-child)::after { content:'›'; position:absolute; z-index:2; top:53px; right:-13px; color:#608095; font-size:1.45rem; font-weight:300; }
-  .sales-stage .stage-number { color:var(--stage-color,var(--sales-cyan)); font-size:.68rem; font-weight:800; letter-spacing:.1em; }
-  .sales-stage strong { display:block; margin:16px 0 5px; font-size:2.2rem; letter-spacing:-.06em; }
-  .sales-stage span { color:var(--sales-muted); font-size:.78rem; }
-  .sales-rate-grid { display:grid; grid-template-columns:repeat(4,minmax(160px,1fr)); gap:12px; }
-  .sales-rate { display:flex; align-items:center; gap:14px; min-height:80px; padding:14px; border:1px solid var(--sales-border); border-radius:12px; background:rgba(15,35,51,.78); }
-  .sales-rate .rate-value { color:var(--sales-orange); font-size:1.45rem; font-weight:800; letter-spacing:-.04em; min-width:62px; }
-  .sales-rate .rate-label { color:var(--sales-muted); font-size:.76rem; line-height:1.3; }
-  .sales-columns { display:grid; grid-template-columns:1.2fr .8fr; gap:16px; }
-  .sales-card { min-width:0; padding:18px; border:1px solid var(--sales-border); border-radius:14px; background:var(--sales-panel); box-shadow:0 16px 35px rgba(0,0,0,.1); }
-  .sales-card h3 { margin:0 0 14px; font-size:.98rem; }
-  .sales-card .card-note { color:var(--sales-muted); margin:-7px 0 13px; font-size:.75rem; }
-  .sales-card table { width:100%; border-collapse:collapse; font-size:.8rem; }
-  .sales-card th { color:#9eb6c5; font-size:.68rem; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
-  .sales-card th, .sales-card td { padding:10px 7px; border-bottom:1px solid rgba(158,190,210,.1); text-align:left; }
-  .sales-card tr:last-child td { border-bottom:0; }
-  .sales-card td { color:#d9e6ec; }
-  .sales-card td:not(:first-child) { white-space:nowrap; }
-  .sales-card .strong-cell { color:var(--sales-text); font-weight:750; }
-  .sales-empty { color:var(--sales-muted); padding:8px 0; font-size:.82rem; }
-  .sales-badge { display:inline-flex; padding:4px 8px; border-radius:999px; background:rgba(67,211,229,.12); color:var(--sales-cyan); font-size:.68rem; font-weight:800; }
-  .sales-badge.warn { background:rgba(242,166,111,.12); color:var(--sales-orange); }
-  .sales-summary-table td:last-child { text-align:right; font-weight:800; color:var(--sales-text); }
-  @media (max-width:1100px) { .sales-kpis { grid-template-columns:repeat(3,1fr); } .sales-funnel { grid-template-columns:repeat(4,1fr); } .sales-stage:not(:last-child)::after { display:none; } }
-  @media (max-width:800px) { .sales-page { margin:-16px -12px -24px; padding:22px 14px 40px; border-radius:0; } .sales-hero { display:block; } .sales-period { display:inline-block; margin-top:16px; } .sales-kpis, .sales-rate-grid, .sales-columns { grid-template-columns:1fr 1fr; } .sales-funnel { grid-template-columns:repeat(2,1fr); } }
-  @media (max-width:520px) { .sales-kpis, .sales-rate-grid, .sales-columns { grid-template-columns:1fr; } }
-</style>
+
 <div class="sales-page">
-  <header class="sales-hero">
+  <header class="sales-hero page-header">
     <div>
       <div class="sales-eyebrow">Revenue command view</div>
       <h1>Sales performance</h1>
@@ -102,20 +51,20 @@
   </section>
 
   <section class="sales-section sales-columns">
-    <div class="sales-card"><h3>Funnel leakage</h3><p class="card-note">Drop-off between consecutive stages; variances are flagged instead of shown as negative leakage.</p><table><tr><th>Stage</th><th>Reached</th><th>Movement</th><th>Rate</th></tr>{% for row in report.funnel_leakage %}<tr><td class="strong-cell">{{ row.stage|replace('_',' ')|title }}</td><td>{{ row.reached }}</td><td>{% if row.drop is not none %}{{ row.drop }}{% elif row.variance is not none %}<span class="sales-badge warn">+{{ row.variance }} variance</span>{% else %}—{% endif %}</td><td>{% if row.drop_pct is not none %}{{ row.drop_pct }}%{% elif row.variance is not none %}<span class="sales-badge warn">Review</span>{% else %}—{% endif %}</td></tr>{% endfor %}</table></div>
-    <div class="sales-card"><h3>Process quality</h3><p class="card-note">Controls that protect conversion quality.</p><table class="sales-summary-table"><tr><td>Backward funnel movements</td><td>{{ report.backwards_moves|length }}</td></tr><tr><td>Applications in 30-day cohort</td><td>{{ report.quality_30_day.cohort }}</td></tr><tr><td>30-day active and collecting</td><td>{{ report.quality_30_day.good }}</td></tr><tr><td>Capture-error failures</td><td>{{ report.mandate_discipline.capture_errors }}</td></tr><tr><td>Quality rate</td><td>{{ report.quality_30_day.rate_pct if report.quality_30_day.rate_pct is not none else '—' }}{% if report.quality_30_day.rate_pct is not none %}%{% endif %}</td></tr></table></div>
+    <div class="sales-card"><h3>Funnel leakage</h3><p class="card-note">Drop-off between consecutive stages; variances are flagged instead of shown as negative leakage.</p><div class="table-wrap"><table class="table"><tr><th>Stage</th><th>Reached</th><th>Movement</th><th>Rate</th></tr>{% for row in report.funnel_leakage %}<tr><td class="strong-cell">{{ row.stage|replace('_',' ')|title }}</td><td>{{ row.reached }}</td><td>{% if row.drop is not none %}{{ row.drop }}{% elif row.variance is not none %}<span class="sales-badge warn">+{{ row.variance }} variance</span>{% else %}—{% endif %}</td><td>{% if row.drop_pct is not none %}{{ row.drop_pct }}%{% elif row.variance is not none %}<span class="sales-badge warn">Review</span>{% else %}—{% endif %}</td></tr>{% endfor %}</table></div></div>
+    <div class="sales-card"><h3>Process quality</h3><p class="card-note">Controls that protect conversion quality.</p><div class="table-wrap"><table class="sales-summary-table table"><tr><td>Backward funnel movements</td><td>{{ report.backwards_moves|length }}</td></tr><tr><td>Applications in 30-day cohort</td><td>{{ report.quality_30_day.cohort }}</td></tr><tr><td>30-day active and collecting</td><td>{{ report.quality_30_day.good }}</td></tr><tr><td>Capture-error failures</td><td>{{ report.mandate_discipline.capture_errors }}</td></tr><tr><td>Quality rate</td><td>{{ report.quality_30_day.rate_pct if report.quality_30_day.rate_pct is not none else '—' }}{% if report.quality_30_day.rate_pct is not none %}%{% endif %}</td></tr></table></div></div>
   </section>
 
   <section class="sales-section sales-columns">
-    <div class="sales-card"><h3>Lead source performance</h3><p class="card-note">Which channels produce joined members.</p>{% if report.source_mix %}<table><tr><th>Source</th><th>Leads</th><th>Joined</th><th>Join rate</th></tr>{% for row in report.source_mix %}<tr><td class="strong-cell">{{ row.source }}</td><td>{{ row.leads }}</td><td>{{ row.joined }}</td><td><span class="sales-badge">{{ ((row.joined * 100 / row.leads)|round(1)) if row.leads else '—' }}%</span></td></tr>{% endfor %}</table>{% else %}<div class="sales-empty">No source data in this window.</div>{% endif %}</div>
-    {% if report.consultants %}<div class="sales-card"><h3>Consultant comparison</h3><p class="card-note">Owner-based performance for the same period.</p><table><tr><th>Consultant</th><th>Assigned</th><th>Joined</th><th>Activation</th></tr>{% for person in report.consultants %}<tr><td class="strong-cell">{{ person.username }}</td><td>{{ person.funnel.assigned }}</td><td>{{ person.funnel.joined }}</td><td><span class="sales-badge">{{ person.application_rate_pct if person.application_rate_pct is not none else '—' }}{% if person.application_rate_pct is not none %}%{% endif %}</span></td></tr>{% endfor %}</table></div>{% endif %}
+    <div class="sales-card"><h3>Lead source performance</h3><p class="card-note">Which channels produce joined members.</p>{% if report.source_mix %}<div class="table-wrap"><table class="table"><tr><th>Source</th><th>Leads</th><th>Joined</th><th>Join rate</th></tr>{% for row in report.source_mix %}<tr><td class="strong-cell">{{ row.source }}</td><td>{{ row.leads }}</td><td>{{ row.joined }}</td><td><span class="sales-badge">{{ ((row.joined * 100 / row.leads)|round(1)) if row.leads else '—' }}%</span></td></tr>{% endfor %}</table></div>{% else %}<div class="sales-empty">No source data in this window.</div>{% endif %}</div>
+    {% if report.consultants %}<div class="sales-card"><h3>Consultant comparison</h3><p class="card-note">Owner-based performance for the same period.</p><div class="table-wrap"><table class="table"><tr><th>Consultant</th><th>Assigned</th><th>Joined</th><th>Activation</th></tr>{% for person in report.consultants %}<tr><td class="strong-cell">{{ person.username }}</td><td>{{ person.funnel.assigned }}</td><td>{{ person.funnel.joined }}</td><td><span class="sales-badge">{{ person.application_rate_pct if person.application_rate_pct is not none else '—' }}{% if person.application_rate_pct is not none %}%{% endif %}</span></td></tr>{% endfor %}</table></div></div>{% endif %}
   </section>
 
   <section class="sales-section sales-columns">
-    <div class="sales-card"><h3>Untouched leads</h3><p class="card-note">Assigned leads still waiting for first contact.</p>{% if untouched %}<table><tr><th>Lead</th><th>Status</th><th>Owner</th></tr>{% for lead in untouched[:12] %}<tr><td class="strong-cell">{{ lead.full_name }}</td><td><span class="sales-badge warn">{{ lead.lead_status }}</span></td><td>{{ lead.assigned_to }}</td></tr>{% endfor %}</table>{% else %}<div class="sales-empty">No untouched leads in this window.</div>{% endif %}</div>
-    <div class="sales-card"><h3>Applications stalled 7+ days</h3><p class="card-note">Open applications needing attention.</p>{% if stalled %}<table><tr><th>Application</th><th>Status</th><th>Updated</th></tr>{% for app in stalled[:12] %}<tr><td class="strong-cell">#{{ app.id }}</td><td><span class="sales-badge warn">{{ app.application_status }}</span></td><td>{{ app.updated_at }}</td></tr>{% endfor %}</table>{% else %}<div class="sales-empty">No stalled applications.</div>{% endif %}</div>
+    <div class="sales-card"><h3>Untouched leads</h3><p class="card-note">Assigned leads still waiting for first contact.</p>{% if untouched %}<div class="table-wrap"><table class="table"><tr><th>Lead</th><th>Status</th><th>Owner</th></tr>{% for lead in untouched[:12] %}<tr><td class="strong-cell">{{ lead.full_name }}</td><td><span class="sales-badge warn">{{ lead.lead_status }}</span></td><td>{{ lead.assigned_to }}</td></tr>{% endfor %}</table></div>{% else %}<div class="sales-empty">No untouched leads in this window.</div>{% endif %}</div>
+    <div class="sales-card"><h3>Applications stalled 7+ days</h3><p class="card-note">Open applications needing attention.</p>{% if stalled %}<div class="table-wrap"><table class="table"><tr><th>Application</th><th>Status</th><th>Updated</th></tr>{% for app in stalled[:12] %}<tr><td class="strong-cell">#{{ app.id }}</td><td><span class="sales-badge warn">{{ app.application_status }}</span></td><td>{{ app.updated_at }}</td></tr>{% endfor %}</table></div>{% else %}<div class="sales-empty">No stalled applications.</div>{% endif %}</div>
   </section>
 
-  <section class="sales-section sales-card"><h3>Manager controls</h3><p class="card-note">Operational signals requiring leadership follow-up.</p><table><tr><th>Approval requests</th><th>Pending approvals</th><th>Average approval hours</th><th>Discount offers</th><th>Failure reasons</th></tr><tr><td class="strong-cell">{{ report.approval_turnaround.requests }}</td><td>{{ report.approval_turnaround.pending }}</td><td>{{ report.approval_turnaround.avg_hours if report.approval_turnaround.avg_hours is not none else '—' }}</td><td>{{ report.discount_usage.offers }}</td><td>{{ report.failure_mix|length }}</td></tr></table></section>
+  <section class="sales-section sales-card"><h3>Manager controls</h3><p class="card-note">Operational signals requiring leadership follow-up.</p><div class="table-wrap"><table class="table"><tr><th>Approval requests</th><th>Pending approvals</th><th>Average approval hours</th><th>Discount offers</th><th>Failure reasons</th></tr><tr><td class="strong-cell">{{ report.approval_turnaround.requests }}</td><td>{{ report.approval_turnaround.pending }}</td><td>{{ report.approval_turnaround.avg_hours if report.approval_turnaround.avg_hours is not none else '—' }}</td><td>{{ report.discount_usage.offers }}</td><td>{{ report.failure_mix|length }}</td></tr></table></div></section>
 </div>
 {% endblock %}

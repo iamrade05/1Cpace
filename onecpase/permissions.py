@@ -126,6 +126,8 @@ ROLE_DEFAULT_PERMISSIONS = {
     "manager": {
         "reports_module", "daily_reports", "weekly_reports", "monthly_reports",
         "application_approvals",
+        # Managers decide query approvals, so they must be able to open Queries.
+        "daily_queries",
     },
 }
 

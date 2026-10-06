@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Edit DebiCheck #{{ mandate.id }} | 1Cpase{% endblock %}
+{% block title %}Edit DebiCheck #{{ mandate.id }} | 1Cpace{% endblock %}
 {% block page_title %}Edit DebiCheck #{{ mandate.id }}{% endblock %}
 {% block content %}
+<header class="page-header"><div><h1>Edit DebiCheck #{{ mandate.id }}</h1></div></header>
 <form method="post" id="debicheckEditForm">
   <div class="form-card" style="max-width:1000px;margin:auto;">
     <h2 class="section-heading">{{ mandate.first_name }} {{ mandate.last_name }}</h2>

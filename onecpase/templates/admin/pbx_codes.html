@@ -1,15 +1,16 @@
 {% extends "base.html" %}
-{% block title %}PBX Account Codes | 1Cpase{% endblock %}
+{% block title %}PBX Account Codes | 1Cpace{% endblock %}
 {% block page_title %}PBX Account Codes{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>PBX Account Codes</h1></div></header>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
   <p style="font-size:0.85rem;color:#6b7280;">Reception and sales share physical phones and identify themselves by PIN when dialing. Map each PIN to the staff member it belongs to so the PBX call log shows who actually made the call.</p>
   <a href="{{ url_for('admin.pbx_code_add') }}" class="btn btn-primary">+ Add Code</a>
 </div>
 
 <div class="table-card">
-  <table class="data-table">
+  <div class="table-wrap"><table class="data-table table">
     <thead>
       <tr>
         <th>Code</th>
@@ -43,6 +44,6 @@
       <tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:32px;">No account codes yet. <a href="{{ url_for('admin.pbx_code_add') }}">Add one</a>.</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 {% endblock %}

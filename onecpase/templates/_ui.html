@@ -1,0 +1,10 @@
+{% macro page_header(title, breadcrumb='', subtitle='', actions='') -%}
+<header class="page-header"><div>{% if breadcrumb %}<div class="breadcrumb">{{ breadcrumb }}</div>{% endif %}<h1>{{ title }}</h1>{% if subtitle %}<p class="muted mono">{{ subtitle }}</p>{% endif %}</div>{% if actions %}<div class="page-actions">{{ actions }}</div>{% endif %}</header>
+{%- endmacro %}
+{% macro badge(label, tone='neutral') -%}<span class="badge badge-{{ {'ok':'success','warn':'warning','bad':'danger','info':'info'}.get(tone,'gray') }}">{{ label }}</span>{%- endmacro %}
+{% macro callout(message, tone='info') -%}<div class="callout callout-{{ tone }}" role="status">{{ message }}</div>{%- endmacro %}
+{% macro panel(title='') -%}<section class="panel">{% if title %}<h2 class="panel-title">{{ title }}</h2>{% endif %}{{ caller() }}</section>{%- endmacro %}
+{% macro kv_row(label, value, mono=false) -%}<div class="kv"><span class="muted">{{ label }}</span><span{% if mono %} class="mono"{% endif %}>{{ value }}</span></div>{%- endmacro %}
+{% macro kpi_strip(items) -%}<div class="kpis">{% for item in items %}<div class="kpi"><div class="kpi-label">{{ item.label }}</div><div class="kpi-value">{{ item.value }}</div>{% if item.subtitle %}<div class="muted">{{ item.subtitle }}</div>{% endif %}</div>{% endfor %}</div>{%- endmacro %}
+{% macro empty_state(message, next_step='') -%}<div class="empty-state"><p>{{ message }}</p>{% if next_step %}<p>{{ next_step }}</p>{% endif %}</div>{%- endmacro %}
+{% macro field(name, label, value='', type='text', required=false) -%}<div class="form-field"><label for="{{ name }}">{{ label }}{% if required %} <span aria-label="required">*</span>{% endif %}</label><input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ value }}"{% if required %} required{% endif %}></div>{%- endmacro %}

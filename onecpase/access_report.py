@@ -256,8 +256,9 @@ def index():
                 'afternoon': sum(1 for r in rows if r.get('shift') == 'Afternoon'),
             }
 
-    except Exception as exc:
-        error = str(exc)
+    except Exception:
+        current_app.logger.exception("Gym access report connection failed")
+        error = "Gym access data is unavailable."
 
     return render_template(
         'access_report/index.html',

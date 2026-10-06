@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Application #{{ app.id }} | 1Cpase{% endblock %}
+{% block title %}Application #{{ app.id }} | 1Cpace{% endblock %}
 {% block page_title %}Application #{{ app.id }}{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Application #{{ app.id }}</h1></div></header>
 {% set color = status_colors.get(app.application_status, '#6b7280') %}
 
 <!-- Header banner -->
@@ -33,7 +34,7 @@
           style="display:inline; margin-left:10px;">
       <button type="submit" class="btn btn-primary"
               style="background:#059669; border-color:#059669; font-size:0.8rem;">
-        ✓ Push Application
+         Push Application
       </button>
     </form>
     {% elif is_manager and checklist and app.push_status not in ('pushed', 'pushing') %}
@@ -42,7 +43,7 @@
       <input type="hidden" name="override" value="1">
       <button type="button" onclick="confirmOverridePush()" class="btn btn-primary"
               style="background:#dc2626; border-color:#dc2626; font-size:0.8rem;">
-        ⚠ Override &amp; Push (Manager)
+         Override &amp; Push (Manager)
       </button>
     </form>
     <script>
@@ -51,9 +52,7 @@
       const msg = 'This application is NOT fully verified. Missing:\n\n- '
                   + missing.join('\n- ')
                   + '\n\nPush to Itensity anyway? This will be logged as a manager override.';
-      if (confirm(msg)) {
-        document.getElementById('overridePushForm').submit();
-      }
+      showInlineConfirmation(document.getElementById('overridePushForm'), msg);
     }
     </script>
     {% endif %}
@@ -123,7 +122,7 @@
         {% for label, done in items %}
         <div style="font-size:0.8rem; margin-bottom:4px;
                     color:{% if done %}#059669{% else %}#ef4444{% endif %};">
-          {{ '✓' if done else '✗' }} {{ label }}
+          {{ '' if done else '' }} {{ label }}
         </div>
         {% endfor %}
       </div>
@@ -136,7 +135,7 @@
         {% for item in followups %}
         <div style="font-size:0.8rem; margin-bottom:4px;
                     color:{% if item.done %}#059669{% else %}#9ca3af{% endif %};">
-          {{ '✓' if item.done else '○' }} {{ item.label }}
+          {{ '' if item.done else '○' }} {{ item.label }}
         </div>
         {% endfor %}
         {% if checklist.pos_status != 'paid' and app.member_id and has_perm('new_collection') %}
@@ -209,11 +208,11 @@
               </button>
             </form>
             {% endif %}
-            <form method="POST" action="{{ url_for('members.member_delete_doc', mid=app.member_id, doc_id=doc.id) }}"
-                  onsubmit="return confirm('Delete this document?');" style="margin:0;">
+            <details class="row-menu"><summary>Actions</summary><div class="row-menu-panel"><form method="POST" action="{{ url_for('members.member_delete_doc', mid=app.member_id, doc_id=doc.id) }}"
+                  data-confirm="Delete this document?" style="margin:0;">
               <input type="hidden" name="return_to" value="{{ url_for('applications.application_detail', aid=app.id) }}">
               <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.74rem; color:#ef4444;">Delete</button>
-            </form>
+            </form></div></details>
           </div>
         </div>
         {% endfor %}
@@ -338,7 +337,7 @@
         </div>
         <div style="background:#fef3c7; border-radius:6px; padding:8px 12px; font-size:0.75rem;
                     color:#78350f; margin-bottom:10px;">
-          🔒 POPIA: Bank statements are treated as sensitive personal data. Handle with appropriate access controls and do not store unnecessarily.
+           POPIA: Bank statements are treated as sensitive personal data. Handle with appropriate access controls and do not store unnecessarily.
         </div>
         <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">
           Submit Analysis

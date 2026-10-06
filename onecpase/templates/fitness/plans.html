@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Workout Plans | 1Cpase{% endblock %}
+{% block title %}Workout Plans | 1Cpace{% endblock %}
 {% block page_title %}Workout Plans{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Workout Plans</h1></div></header>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
   <p style="color:#6b7280; font-size:0.875rem; margin:0;">Most recent 50 plans.</p>
   <a href="{{ url_for('fitness.workout_plan_add') }}" class="btn btn-primary">+ New Plan</a>
@@ -11,7 +12,7 @@
 {% if plans %}
 <div class="card">
   <div class="card-body">
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr>
           <th>Member</th>
@@ -37,12 +38,12 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% else %}
 <div class="empty-state">
-  <div class="empty-icon">📋</div>
+  <div class="empty-icon"></div>
   <p>No workout plans yet.</p>
   <a href="{{ url_for('fitness.workout_plan_add') }}" class="btn btn-primary">Create First Plan</a>
 </div>

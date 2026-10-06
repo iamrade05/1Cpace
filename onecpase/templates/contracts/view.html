@@ -250,7 +250,7 @@
       {% endif %}
       <div>
       <div class="gym-name">{{ contract_template.gym_name if contract_template else 'Elev8 Health & Fitness' }}</div>
-      <div class="gym-sub">1Cpase Gym Management System</div>
+      <div class="gym-sub">1Cpace Gym Management System</div>
       {% if contract_template and (contract_template.reg_no or contract_template.address) %}
       <div class="gym-extra">
         {% if contract_template.reg_no %}Reg. No: {{ contract_template.reg_no }}{% endif %}
@@ -596,7 +596,7 @@
   <!-- Footer -->
   <div class="contract-footer">
     <span>Contract #{{ "%05d"|format(m.id) }} &nbsp;·&nbsp; {{ m.first_name }} {{ m.last_name }} &nbsp;·&nbsp; {{ m.id_number or '' }}</span>
-    <span>Generated {{ generated_at }} &nbsp;·&nbsp; 1Cpase &copy; {{ today.year }}</span>
+    <span>Generated {{ generated_at }} &nbsp;·&nbsp; 1Cpace &copy; {{ today.year }}</span>
   </div>
 
 </div>

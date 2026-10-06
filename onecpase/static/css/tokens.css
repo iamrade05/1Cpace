@@ -1,0 +1,21 @@
+/* Shared 1Cpace tokens. Light workspace, navy navigation. */
+:root {
+ --navy:#002e45; --navy-d:#001e2d; --navy-l:#0b4f6c;
+ --red:#b0842d; --red-d:#866421; --bg:#f4f6f8;
+ --s1:#ffffff; --s2:#f8fafc; --s3:#edf1f5;
+ --b1:#dce2e8; --b2:#c4cdd7; --b3:#98a2b3;
+ --txt:#172033; --t2:#526174; --t3:#667085;
+ --ok:#157347; --warn:#956000; --err:#b42318; --info:#185fa5; --pur:var(--info);
+ --surface:var(--s1); --surface2:var(--s2); --border:var(--b1); --border2:var(--b2);
+ --text:var(--txt); --text-muted:var(--t3); --text-sub:var(--t2); --accent:var(--red);
+ --green:var(--ok); --yellow:var(--warn); --blue:var(--info); --purple:var(--info);
+ --fp-bg:var(--bg); --fp-sidebar:var(--navy); --fp-sidebar-2:var(--navy-d);
+ --fp-surface:var(--s1); --fp-text:var(--txt); --fp-muted:var(--t2); --fp-border:var(--b1);
+ --fp-primary:var(--red); --fp-primary-strong:var(--red-d); --fp-green:var(--ok);
+ --fp-orange:var(--warn); --fp-blue:var(--info); --fp-purple:var(--info);
+ --fp-shadow:0 4px 16px rgb(23 32 51 / .07); --fp-shadow-sm:0 1px 4px rgb(23 32 51 / .05);
+ --font-body:'Barlow','Segoe UI',sans-serif; --font-display:'Barlow Condensed',sans-serif;
+ --font-mono:'IBM Plex Mono',Consolas,monospace; --radius:8px; --sw:230px;
+ --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px;
+ color-scheme:light;
+}

@@ -3,6 +3,7 @@
 {% block page_title %}Collections Client Brief{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Collections Client Brief</h1></div></header>
 <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
   <a href="{{ url_for('collections.call_queue') }}" class="btn btn-ghost">← Back to Call List</a>
   <span class="badge badge-info">Assigned to {{ task.caller_name }}</span>
@@ -32,12 +33,12 @@
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:16px;margin-bottom:16px;">
   <section class="form-card">
     <h3 style="margin-bottom:12px;">Payment &amp; Debit Profile</h3>
-    <table style="width:100%;font-size:.82rem;">
+    <div class="table-wrap"><table style="width:100%;font-size:.82rem;" class="table">
       <tr><td style="color:var(--t2);padding:6px;">DebiCheck in place</td><td><strong>{% if mandate %}{{ mandate.status|title }}{% else %}No mandate recorded{% endif %}</strong></td></tr>
-      {% if mandate %}<tr><td style="color:var(--t2);padding:6px;">Mandate amount</td><td>R{{ '%.2f'|format(mandate.instalment_amount or 0) }}</td></tr><tr><td style="color:var(--t2);padding:6px;">Submitted</td><td>{{ mandate.submitted_at or mandate.created_at }}</td></tr>{% endif %}
+      {% if mandate %}<tr><td style="color:var(--t2);padding:6px;">Mandate amount</td><td class="num">R{{ '%.2f'|format(mandate.instalment_amount or 0) }}</td></tr><tr><td style="color:var(--t2);padding:6px;">Submitted</td><td>{{ mandate.submitted_at or mandate.created_at }}</td></tr>{% endif %}
       <tr><td style="color:var(--t2);padding:6px;">Last payment</td><td>{{ payment_stats.last_payment_date or 'No payment recorded' }}</td></tr>
       <tr><td style="color:var(--t2);padding:6px;vertical-align:top;">Payment methods</td><td>{% for method in payment_methods %}<div><strong>{{ ('Debit Order' if method.method == 'debicheck' else method.method|title) }}</strong>: {{ method.payments }} payment{{ 's' if method.payments != 1 }} · R{{ '%.2f'|format(method.amount or 0) }}</div>{% else %}No successful payment methods recorded{% endfor %}</td></tr>
-    </table>
+    </table></div>
   </section>
 
   <section class="form-card">
@@ -87,7 +88,7 @@
       <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
         <input type="hidden" name="channel" value="whatsapp">
         <input type="hidden" name="result" value="sent">
-        <button type="submit" class="btn btn-ghost btn-sm" {% if task.whatsapp_sent %}disabled{% endif %}>{% if task.whatsapp_sent %}✓ WhatsApp sent{% else %}Mark WhatsApp sent{% endif %}</button>
+        <button type="submit" class="btn btn-ghost btn-sm" {% if task.whatsapp_sent %}disabled{% endif %}>{% if task.whatsapp_sent %} WhatsApp sent{% else %}Mark WhatsApp sent{% endif %}</button>
       </form>
       {% if task.whatsapp_sent and task.next_channel == 'WHATSAPP' %}
       <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
@@ -99,7 +100,7 @@
       <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
         <input type="hidden" name="channel" value="sms">
         <input type="hidden" name="result" value="sent">
-        <button type="submit" class="btn btn-ghost btn-sm" {% if task.sms_sent %}disabled{% endif %}>{% if task.sms_sent %}✓ SMS sent{% else %}Mark SMS sent{% endif %}</button>
+        <button type="submit" class="btn btn-ghost btn-sm" {% if task.sms_sent %}disabled{% endif %}>{% if task.sms_sent %} SMS sent{% else %}Mark SMS sent{% endif %}</button>
       </form>
       {% if task.sms_sent and task.next_channel == 'SMS' %}
       <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
@@ -203,7 +204,7 @@
       var li = document.createElement('li');
       li.style.cssText = 'list-style:none;margin:0 0 6px -18px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;';
       var mark = document.createElement('span');
-      mark.textContent = c.met ? '✓' : (c.blocking ? '✗' : '!');
+      mark.textContent = c.met ? '' : (c.blocking ? '' : '!');
       mark.style.cssText = 'font-weight:800;color:' + (c.met ? 'var(--ok)' : (c.blocking ? 'var(--err)' : 'var(--warn, #b45309)')) + ';';
       li.appendChild(mark);
       var text = document.createElement('span'); text.textContent = c.label; li.appendChild(text);
@@ -273,8 +274,8 @@ async function startCollectionPbxCall(phone, taskId) {
     });
     const data = await r.json();
     if (!data.ok) throw new Error(data.error || 'PBX call failed');
-    alert('Call started. Complete the outcome below after the call.');
-  } catch (e) { alert(e.message); }
+    showUiMessage('Call started. Complete the outcome below after the call.');
+  } catch (e) { showUiMessage('The call could not start. Please try again or ask an admin to check the phone connection.', 'error'); }
 }
 </script>
 {% endblock %}

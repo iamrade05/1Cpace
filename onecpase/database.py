@@ -1,5 +1,5 @@
 """
-Database connection factory for 1Cpase.
+Database connection factory for 1Cpace.
 
 Supports two backends, selected automatically from the DATABASE_URL env var:
   - SQLite  (default)  — no DATABASE_URL or DATABASE_URL=""
@@ -69,7 +69,7 @@ def init_db():
 
     backend = _db_type()
     if backend == "postgresql":
-        _init_db_on_connection(get_db(), backend, "1Cpase")
+        _init_db_on_connection(get_db(), backend, "1Cpace")
         return
 
     for tenant in get_platform_db().execute("SELECT * FROM tenants WHERE active = 1").fetchall():
@@ -82,7 +82,7 @@ def init_db():
             conn.close()
 
 
-def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpase") -> None:
+def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> None:
     """Create tables and apply additive migrations on *db* — any open
     connection, tenant-scoped or not."""
     schema = get_schema(backend)
@@ -426,6 +426,19 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpase") -> Non
     ]:
         _ensure_column(db, backend, "queries", col, defn)
 
+    # Queries: manager approval workflow and closure reason
+    for col, defn in [
+        ("proposed_discount_pct",   f"{real} DEFAULT 0"),
+        ("approval_status",         "TEXT DEFAULT 'not_required'"),
+        ("approval_reason",         "TEXT"),
+        ("approval_requested_by",   "INTEGER"),
+        ("approval_requested_at",   "TEXT"),
+        ("approval_notes",          "TEXT"),
+        ("cancel_member_requested", "INTEGER DEFAULT 0"),
+        ("closure_reason",          "TEXT"),
+    ]:
+        _ensure_column(db, backend, "queries", col, defn)
+
     _relax_leave_requests_user_id(db, backend)
 
     _backfill_member_refs(db, tenant_name)
@@ -478,7 +491,7 @@ def current_tenant_name() -> str:
     if tenant:
         return tenant["name"]
     if _db_type() == "postgresql":
-        return "1Cpase"
+        return "1Cpace"
     try:
         from .platform_db import get_platform_db
         configured_path = str(Path(current_app.config["DATABASE_PATH"]).resolve())
@@ -489,7 +502,7 @@ def current_tenant_name() -> str:
                 return row["name"]
     except Exception:
         current_app.logger.exception("Could not resolve tenant name for Member Ref")
-    return "1Cpase"
+    return "1Cpace"
 
 
 # ── Column migration helpers ──────────────────────────────────────────────────

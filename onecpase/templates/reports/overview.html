@@ -2,7 +2,7 @@
 {% block title %}Reports – Overview{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>📊 Reports</h1>
+  <h1> Reports</h1>
 </div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px;align-items:center;">
   <a href="{{ url_for('reports.overview') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#e94560;color:#fff;">Overview</a>
@@ -66,7 +66,7 @@
       <a href="{{ url_for('reports.finance') }}" class="btn btn-xs btn-outline">Full Report →</a>
     </div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.82rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.82rem;">
         <thead>
           <tr><th>Month</th><th class="text-right">Collected</th><th class="text-right">Outstanding</th><th class="text-right">Records</th></tr>
         </thead>
@@ -82,7 +82,7 @@
           <tr><td colspan="4" class="text-center text-muted">No data</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -93,7 +93,7 @@
       <a href="{{ url_for('reports.membership') }}" class="btn btn-xs btn-outline">Full Report →</a>
     </div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.82rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.82rem;">
         <thead>
           <tr><th>Month</th><th class="text-right">New Members</th></tr>
         </thead>
@@ -107,7 +107,7 @@
           <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -122,7 +122,7 @@
       <a href="{{ url_for('reports.membership') }}" class="btn btn-xs btn-outline">Full Report →</a>
     </div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.82rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.82rem;">
         <thead>
           <tr><th>Package</th><th class="text-right">Active</th></tr>
         </thead>
@@ -136,7 +136,7 @@
           <tr><td colspan="2" class="text-center text-muted">No data</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -147,7 +147,7 @@
       <a href="{{ url_for('reports.queries_report') }}" class="btn btn-xs btn-outline">Full Report →</a>
     </div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.82rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.82rem;">
         <thead>
           <tr><th>Category</th><th class="text-right">Count</th></tr>
         </thead>
@@ -161,7 +161,7 @@
           <tr><td colspan="2" class="text-center text-muted">No queries this month</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -169,22 +169,22 @@
 
 <div style="margin-top:1rem;display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;">
   <a href="{{ url_for('reports.membership') }}" class="card" style="padding:1rem;text-decoration:none;color:inherit;text-align:center;border-top:3px solid #28a745;">
-    <div style="font-size:1.5rem;">👥</div>
+    <div style="font-size:1.5rem;"></div>
     <div style="font-weight:600;margin-top:.25rem;">Membership</div>
     <div style="font-size:.78rem;color:#6c757d;">Status, packages, new joins</div>
   </a>
   <a href="{{ url_for('reports.finance') }}" class="card" style="padding:1rem;text-decoration:none;color:inherit;text-align:center;border-top:3px solid #007bff;">
-    <div style="font-size:1.5rem;">💰</div>
+    <div style="font-size:1.5rem;"></div>
     <div style="font-weight:600;margin-top:.25rem;">Finance</div>
     <div style="font-size:.78rem;color:#6c757d;">Collections, payments, outstanding</div>
   </a>
   <a href="{{ url_for('reports.arrears') }}" class="card" style="padding:1rem;text-decoration:none;color:inherit;text-align:center;border-top:3px solid #dc3545;">
-    <div style="font-size:1.5rem;">📋</div>
+    <div style="font-size:1.5rem;"></div>
     <div style="font-weight:600;margin-top:.25rem;">Arrears &amp; PTP</div>
     <div style="font-size:.78rem;color:#6c757d;">Debt, PTPs, access blocks</div>
   </a>
   <a href="{{ url_for('reports.queries_report') }}" class="card" style="padding:1rem;text-decoration:none;color:inherit;text-align:center;border-top:3px solid #ffc107;">
-    <div style="font-size:1.5rem;">🎫</div>
+    <div style="font-size:1.5rem;"></div>
     <div style="font-weight:600;margin-top:.25rem;">Queries</div>
     <div style="font-size:.78rem;color:#6c757d;">Tickets, resolutions, trends</div>
   </a>

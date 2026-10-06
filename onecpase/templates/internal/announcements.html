@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Announcements · 1Cpase{% endblock %}
+{% block title %}Announcements · 1Cpace{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -36,7 +36,7 @@
   <div class="card-body" style="padding:16px;">
     <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;">
       <h2 style="margin:0;font-size:1.02rem;flex:1;">
-        {% if a.pinned %}<span title="Pinned">📌</span> {% endif %}{{ a.title }}
+        {% if a.pinned %}<span title="Pinned"></span> {% endif %}{{ a.title }}
       </h2>
       {% if not a.seen %}
       <span style="background:var(--accent,#e94560);color:#fff;border-radius:20px;
@@ -56,7 +56,7 @@
         <button class="btn btn-primary btn-sm" type="submit">Mark as read</button>
       </form>
       {% else %}
-      <span style="color:#34d399;font-size:.78rem;font-weight:700;">✓ You have read this</span>
+      <span style="color:#34d399;font-size:.78rem;font-weight:700;"> You have read this</span>
       {% endif %}
 
       <span style="color:var(--t2);font-size:.76rem;margin-left:auto;">
@@ -68,11 +68,11 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-ghost btn-sm" type="submit">{{ 'Unpin' if a.pinned else 'Pin' }}</button>
       </form>
-      <form method="POST" action="{{ url_for('internal_comms.announcement_archive', announcement_id=a.id) }}" style="margin:0;"
-            onsubmit="return confirm('Archive this announcement? Staff will no longer see it, but the record of who read it is kept.');">
+      <details class="row-menu"><summary>Actions</summary><div class="row-menu-panel"><form method="POST" action="{{ url_for('internal_comms.announcement_archive', announcement_id=a.id) }}" style="margin:0;"
+            data-confirm="Archive this announcement? Staff will no longer see it, but the record of who read it is kept.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-ghost btn-sm" type="submit">Archive</button>
-      </form>
+      </form></div></details>
       {% endif %}
     </div>
   </div>

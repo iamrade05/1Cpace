@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Assessments | 1Cpase{% endblock %}
+{% block title %}Assessments | 1Cpace{% endblock %}
 {% block page_title %}Fitness Assessments{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Fitness Assessments</h1></div></header>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
   <p style="color:#6b7280; font-size:0.875rem; margin:0;">Most recent 50 assessments.</p>
   <a href="{{ url_for('fitness.assessment_add') }}" class="btn btn-primary">+ New Assessment</a>
@@ -11,7 +12,7 @@
 {% if assessments %}
 <div class="card">
   <div class="card-body">
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr>
           <th>Member</th>
@@ -38,12 +39,12 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% else %}
 <div class="empty-state">
-  <div class="empty-icon">📏</div>
+  <div class="empty-icon"></div>
   <p>No assessments recorded yet.</p>
   <a href="{{ url_for('fitness.assessment_add') }}" class="btn btn-primary">Record First Assessment</a>
 </div>

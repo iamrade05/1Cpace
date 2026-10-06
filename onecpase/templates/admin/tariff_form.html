@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if tariff else 'Create' }} Membership Plan | 1Cpase{% endblock %}
+{% block title %}{{ 'Edit' if tariff else 'Create' }} Membership Plan | 1Cpace{% endblock %}
 {% block page_title %}{{ 'Edit' if tariff else 'Create' }} Membership Plan{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>{{ 'Edit' if tariff else 'Create' }} Membership Plan</h1></div></header>
 <div style="max-width:520px;">
 <div class="form-card">
   <form method="POST">

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Screen Recordings · 1Cpase{% endblock %}
+{% block title %}Screen Recordings · 1Cpace{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -13,7 +13,7 @@
   <div class="card-header"><h2>New Recording</h2></div>
   <div class="card-body" style="padding:20px;">
     <p style="margin-bottom:16px;color:#4b5563;font-size:.9rem;line-height:1.5;">
-      Starting a recording opens your browser's share picker. Select the 1Cpase tab or approved screen;
+      Starting a recording opens your browser's share picker. Select the 1Cpace tab or approved screen;
       recording starts only after you approve that prompt.
     </p>
     <div class="form-group" style="max-width:520px;">
@@ -34,7 +34,7 @@
   <div class="card-header"><h2>Saved Recordings</h2></div>
   <div class="card-body">
     {% if recordings %}
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead><tr><th>Title</th><th>Recorded by</th><th>Created</th><th>Duration</th><th>Size</th><th></th></tr></thead>
       <tbody>
         {% for recording in recordings %}
@@ -48,7 +48,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div style="padding:22px;color:#6b7280;">No recordings have been saved.</div>
     {% endif %}

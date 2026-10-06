@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}WhatsApp {{ number|title }} | 1Cpase{% endblock %}
+{% block title %}WhatsApp {{ number|title }} | 1Cpace{% endblock %}
 {% block page_title %}WhatsApp — {{ number|title }}{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>WhatsApp — {{ number|title }}</h1></div></header>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px;">
   <div>
     <h2 style="font-size:1.1rem;font-weight:800;color:#172033;margin:0;">WhatsApp — {{ number|title }}</h2>
@@ -14,7 +15,7 @@
   <div class="card-body" style="padding:0;">
     {% if conversations %}
     <div style="overflow-x:auto;">
-      <table>
+      <div class="table-wrap"><table class="table">
         <thead>
           <tr>
             <th>Contact</th>
@@ -46,11 +47,11 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
     {% else %}
     <div class="empty-state" style="padding:48px 24px;">
-      <div class="empty-icon">💬</div>
+      <div class="empty-icon"></div>
       <p>No WhatsApp conversations yet.</p>
     </div>
     {% endif %}

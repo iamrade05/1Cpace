@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if report else 'Create' }} Report | 1Cpase{% endblock %}
+{% block title %}{{ 'Edit' if report else 'Create' }} Report | 1Cpace{% endblock %}
 {% block page_title %}{{ 'Edit' if report else 'Create' }} Saved Report{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>{{ 'Edit' if report else 'Create' }} Saved Report</h1></div></header>
 <style>
   .report-admin-section{border:1px solid var(--b1);border-radius:10px;padding:18px;margin-top:18px;background:var(--s2)}
   .report-admin-section h3{font-size:.86rem;margin-bottom:14px;color:var(--txt)}

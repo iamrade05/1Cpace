@@ -24,9 +24,9 @@ def test_nothing_owing():
     assert offer(0, 3)["decision"] == DECISION_NO_BALANCE
 
 
-@pytest.mark.parametrize("months,percent", [(2, 25), (3, 35), (4, 35), (5, 40), (6, 50)])
+@pytest.mark.parametrize("months,percent", [(1, 0), (2, 25), (3, 25), (4, 50), (5, 50), (6, 75), (8, 75)])
 def test_discount_tiers(months, percent):
-    r = offer(1000, months)
+    r = offer(1000, months, policy={"recovery_minimum_amount": 0, "recovery_minimum_from_months": 99})
     assert r["discount_percent"] == percent
     assert r["discount_amount"] == round(1000 * percent / 100, 2)
     assert r["total_to_collect"] == 1000 - r["discount_amount"]
@@ -41,12 +41,27 @@ def test_panel_uses_the_same_tiers_as_the_live_engine():
         assert r["discount_percent"] == live["discount_percent"], months
 
 
-def test_four_months_and_over_need_a_manager_like_the_live_policy():
-    ok = offer(1000, 3, upfront_offered=100, upfront_received=100, debicheck_status="approved")
-    assert ok["decision"] == DECISION_ELIGIBLE
-    for months in (4, 5, 6):
+def test_staff_can_give_up_to_fifty_percent_and_above_needs_a_manager():
+    for months in (2, 3, 4, 5):
         r = offer(1000, months, upfront_offered=100, upfront_received=100, debicheck_status="approved")
-        assert r["decision"] == DECISION_MANAGER
+        assert r["decision"] == DECISION_ELIGIBLE, months
+    for months in (6, 7, 8):
+        r = offer(1000, months, upfront_offered=100, upfront_received=100, debicheck_status="approved",
+                  policy={"recovery_minimum_amount": 0, "recovery_minimum_from_months": 99})
+        assert r["decision"] == DECISION_MANAGER, months
+
+
+def test_nine_months_and_over_is_manager_discretion():
+    r = offer(5000, 9, upfront_offered=100, upfront_received=100, debicheck_status="approved")
+    assert r["decision"] == DECISION_MANAGER
+    assert r["discount_range_label"] == "Manager discretion"
+    assert any("manager discretion" in reason for reason in r["reasons"])
+
+
+def test_offer_carries_the_tier_range():
+    r = offer(1000, 4)
+    assert (r["discount_min_percent"], r["discount_max_percent"]) == (35, 50)
+    assert r["discount_range_label"] == "35%–50%"
 
 
 def test_upfront_is_whatever_the_client_can_offer():
@@ -73,13 +88,13 @@ def test_a_confirmed_debicheck_clears_its_condition():
     assert not any("DebiCheck" in c for c in r["conditions"])
 
 
-@pytest.mark.parametrize("arrears,total", [(3000, 1500), (5000, 2500), (6000, 3000)])
+@pytest.mark.parametrize("arrears,total", [(3000, 1500), (5000, 1500), (8000, 2000)])
 def test_recovery_accounts_keep_the_minimum(arrears, total):
     assert offer(arrears, 7)["total_to_collect"] == total
 
 
 def test_discount_never_takes_recovery_below_the_minimum():
-    r = offer(2000, 8)  # 50% would leave R1,000
+    r = offer(2000, 8)  # 75% would leave R500
     assert r["total_to_collect"] == 1500 and r["discount_amount"] == 500
 
 
@@ -91,7 +106,7 @@ def test_balance_below_the_minimum_is_flagged_and_never_over_demanded():
 
 def test_upfront_counts_toward_the_recovery_total():
     r = offer(5000, 7, upfront_offered=750, upfront_received=750)
-    assert r["total_to_collect"] == 2500 and r["remaining_to_collect"] == 1750
+    assert r["total_to_collect"] == 1500 and r["remaining_to_collect"] == 750
 
 
 def test_remaining_never_goes_negative():
@@ -101,7 +116,7 @@ def test_remaining_never_goes_negative():
 def test_six_months_can_start_the_minimum_when_configured():
     six = {"recovery_minimum_amount": 1500.0, "recovery_minimum_from_months": 6}
     assert offer(2000, 6, policy=six)["total_to_collect"] == 1500
-    assert offer(2000, 6)["total_to_collect"] == 1000
+    assert offer(2000, 6)["total_to_collect"] == 500
 
 
 def test_returning_member_needs_debicheck_and_a_bank_statement_review():

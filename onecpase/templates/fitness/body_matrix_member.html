@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Body Matrix: {{ full_name }} | 1Cpase{% endblock %}
+{% block title %}Body Matrix: {{ full_name }} | 1Cpace{% endblock %}
 {% block page_title %}{{ full_name }} — Body Matrix{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>{{ full_name }} — Body Matrix</h1></div></header>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
   <div style="display:flex; gap:8px;">
     <a href="{{ url_for('fitness.body_matrix_member', mid=member.id, view='weekly') }}"
@@ -40,7 +41,7 @@
     <div class="card-body">
       {% if entries %}
       <div style="height:280px;"><canvas id="matrixChart"></canvas></div>
-      <table style="margin-top:20px;">
+      <div class="table-wrap"><table style="margin-top:20px;" class="table">
         <thead>
           <tr><th>Date</th><th>Weight</th><th>Body Fat %</th><th>Muscle Mass</th><th>Waist</th></tr>
         </thead>
@@ -55,10 +56,10 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
       {% else %}
       <div class="empty-state" style="padding:32px;">
-        <div class="empty-icon">📈</div>
+        <div class="empty-icon"></div>
         <p>No entries yet — add the first one.</p>
       </div>
       {% endif %}

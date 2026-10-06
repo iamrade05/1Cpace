@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Add Member | 1Cpase{% endblock %}
+{% block title %}Add Member | 1Cpace{% endblock %}
 {% block page_title %}Add Member{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Add Member</h1></div></header>
 {% macro sel(name, options, current, placeholder='— Select —') %}
 <select name="{{ name }}" class="form-control">
   <option value="">{{ placeholder }}</option>
@@ -12,61 +13,7 @@
 </select>
 {% endmacro %}
 
-<style>
-/* ── Tab nav ── */
-.tab-nav {
-  display:flex; gap:0; background:#fff; border-radius:12px;
-  border:1px solid #e5e7eb; box-shadow:0 2px 8px rgba(0,0,0,.06);
-  margin-bottom:20px; overflow-x:auto; padding:6px;
-}
-.tab-btn {
-  display:flex; align-items:center; gap:9px; flex:1; justify-content:center;
-  padding:10px 14px; border:none; background:none; cursor:pointer;
-  font-size:0.8rem; font-weight:600; color:#6b7280;
-  border-radius:8px; white-space:nowrap;
-  transition:background .15s,color .15s;
-}
-.tab-btn .tab-num {
-  display:inline-flex; align-items:center; justify-content:center;
-  width:24px; height:24px; border-radius:50%; font-size:0.72rem;
-  font-weight:700; background:#f3f4f6; color:#6b7280;
-  transition:background .15s,color .15s; flex-shrink:0;
-}
-.tab-btn.active { background:#EEF4FA; color:#185FA5; }
-.tab-btn.active .tab-num { background:#185FA5; color:#fff; }
-/* ── Section heading ── */
-.section-heading {
-  font-size:1rem; font-weight:700; color:#1F2933;
-  margin-bottom:18px; padding-bottom:12px;
-  border-bottom:2px solid #EEF4FA;
-}
-/* ── Tab panes ── */
-.tab-pane { display:none; }
-.tab-pane.active { display:block; }
-/* ── Footer nav ── */
-.tab-footer {
-  display:flex; justify-content:space-between; align-items:center;
-  padding:18px 0 4px; margin-top:12px;
-}
-.tab-footer .btn {
-  padding: 11px 28px; font-size:0.88rem; font-weight:700;
-  border-radius:8px; letter-spacing:0.2px;
-}
-/* ── Submit button full-width dark ── */
-.btn-submit-dark {
-  display:block; width:100%; padding:14px;
-  background:#1F2933; color:#fff; border:none; border-radius:8px;
-  font-size:0.95rem; font-weight:700; letter-spacing:0.3px;
-  cursor:pointer; margin-top:8px; transition:background .15s;
-}
-.btn-submit-dark:hover { background:#111827; }
-/* ── Age badge ── */
-.age-badge {
-  display:inline-block; background:#EEF4FA; color:#185FA5;
-  font-size:0.72rem; font-weight:700; padding:2px 8px;
-  border-radius:10px; margin-left:8px; vertical-align:middle;
-}
-</style>
+
 
 <div>
 <form method="POST" id="memberForm" novalidate>
@@ -93,7 +40,7 @@
   <!-- Tab 1: Personal -->
   <div class="tab-pane active" id="pane-0">
 
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Personal Details</h2>
       <div class="form-grid-2">
         <div class="form-group">
@@ -107,7 +54,7 @@
         <div class="form-group">
           <label class="form-label">
             Identity Document *
-            <span id="ageBadge" class="age-badge" style="display:none;"></span>
+            <span id="ageBadge" class="age-badge u-6b99de8b"></span>
           </label>
           <input type="text" name="id_number" id="idField" class="form-control" required
                  minlength="13" maxlength="13" pattern="[0-9]{13}"
@@ -146,24 +93,21 @@
       </div>
     </div>
 
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Address</h2>
       <!-- Address search -->
-      <div class="form-group" style="margin-bottom:14px;position:relative;">
+      <div class="form-group u-08d269c3">
         <label class="form-label">Search Address</label>
-        <div style="display:flex;gap:8px;">
+        <div class="u-a76d597a">
           <input type="text" id="addressSearch" class="form-control"
                  placeholder="Type suburb, city or full address…"
                  autocomplete="off">
           <button type="button" onclick="searchAddress()"
-                  style="padding:0 16px;background:#185FA5;color:#fff;border:none;
-                         border-radius:6px;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;">
+                  class="u-daf3abcd">
             Find
           </button>
         </div>
-        <div id="addressResults" style="display:none;position:absolute;z-index:200;
-             background:#fff;border:1px solid #e5e7eb;border-radius:6px;
-             box-shadow:0 4px 12px rgba(0,0,0,.12);width:100%;margin-top:2px;"></div>
+        <div id="addressResults" class="u-7708d5c4"></div>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
@@ -204,11 +148,11 @@
   {% set tariff_map = {} %}
   {% for t in tariff_rows %}{% set _ = tariff_map.update({t.name: {'months': t.duration_months, 'amount': t.monthly_amount}}) %}{% endfor %}
   <div class="tab-pane" id="pane-1">
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Membership</h2>
 
       <!-- Tariff selector with auto-populate -->
-      <div class="form-group" style="margin-bottom:18px;">
+      <div class="form-group u-905d8b3d">
         <label class="form-label">Tariff *</label>
         <select name="tariff" id="tariffSelect" class="form-control" onchange="applyTariff(this.value)">
           <option value="">— Select tariff —</option>
@@ -227,17 +171,15 @@
       </div>
 
       <!-- Auto-populated summary card -->
-      <div id="tariffSummary" style="display:none;background:#EEF4FA;border:2px solid #185FA5;
-           border-radius:10px;padding:16px 20px;margin-bottom:18px;
-           justify-content:space-between;align-items:center;">
+      <div id="tariffSummary" class="u-92acb6d2">
         <div>
-          <div style="font-size:0.72rem;color:#378ADD;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Selected Tariff</div>
-          <div id="tariffSummaryName" style="font-size:1rem;font-weight:800;color:#1F2933;margin-top:2px;"></div>
-          <div id="tariffSummaryDuration" style="font-size:0.8rem;color:#6b7280;margin-top:2px;"></div>
+          <div class="u-6c37e23d">Selected Tariff</div>
+          <div id="tariffSummaryName" class="u-0de03ae9"></div>
+          <div id="tariffSummaryDuration" class="u-2bfd787d"></div>
         </div>
-        <div style="text-align:right;">
-          <div style="font-size:0.72rem;color:#378ADD;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Monthly</div>
-          <div id="tariffSummaryAmount" style="font-size:1.8rem;font-weight:900;color:#185FA5;"></div>
+        <div class="u-54c2afb7">
+          <div class="u-6c37e23d">Monthly</div>
+          <div id="tariffSummaryAmount" class="u-f9bd67a7"></div>
         </div>
       </div>
 
@@ -263,7 +205,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Package Label <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+          <label class="form-label">Package Label <span class="u-7e3a9447">(optional)</span></label>
           <input type="text" name="package" id="pkgLabel" class="form-control"
                  placeholder="Short custom label" value="{{ d.get('package','') }}">
         </div>
@@ -278,9 +220,9 @@
 
   <!-- Tab 3: Payment & Banking -->
   <div class="tab-pane" id="pane-2">
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Payment &amp; Banking</h2>
-      <div class="form-grid-2" style="margin-bottom:12px;">
+      <div class="form-grid-2 u-da12f285">
         <div class="form-group">
           <label class="form-label">Payment Type</label>
           <select name="payment_type" id="paymentType" class="form-control" onchange="togglePayment()">
@@ -339,11 +281,10 @@
             <input type="text" name="branch_code" id="branchCode" class="form-control required-if-debit"
                    maxlength="6" placeholder="6-digit code"
                    value="{{ d.get('branch_code','') }}">
-            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">
+            <div class="u-8ebf2543">
               {% for b, c in [('ABSA','632005'),('FNB','250655'),('Nedbank','198765'),('Std Bank','051001'),('Capitec','470010'),('Disc','679000'),('Tyme','678910')] %}
               <button type="button" onclick="document.getElementById('branchCode').value='{{ c }}'"
-                      style="font-size:10px;padding:2px 7px;background:#1F2933;border:1px solid #374151;
-                             border-radius:4px;color:#9ca3af;cursor:pointer;">
+                      class="u-24d234d9">
                 {{ b }} {{ c }}
               </button>
               {% endfor %}
@@ -351,9 +292,9 @@
           </div>
         </div>
 
-        <div style="margin-top:12px;">
-          <div id="payerFields" class="light-panel" style="display:none;background:#fef9f0;border:1px solid #fde68a;border-radius:8px;padding:14px;">
-            <div style="font-size:0.72rem;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
+        <div class="u-56f43562">
+          <div id="payerFields" class="light-panel u-4126f7d4">
+            <div class="u-5363ffc9">
               Third-Party Payer — ID and Banking Authority
             </div>
             <div class="form-grid-2">
@@ -368,16 +309,16 @@
                        placeholder="13-digit SA ID number" value="{{ d.get('payer_id_number','') }}">
               </div>
             </div>
-            <div class="form-hint" style="color:#92400e;margin-top:8px;">The banking details above must belong to this payer.</div>
+            <div class="form-hint u-8a77e5a3">The banking details above must belong to this payer.</div>
           </div>
         </div>
       </div>
 
-      <div id="debicheckFields" style="margin-top:18px;padding-top:18px;border-top:1px solid #374151;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+      <div id="debicheckFields" class="u-f4ce4087">
+        <div class="u-94cbe2cd">
           <div>
-            <h3 style="font-size:0.9rem;color:#fff;margin-bottom:4px;">NuPay DebiCheck Mandate</h3>
-            <p style="font-size:0.76rem;color:#9ca3af;">RADEpulse mandate information. The client approves after submission.</p>
+            <h3 class="u-7489faa0">NuPay DebiCheck Mandate</h3>
+            <p class="u-b5e0b871">RADEpulse mandate information. The client approves after submission.</p>
           </div>
           <span class="badge badge-info">Client approval required</span>
         </div>
@@ -435,27 +376,27 @@
               <option value="4" {% if d.get('debicheck_id_type')=='4' %}selected{% endif %}>Juristic Account</option>
             </select>
           </div>
-          <div class="form-group" id="debicheckPassportField" style="display:none;">
+          <div class="form-group u-6b99de8b" id="debicheckPassportField">
             <label class="form-label">Passport Number</label>
             <input type="text" name="debicheck_passport" class="form-control" value="{{ d.get('debicheck_passport','') }}">
           </div>
-          <div class="form-group" id="debicheckJuristicField" style="display:none;">
+          <div class="form-group u-6b99de8b" id="debicheckJuristicField">
             <label class="form-label">Juristic Account</label>
             <input type="text" name="debicheck_juristic" class="form-control" maxlength="15" value="{{ d.get('debicheck_juristic','') }}">
           </div>
         </div>
-        <div style="margin-top:16px;background:#EEF4FA;border:1px solid #bfdbfe;border-radius:8px;padding:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div class="u-c7c0c8fe">
           <div>
-            <strong style="display:block;color:#0f3460;font-size:0.86rem;">Save member and request debit authorization</strong>
-            <span style="font-size:0.74rem;color:#4b5563;">The mandate is saved before NuPay is contacted, so failures remain retryable.</span>
+            <strong class="u-97739687">Save member and request debit authorization</strong>
+            <span class="u-b39b6135">The mandate is saved before NuPay is contacted, so failures remain retryable.</span>
           </div>
           <button type="submit" name="submit_action" value="push_nupay" class="btn btn-primary" id="pushNupayBtn">Push to NuPay</button>
         </div>
       </div>
 
-      <div class="form-group" style="margin-top:14px;">
+      <div class="form-group u-d6f2af6e">
         <label class="form-label">Marketing Opt-In</label>
-        <select name="opt_in" class="form-control" style="max-width:200px;">
+        <select name="opt_in" class="form-control u-a828909e">
           <option value="yes" {% if d.get('opt_in',1) %}selected{% endif %}>Yes</option>
           <option value="no" {% if not d.get('opt_in',1) %}selected{% endif %}>No</option>
         </select>
@@ -470,7 +411,7 @@
 
   <!-- Tab 4: Additional -->
   <div class="tab-pane" id="pane-3">
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Additional Information</h2>
       <div class="form-grid-2">
         <div class="form-group">
@@ -494,7 +435,7 @@
       </div>
     </div>
 
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Emergency Contact</h2>
       <div class="form-grid-2">
         <div class="form-group">
@@ -516,7 +457,7 @@
       </div>
     </div>
 
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Fitness Profile</h2>
       <div class="form-grid-2">
         <div class="form-group">
@@ -543,9 +484,9 @@
 
   <!-- Tab 5: PAR-Q -->
   <div class="tab-pane" id="pane-4">
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">PAR-Q Health Screening</h2>
-      <p style="font-size:0.78rem;color:#6b7280;margin-bottom:16px;">
+      <p class="u-4ad5f0c5">
         Answer <strong>Yes</strong> or <strong>No</strong> to each question honestly.
         A YES answer does not prevent membership — it may require a doctor's clearance.
       </p>
@@ -561,32 +502,30 @@
         ('parq_q9','Are you 69 years of age or older and not accustomed to vigorous exercise?'),
       ] %}
       {% for field, question in parq %}
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;
-                  padding:10px 0;border-bottom:1px solid #f3f4f6;gap:16px;">
-        <div style="font-size:0.82rem;color:#374151;flex:1;">{{ loop.index }}. {{ question }}</div>
-        <div style="display:flex;gap:14px;flex-shrink:0;">
-          <label style="display:flex;align-items:center;gap:5px;font-size:0.82rem;cursor:pointer;font-weight:500;">
+      <div class="u-2b1d66bf">
+        <div class="u-90df720c">{{ loop.index }}. {{ question }}</div>
+        <div class="u-db0572db">
+          <label class="u-fcba7f7e">
             <input type="radio" name="{{ field }}" value="no"
                    {% if not d.get(field) %}checked{% endif %}
-                   style="accent-color:#185FA5;"> No
+                   class="u-f0796f87"> No
           </label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:0.82rem;cursor:pointer;font-weight:500;color:#ef4444;">
+          <label class="u-fcba7f7e">
             <input type="radio" name="{{ field }}" value="yes"
                    {% if d.get(field) %}checked{% endif %}
-                   style="accent-color:#ef4444;"> Yes
+                   class="u-f0796f87"> Yes
           </label>
         </div>
       </div>
       {% endfor %}
-      <div id="parqWarning" style="display:none;margin-top:14px;background:#fef2f2;border:1px solid #fca5a5;
-           border-radius:8px;padding:10px 14px;font-size:0.8rem;color:#b91c1c;">
-        ⚠️ One or more YES answers detected. The member may require a doctor's clearance before starting exercise.
+      <div id="parqWarning" class="u-454f0eca">
+         One or more YES answers detected. The member may require a doctor's clearance before starting exercise.
       </div>
     </div>
 
-    <div class="tab-footer" style="flex-direction:column;gap:10px;">
-      <button type="submit" class="btn-submit-dark">Create Member</button>
-      <button type="button" class="btn btn-secondary" onclick="goTab(3)" style="width:100%;text-align:center;">&larr; Back to Additional</button>
+    <div class="tab-footer u-9a3e0aa0">
+      <button type="submit" class="btn btn-primary">Create Member</button>
+      <button type="button" class="btn btn-secondary u-694e1bc0" onclick="goTab(3)">&larr; Back to Additional</button>
     </div>
   </div>
 
@@ -634,8 +573,8 @@ function showFormError(msg) {
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'formErrorBanner';
-    banner.style.cssText = 'background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;'
-      + 'border-radius:8px;padding:10px 14px;font-size:0.82rem;font-weight:600;margin-bottom:14px;';
+    banner.className = 'callout callout-error';
+    banner.setAttribute('role', 'alert');
     document.getElementById('memberForm').prepend(banner);
   }
   banner.textContent = msg;
@@ -671,14 +610,12 @@ function searchAddress() {
     .then(results => {
       addrRes.innerHTML = '';
       if (!results.length) {
-        addrRes.innerHTML = '<div style="padding:10px 14px;font-size:0.8rem;color:#6b7280;">No results found.</div>';
+        addrRes.innerHTML = '<div class="u-7a42fa9f">No results found.</div>';
       } else {
         results.forEach(r => {
           const row = document.createElement('div');
           row.textContent = r.display_name;
-          row.style.cssText = 'padding:8px 14px;font-size:0.8rem;cursor:pointer;border-bottom:1px solid #f3f4f6;color:#374151;';
-          row.addEventListener('mouseenter', () => row.style.background='#EEF4FA');
-          row.addEventListener('mouseleave', () => row.style.background='');
+          row.className = 'member-picker-option';
           row.addEventListener('click', () => fillAddress(r.address));
           addrRes.appendChild(row);
         });
@@ -749,7 +686,7 @@ function applyTariff(val) {
     document.getElementById('monthlyInstallment').value = amount.toFixed(2);
     document.getElementById('tariffSummaryName').textContent    = val;
     document.getElementById('tariffSummaryDuration').textContent = months + '-month contract';
-    document.getElementById('tariffSummaryAmount').textContent  = 'R ' + amount.toFixed(2);
+    document.getElementById('tariffSummaryAmount').textContent  = 'R' + amount.toLocaleString('en-ZA', {minimumFractionDigits:2, maximumFractionDigits:2});
     summary.style.display = 'flex';
     const lbl = document.getElementById('pkgLabel');
     if (!lbl.value) lbl.value = val;

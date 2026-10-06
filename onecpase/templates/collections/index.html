@@ -1,38 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Collections | 1Cpase{% endblock %}
+{% block title %}Collections | 1Cpace{% endblock %}
 {% block page_title %}Collections{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Collections</h1></div></header>
 
 <!-- Tab Navigation -->
-<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid #e4e8f0;">
-  <a href="{{ url_for('collections.collections_index') }}"
-     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
-            border-bottom:2px solid #1769aa;margin-bottom:-2px;color:#1769aa;">
-    💳 Payment Records
-  </a>
-  <a href="{{ url_for('collections.call_queue') }}"
-     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
-            border-bottom:2px solid transparent;color:#6b7280;">
-    ☎ Collections Call Queue
-  </a>
-  <a href="{{ url_for('ptp.ptp_dashboard') }}"
-     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
-            border-bottom:2px solid transparent;color:#6b7280;">
-    🔴 PTP / Collection
-  </a>
-  <a href="{{ url_for('ptp.legal_referrals') }}"
-     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
-            border-bottom:2px solid transparent;color:#6b7280;">
-    ⚖ Legal Referrals
-  </a>
-  <a href="{{ url_for('access_report.index') }}"
-     style="padding:10px 20px;font-size:0.88rem;font-weight:700;text-decoration:none;
-            border-bottom:2px solid transparent;color:#6b7280;">
-    📋 Access Report
-  </a>
-</div>
+
 
 <div class="kpi-grid">
   <div class="kpi-card green">
@@ -78,7 +53,7 @@
 
   <div class="card-body">
     {% if collections %}
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr>
           <th>Date</th>
@@ -103,7 +78,7 @@
             </a>
           </td>
           <td>{{ c.package or '—' }}</td>
-          <td>R{{ "%.2f"|format(c.outstanding_balance or 0) }}</td>
+          <td class="num">R{{ "%.2f"|format(c.outstanding_balance or 0) }}</td>
           <td>{{ c.discount_pct or 0 }}%</td>
           <td style="font-weight: 600; color: #065f46;">R{{ "%.2f"|format(c.amount_paid or 0) }}</td>
           <td><span class="badge badge-gray">{{ (c.method or 'cash')|upper }}</span></td>
@@ -117,19 +92,19 @@
           </td>
           <td>
             <a href="{{ url_for('collections.collections_edit', cid=c.id) }}" class="btn btn-ghost btn-sm">Edit</a>
-            <form method="post" action="{{ url_for('collections.collections_delete', cid=c.id) }}"
+            <details class="row-menu"><summary>Actions</summary><div class="row-menu-panel"><form method="post" action="{{ url_for('collections.collections_delete', cid=c.id) }}"
                   style="display:inline"
-                  onsubmit="return confirm('Delete this record?')">
+                  data-confirm="Delete this record?">
               <button type="submit" class="btn btn-danger btn-sm">Del</button>
-            </form>
+            </form></div></details>
           </td>
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="empty-state">
-      <div class="empty-icon">💳</div>
+      <div class="empty-icon"></div>
       <p>No collection records found.</p>
       <a href="{{ url_for('collections.collections_add') }}" class="btn btn-primary">Record First Payment</a>
     </div>

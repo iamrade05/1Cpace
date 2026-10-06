@@ -1,7 +1,7 @@
 {% extends "contracts/_public_page.html" %}
 {% set gym = (g.get('tenant') or {}).get('name') or 'The gym' %}
 {% block title %}Contract Response{% endblock %}
-{% block content %}
+{% block contract_content %}
 <h2>{{ 'Contract approved' if approved else 'Contract declined' }}</h2>
 <p>{{ 'Thank you. ' ~ gym ~ ' has recorded your approval.' if approved else 'Your response has been recorded. ' ~ gym ~ ' will contact you to discuss the contract.' }}</p>
 {% endblock %}

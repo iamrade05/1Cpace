@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}7-Day Review — {{ row.first_name }} | 1Cpase{% endblock %}
+{% block title %}7-Day Review — {{ row.first_name }} | 1Cpace{% endblock %}
 {% block page_title %}7-Day Fitness Review — {{ row.first_name }} {{ row.last_name }}{% endblock %}
 {% block content %}
+<header class="page-header"><div><h1>7-Day Fitness Review — {{ row.first_name }} {{ row.last_name }}</h1></div></header>
 <div class="card" style="margin-bottom:18px;"><div class="card-body"><strong>{{ row.first_name }} {{ row.last_name }}</strong> · {{ row.visits_recorded }} visits recorded · {{ row.package or '—' }}</div></div>
-<div class="card" style="margin-bottom:18px;"><div class="card-header"><strong>Onboarding visits</strong></div><div class="card-body" style="overflow-x:auto;"><table class="table"><thead><tr><th>Day</th><th>Date</th><th>Instructor</th><th>Outcome</th><th>Notes</th></tr></thead><tbody>{% for v in visits %}<tr><td>{{ v.visit_no }}</td><td>{{ v.visit_date }}</td><td>{{ v.instructor_name or '—' }}</td><td>{{ v.outcome or '—' }}</td><td>{{ v.notes or '' }}</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="card" style="margin-bottom:18px;"><div class="card-header"><strong>Onboarding visits</strong></div><div class="card-body" style="overflow-x:auto;"><div class="table-wrap"><table class="table"><thead><tr><th>Day</th><th>Date</th><th>Instructor</th><th>Outcome</th><th>Notes</th></tr></thead><tbody>{% for v in visits %}<tr><td>{{ v.visit_no }}</td><td>{{ v.visit_date }}</td><td>{{ v.instructor_name or '—' }}</td><td>{{ v.outcome or '—' }}</td><td>{{ v.notes or '' }}</td></tr>{% endfor %}</tbody></table></div></div></div>
 <div class="card"><div class="card-header"><strong>Review outcome</strong></div><div class="card-body"><form method="post"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:6px;margin-bottom:16px;">{% for code,label in review_outcomes %}<label><input type="radio" name="review_outcome" value="{{ code }}" required> {{ label }}</label>{% endfor %}</div><label class="form-label">Notes</label><textarea class="form-control" name="review_notes" rows="3"></textarea><button class="btn btn-primary" type="submit" style="margin-top:14px;">Save review</button><a class="btn" href="{{ url_for('onboarding.today_list') }}">Back</a></form></div></div>
 {% endblock %}

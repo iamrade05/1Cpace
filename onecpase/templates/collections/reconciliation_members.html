@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Reconciliation members · 1Cpace{% endblock %}
+{% block page_title %}Reconciliation{% endblock %}
+
+{% macro badge(tone, text) %}<span class="badge {{ {'ok':'badge-success','warn':'badge-warning','bad':'badge-danger','mute':'badge-gray'}[tone] }}">{{ text }}</span>{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Members to check</h1>
+    <p class="page-sub">Biggest balances first. Open a member to see their NuPay payments on the profile.</p>
+  </div>
+  <a class="btn" href="{{ url_for('reconciliation.overview') }}">Back to overview</a>
+</div>
+
+<form method="get" class="form-card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+  <select name="group" class="form-control" style="width:auto;" aria-label="Group">
+    <option value="">All groups</option>
+    {% for key in order %}<option value="{{ key }}" {% if group == key %}selected{% endif %}>{{ labels[key][0] }}</option>{% endfor %}
+  </select>
+  <select name="flag" class="form-control" style="width:auto;" aria-label="Flag">
+    <option value="">Any flag</option>
+    <option value="gym access is blocked" {% if flag == 'gym access is blocked' %}selected{% endif %}>Paying but blocked at the gym</option>
+    <option value="marked inactive here" {% if flag == 'marked inactive here' %}selected{% endif %}>Paying but marked Inactive</option>
+    <option value="Itensity Active but inactive here" {% if flag == 'Itensity Active but inactive here' %}selected{% endif %}>Active in Itensity, Inactive here</option>
+  </select>
+  <input type="search" name="q" value="{{ query }}" class="form-control" style="width:220px;" placeholder="Name or member number" aria-label="Search">
+  <button class="btn btn-primary" type="submit">Filter</button>
+  <span class="page-sub">{{ total }} member(s){% if total > page_size %} · page {{ page }} of {{ ((total - 1) // page_size) + 1 }}{% endif %}</span>
+</form>
+
+<section class="table-card" style="overflow-x:auto;">
+  <div class="table-wrap"><table class="data-table table" style="min-width:960px;">
+    <thead><tr><th>Member</th><th>Here</th><th>Itensity</th><th>Mandate</th><th>Last NuPay</th><th style="text-align:right;">Arrears now</th><th style="text-align:right;">After</th><th>Group</th><th>Flag</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><a href="{{ url_for('members.member_detail', mid=r.member_id) }}#nupay"><strong>{{ r.first_name }} {{ r.last_name }}</strong></a><br><small style="color:var(--t2);">{{ r.member_ref }}</small></td>
+        <td>{{ r.member_status }}{% if r.gym_access_status in ('blocked', 'restricted') %}<br><small style="color:var(--red);">gym {{ r.gym_access_status }}</small>{% endif %}</td>
+        <td>{{ r.itensity_status or '—' }}{% if r.itensity_payment %}<br><small style="color:var(--t2);">{{ r.itensity_payment }}</small>{% endif %}</td>
+        <td>{{ (r.mandate_status or '—')|title }}</td>
+        <td style="white-space:nowrap;">{% if r.last_failed and (not r.last_success or r.last_failed > r.last_success) %}<span class="badge badge-danger" style="white-space:nowrap;">Failed {{ r.last_failed }}</span>{% elif r.last_success %}<span class="badge badge-success" style="white-space:nowrap;">Paid {{ r.last_success }}</span>{% else %}—{% endif %}</td>
+        <td style="text-align:right;">R{{ '{:,.2f}'.format(r.arrears_now or 0) }}<br><small style="color:var(--t2);">{{ r.months_now }} mo</small></td>
+        <td style="text-align:right;">R{{ '{:,.2f}'.format(r.arrears_after or 0) }}<br><small style="color:var(--t2);">{{ r.months_after }} mo</small></td>
+        <td style="white-space:nowrap;">{{ badge(labels[r.grp][1], labels[r.grp][0]) }}</td>
+        <td style="font-size:.8rem;max-width:220px;">{{ r.flags or '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" style="padding:28px;text-align:center;color:var(--t2);">No members match. If this is empty, upload a NuPay report on the overview page first.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+{% if total > page_size %}
+<div style="display:flex;gap:10px;align-items:center;margin-top:14px;">
+  {% if page > 1 %}<a class="btn" href="{{ url_for('reconciliation.members', group=group, flag=flag, q=query, page=page - 1) }}">Previous</a>{% endif %}
+  {% if page * page_size < total %}<a class="btn btn-primary" href="{{ url_for('reconciliation.members', group=group, flag=flag, q=query, page=page + 1) }}">Next</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

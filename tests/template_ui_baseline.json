@@ -1,0 +1,818 @@
+{
+  "_ui.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "access_report/index.html": {
+    "inline_styles": 45,
+    "style_blocks": 1,
+    "hex_colours": 91,
+    "emoji": 0
+  },
+  "admin/contract_template_form.html": {
+    "inline_styles": 27,
+    "style_blocks": 1,
+    "hex_colours": 8,
+    "emoji": 0
+  },
+  "admin/contract_templates.html": {
+    "inline_styles": 7,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "admin/event_form.html": {
+    "inline_styles": 9,
+    "style_blocks": 0,
+    "hex_colours": 3,
+    "emoji": 0
+  },
+  "admin/event_registrations.html": {
+    "inline_styles": 18,
+    "style_blocks": 0,
+    "hex_colours": 14,
+    "emoji": 0
+  },
+  "admin/events.html": {
+    "inline_styles": 12,
+    "style_blocks": 0,
+    "hex_colours": 12,
+    "emoji": 0
+  },
+  "admin/index.html": {
+    "inline_styles": 34,
+    "style_blocks": 0,
+    "hex_colours": 17,
+    "emoji": 0
+  },
+  "admin/pbx_code_form.html": {
+    "inline_styles": 6,
+    "style_blocks": 0,
+    "hex_colours": 3,
+    "emoji": 0
+  },
+  "admin/pbx_codes.html": {
+    "inline_styles": 6,
+    "style_blocks": 0,
+    "hex_colours": 8,
+    "emoji": 0
+  },
+  "admin/report_definition_form.html": {
+    "inline_styles": 9,
+    "style_blocks": 1,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "admin/report_definitions.html": {
+    "inline_styles": 6,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "admin/tariff_form.html": {
+    "inline_styles": 7,
+    "style_blocks": 0,
+    "hex_colours": 2,
+    "emoji": 0
+  },
+  "admin/tariffs.html": {
+    "inline_styles": 10,
+    "style_blocks": 0,
+    "hex_colours": 13,
+    "emoji": 0
+  },
+  "admin/user_form.html": {
+    "inline_styles": 27,
+    "style_blocks": 0,
+    "hex_colours": 12,
+    "emoji": 0
+  },
+  "admin/users.html": {
+    "inline_styles": 20,
+    "style_blocks": 0,
+    "hex_colours": 20,
+    "emoji": 0
+  },
+  "admin/whatsapp_web.html": {
+    "inline_styles": 21,
+    "style_blocks": 0,
+    "hex_colours": 5,
+    "emoji": 0
+  },
+  "applications/approval.html": {
+    "inline_styles": 32,
+    "style_blocks": 0,
+    "hex_colours": 32,
+    "emoji": 0
+  },
+  "applications/detail.html": {
+    "inline_styles": 122,
+    "style_blocks": 0,
+    "hex_colours": 70,
+    "emoji": 0
+  },
+  "applications/index.html": {
+    "inline_styles": 26,
+    "style_blocks": 0,
+    "hex_colours": 25,
+    "emoji": 0
+  },
+  "auth/change_password.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "auth/login.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "auth/otp.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "base.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "call_list/index.html": {
+    "inline_styles": 13,
+    "style_blocks": 0,
+    "hex_colours": 13,
+    "emoji": 0
+  },
+  "call_list/review.html": {
+    "inline_styles": 15,
+    "style_blocks": 1,
+    "hex_colours": 14,
+    "emoji": 0
+  },
+  "call_list/upload.html": {
+    "inline_styles": 4,
+    "style_blocks": 0,
+    "hex_colours": 2,
+    "emoji": 0
+  },
+  "collections/add.html": {
+    "inline_styles": 1,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "collections/call_profile.html": {
+    "inline_styles": 64,
+    "style_blocks": 0,
+    "hex_colours": 9,
+    "emoji": 0
+  },
+  "collections/call_queue.html": {
+    "inline_styles": 29,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "collections/dashboard.html": {
+    "inline_styles": 11,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "collections/edit.html": {
+    "inline_styles": 1,
+    "style_blocks": 0,
+    "hex_colours": 1,
+    "emoji": 0
+  },
+  "collections/exceptions.html": {
+    "inline_styles": 16,
+    "style_blocks": 0,
+    "hex_colours": 7,
+    "emoji": 0
+  },
+  "collections/first_month.html": {
+    "inline_styles": 9,
+    "style_blocks": 0,
+    "hex_colours": 4,
+    "emoji": 0
+  },
+  "collections/index.html": {
+    "inline_styles": 7,
+    "style_blocks": 0,
+    "hex_colours": 6,
+    "emoji": 0
+  },
+  "collections/member.html": {
+    "inline_styles": 16,
+    "style_blocks": 0,
+    "hex_colours": 10,
+    "emoji": 0
+  },
+  "collections/queue.html": {
+    "inline_styles": 4,
+    "style_blocks": 0,
+    "hex_colours": 2,
+    "emoji": 0
+  },
+  "collections/reconciliation.html": {
+    "inline_styles": 28,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "collections/reconciliation_members.html": {
+    "inline_styles": 22,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "collections/reports.html": {
+    "inline_styles": 15,
+    "style_blocks": 0,
+    "hex_colours": 3,
+    "emoji": 0
+  },
+  "communications/facebook_comments.html": {
+    "inline_styles": 14,
+    "style_blocks": 1,
+    "hex_colours": 17,
+    "emoji": 0
+  },
+  "communications/facebook_conversation.html": {
+    "inline_styles": 7,
+    "style_blocks": 1,
+    "hex_colours": 9,
+    "emoji": 0
+  },
+  "communications/facebook_messages.html": {
+    "inline_styles": 8,
+    "style_blocks": 0,
+    "hex_colours": 5,
+    "emoji": 0
+  },
+  "communications/whatsapp_conversation.html": {
+    "inline_styles": 9,
+    "style_blocks": 1,
+    "hex_colours": 10,
+    "emoji": 0
+  },
+  "communications/whatsapp_inbox.html": {
+    "inline_styles": 12,
+    "style_blocks": 0,
+    "hex_colours": 8,
+    "emoji": 0
+  },
+  "communications/whatsapp_link.html": {
+    "inline_styles": 3,
+    "style_blocks": 0,
+    "hex_colours": 1,
+    "emoji": 0
+  },
+  "contracts/_public_page.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "contracts/share_expired.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "contracts/share_response.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "contracts/view.html": {
+    "inline_styles": 20,
+    "style_blocks": 1,
+    "hex_colours": 78,
+    "emoji": 7
+  },
+  "dashboard.html": {
+    "inline_styles": 15,
+    "style_blocks": 0,
+    "hex_colours": 15,
+    "emoji": 0
+  },
+  "dashboard_reconciliation.html": {
+    "inline_styles": 8,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "debicheck/add.html": {
+    "inline_styles": 6,
+    "style_blocks": 0,
+    "hex_colours": 2,
+    "emoji": 0
+  },
+  "debicheck/coverage.html": {
+    "inline_styles": 7,
+    "style_blocks": 0,
+    "hex_colours": 4,
+    "emoji": 0
+  },
+  "debicheck/detail.html": {
+    "inline_styles": 9,
+    "style_blocks": 1,
+    "hex_colours": 6,
+    "emoji": 0
+  },
+  "debicheck/edit.html": {
+    "inline_styles": 6,
+    "style_blocks": 0,
+    "hex_colours": 1,
+    "emoji": 0
+  },
+  "debicheck/index.html": {
+    "inline_styles": 5,
+    "style_blocks": 0,
+    "hex_colours": 3,
+    "emoji": 0
+  },
+  "debicheck/sync.html": {
+    "inline_styles": 23,
+    "style_blocks": 0,
+    "hex_colours": 9,
+    "emoji": 0
+  },
+  "fitness/add.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "fitness/assessment_form.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "fitness/assessments.html": {
+    "inline_styles": 5,
+    "style_blocks": 0,
+    "hex_colours": 3,
+    "emoji": 0
+  },
+  "fitness/body_matrix_index.html": {
+    "inline_styles": 6,
+    "style_blocks": 0,
+    "hex_colours": 2,
+    "emoji": 0
+  },
+  "fitness/body_matrix_member.html": {
+    "inline_styles": 22,
+    "style_blocks": 0,
+    "hex_colours": 10,
+    "emoji": 0
+  },
+  "fitness/bookings.html": {
+    "inline_styles": 18,
+    "style_blocks": 0,
+    "hex_colours": 7,
+    "emoji": 0
+  },
+  "fitness/dailies.html": {
+    "inline_styles": 28,
+    "style_blocks": 0,
+    "hex_colours": 8,
+    "emoji": 0
+  },
+  "fitness/edit.html": {
+    "inline_styles": 1,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "fitness/incidents.html": {
+    "inline_styles": 19,
+    "style_blocks": 0,
+    "hex_colours": 5,
+    "emoji": 0
+  },
+  "fitness/index.html": {
+    "inline_styles": 12,
+    "style_blocks": 0,
+    "hex_colours": 7,
+    "emoji": 0
+  },
+  "fitness/member_supplements.html": {
+    "inline_styles": 5,
+    "style_blocks": 0,
+    "hex_colours": 2,
+    "emoji": 0
+  },
+  "fitness/nutrition.html": {
+    "inline_styles": 6,
+    "style_blocks": 0,
+    "hex_colours": 3,
+    "emoji": 0
+  },
+  "fitness/nutrition_add.html": {
+    "inline_styles": 1,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "fitness/onboarding_report.html": {
+    "inline_styles": 7,
+    "style_blocks": 0,
+    "hex_colours": 12,
+    "emoji": 0
+  },
+  "fitness/onboarding_review.html": {
+    "inline_styles": 5,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "fitness/onboarding_today.html": {
+    "inline_styles": 8,
+    "style_blocks": 0,
+    "hex_colours": 3,
+    "emoji": 0
+  },
+  "fitness/onboarding_visit.html": {
+    "inline_styles": 11,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "fitness/plan_form.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "fitness/plans.html": {
+    "inline_styles": 6,
+    "style_blocks": 0,
+    "hex_colours": 4,
+    "emoji": 0
+  },
+  "fitness/supplement_add.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "fitness/supplement_detail.html": {
+    "inline_styles": 15,
+    "style_blocks": 0,
+    "hex_colours": 7,
+    "emoji": 0
+  },
+  "fitness/supplements.html": {
+    "inline_styles": 5,
+    "style_blocks": 0,
+    "hex_colours": 1,
+    "emoji": 0
+  },
+  "hr/add.html": {
+    "inline_styles": 10,
+    "style_blocks": 0,
+    "hex_colours": 8,
+    "emoji": 0
+  },
+  "hr/edit.html": {
+    "inline_styles": 17,
+    "style_blocks": 0,
+    "hex_colours": 14,
+    "emoji": 0
+  },
+  "hr/employee_detail.html": {
+    "inline_styles": 16,
+    "style_blocks": 0,
+    "hex_colours": 4,
+    "emoji": 0
+  },
+  "hr/employee_form.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "hr/employee_leave_form.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "hr/employees.html": {
+    "inline_styles": 7,
+    "style_blocks": 0,
+    "hex_colours": 3,
+    "emoji": 0
+  },
+  "hr/index.html": {
+    "inline_styles": 5,
+    "style_blocks": 0,
+    "hex_colours": 2,
+    "emoji": 0
+  },
+  "hr/leave.html": {
+    "inline_styles": 7,
+    "style_blocks": 0,
+    "hex_colours": 3,
+    "emoji": 0
+  },
+  "hr/leave_request.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "hr/payroll.html": {
+    "inline_styles": 14,
+    "style_blocks": 0,
+    "hex_colours": 5,
+    "emoji": 0
+  },
+  "hr/timesheet_staff.html": {
+    "inline_styles": 13,
+    "style_blocks": 0,
+    "hex_colours": 6,
+    "emoji": 0
+  },
+  "hr/timesheets.html": {
+    "inline_styles": 10,
+    "style_blocks": 0,
+    "hex_colours": 1,
+    "emoji": 0
+  },
+  "internal/announcements.html": {
+    "inline_styles": 25,
+    "style_blocks": 0,
+    "hex_colours": 4,
+    "emoji": 0
+  },
+  "internal/messages.html": {
+    "inline_styles": 14,
+    "style_blocks": 0,
+    "hex_colours": 2,
+    "emoji": 0
+  },
+  "internal/thread.html": {
+    "inline_styles": 11,
+    "style_blocks": 0,
+    "hex_colours": 5,
+    "emoji": 0
+  },
+  "leads/add.html": {
+    "inline_styles": 7,
+    "style_blocks": 0,
+    "hex_colours": 2,
+    "emoji": 0
+  },
+  "leads/convert.html": {
+    "inline_styles": 11,
+    "style_blocks": 0,
+    "hex_colours": 13,
+    "emoji": 0
+  },
+  "leads/detail.html": {
+    "inline_styles": 77,
+    "style_blocks": 0,
+    "hex_colours": 40,
+    "emoji": 0
+  },
+  "leads/edit.html": {
+    "inline_styles": 6,
+    "style_blocks": 0,
+    "hex_colours": 2,
+    "emoji": 0
+  },
+  "leads/funnel.html": {
+    "inline_styles": 31,
+    "style_blocks": 0,
+    "hex_colours": 16,
+    "emoji": 0
+  },
+  "leads/index.html": {
+    "inline_styles": 22,
+    "style_blocks": 1,
+    "hex_colours": 15,
+    "emoji": 0
+  },
+  "members/_custom_package.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "members/add.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "members/detail.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "members/edit.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "members/index.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "operations/add.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "operations/edit.html": {
+    "inline_styles": 1,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "operations/index.html": {
+    "inline_styles": 15,
+    "style_blocks": 0,
+    "hex_colours": 14,
+    "emoji": 0
+  },
+  "operations/maintenance.html": {
+    "inline_styles": 29,
+    "style_blocks": 0,
+    "hex_colours": 11,
+    "emoji": 0
+  },
+  "pbx/calls.html": {
+    "inline_styles": 1,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "platform/login.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "platform/tenant_form.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "platform/tenants.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "ptp/dashboard.html": {
+    "inline_styles": 37,
+    "style_blocks": 1,
+    "hex_colours": 63,
+    "emoji": 0
+  },
+  "ptp/legal.html": {
+    "inline_styles": 28,
+    "style_blocks": 1,
+    "hex_colours": 22,
+    "emoji": 0
+  },
+  "public/event_register.html": {
+    "inline_styles": 5,
+    "style_blocks": 0,
+    "hex_colours": 4,
+    "emoji": 0
+  },
+  "public/event_register_success.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "public/event_ticket.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "public/join.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "public/join_success.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "public.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "queries/add.html": {
+    "inline_styles": 30,
+    "style_blocks": 1,
+    "hex_colours": 32,
+    "emoji": 0
+  },
+  "queries/detail.html": {
+    "inline_styles": 168,
+    "style_blocks": 1,
+    "hex_colours": 171,
+    "emoji": 0
+  },
+  "queries/index.html": {
+    "inline_styles": 34,
+    "style_blocks": 1,
+    "hex_colours": 63,
+    "emoji": 0
+  },
+  "reports/_period_inline.html": {
+    "inline_styles": 2,
+    "style_blocks": 0,
+    "hex_colours": 4,
+    "emoji": 0
+  },
+  "reports/arrears.html": {
+    "inline_styles": 56,
+    "style_blocks": 0,
+    "hex_colours": 37,
+    "emoji": 0
+  },
+  "reports/finance.html": {
+    "inline_styles": 37,
+    "style_blocks": 0,
+    "hex_colours": 30,
+    "emoji": 0
+  },
+  "reports/index.html": {
+    "inline_styles": 185,
+    "style_blocks": 1,
+    "hex_colours": 117,
+    "emoji": 0
+  },
+  "reports/membership.html": {
+    "inline_styles": 35,
+    "style_blocks": 0,
+    "hex_colours": 23,
+    "emoji": 0
+  },
+  "reports/overview.html": {
+    "inline_styles": 54,
+    "style_blocks": 0,
+    "hex_colours": 39,
+    "emoji": 0
+  },
+  "reports/queries.html": {
+    "inline_styles": 49,
+    "style_blocks": 0,
+    "hex_colours": 35,
+    "emoji": 0
+  },
+  "sales_dashboard.html": {
+    "inline_styles": 2,
+    "style_blocks": 0,
+    "hex_colours": 7,
+    "emoji": 0
+  },
+  "screen_recordings/index.html": {
+    "inline_styles": 7,
+    "style_blocks": 0,
+    "hex_colours": 6,
+    "emoji": 0
+  },
+  "turnstile/index.html": {
+    "inline_styles": 24,
+    "style_blocks": 0,
+    "hex_colours": 17,
+    "emoji": 0
+  },
+  "welcome.html": {
+    "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  }
+}

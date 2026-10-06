@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Turnstile | 1Cpase{% endblock %}
+{% block title %}Turnstile | 1Cpace{% endblock %}
 {% block page_title %}USB Turnstile{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>USB Turnstile</h1></div></header>
 <div class="kpi-grid" style="margin-bottom:18px;">
   <div class="kpi-card {% if status.connected %}green{% else %}red{% endif %}"><div class="kpi-label">Device</div><div class="kpi-value" style="font-size:1.15rem;">{{ 'Connected' if status.connected else 'Disconnected' }}</div></div>
   <div class="kpi-card blue"><div class="kpi-label">Reports Received</div><div class="kpi-value">{{ status.reports_received }}</div></div>
@@ -12,14 +13,14 @@
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-bottom:18px;">
   <div class="form-card">
     <h3 style="margin-bottom:12px;">Hardware Status</h3>
-    <table style="width:100%;font-size:.83rem;">
+    <div class="table-wrap"><table style="width:100%;font-size:.83rem;" class="table">
       <tr><td style="color:#6b7280;padding:4px;">Product</td><td><strong>{{ status.product or 'USB Turnstile Interface' }}</strong></td></tr>
       <tr><td style="color:#6b7280;padding:4px;">Manufacturer</td><td>{{ status.manufacturer or 'Itencity' }}</td></tr>
       <tr><td style="color:#6b7280;padding:4px;">VID / PID</td><td>{{ status.vendor_id }} / {{ status.product_id }}</td></tr>
       <tr><td style="color:#6b7280;padding:4px;">Serial</td><td>{{ status.serial_number or '—' }}</td></tr>
       <tr><td style="color:#6b7280;padding:4px;">Last event</td><td>{{ status.last_event_at or 'No report received yet' }}</td></tr>
       <tr><td style="color:#6b7280;padding:4px;">Last error</td><td>{{ status.last_error or 'None' }}</td></tr>
-    </table>
+    </table></div>
   </div>
   <div class="form-card">
     <h3 style="margin-bottom:10px;">Safety State</h3>
@@ -42,7 +43,7 @@
 
 <div class="form-card" style="overflow-x:auto;">
   <h3 style="margin-bottom:12px;">Recent Turnstile Events</h3>
-  <table style="width:100%;font-size:.8rem;white-space:nowrap;">
+  <div class="table-wrap"><table style="width:100%;font-size:.8rem;white-space:nowrap;" class="table">
     <thead><tr><th>Time</th><th>Credential</th><th>Member</th><th>Decision</th><th>Reason</th><th>Link Credential</th></tr></thead>
     <tbody>
       {% for event in events %}
@@ -56,7 +57,7 @@
       </tr>
       {% else %}<tr><td colspan="6">No HID reports captured yet. Scan a credential at the turnstile.</td></tr>{% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 
 <script>

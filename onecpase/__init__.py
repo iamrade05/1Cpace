@@ -25,6 +25,7 @@ from .applications import applications_bp
 from .contracts import contracts_bp
 from .admin import admin_bp
 from .debicheck_routes import debicheck_bp
+from .reconciliation import reconciliation_bp
 from .ptp import ptp_bp
 from .access_report import access_report_bp
 from .call_list import call_list_bp
@@ -122,6 +123,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(admin_bp)
     app.register_blueprint(debicheck_bp)
     app.register_blueprint(ptp_bp)
+    app.register_blueprint(reconciliation_bp)
     app.register_blueprint(access_report_bp)
     app.register_blueprint(call_list_bp)
     app.register_blueprint(pbx_bp)

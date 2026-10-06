@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Collections Reports · 1Cpase{% endblock %}
+{% block title %}Collections Reports · 1Cpace{% endblock %}
 
 {% macro stat(label, value) %}
   <div class="kpi-card"><div class="kpi-label">{{ label }}</div><div class="kpi-value">{{ value }}</div></div>
@@ -38,18 +38,18 @@
     {{ stat('Pending calls', daily.pending) }}
   </div>
   <div style="overflow-x:auto;">
-    <table class="table">
+    <div class="table-wrap"><table class="table">
       <thead><tr><th>Caller</th><th>Calls / target</th><th>Call progress</th><th>Reached / target</th><th>Reached progress</th><th>Talk time</th><th>Avg talk / call</th><th>Contact rate</th><th>Pending</th></tr></thead>
       <tbody>{% for c in daily.callers %}
         <tr><td>{{ c.name }}</td><td>{{ c.calls }} / {{ daily.call_target }}</td><td>{{ c.call_progress }}%</td><td>{{ c.contacts }} / {{ daily.contact_target }}</td><td>{{ c.contact_progress }}%</td><td>{{ '%dm %ds'|format(c.talk_seconds // 60, c.talk_seconds % 60) }}</td><td>{{ '?' if c.avg_talk_seconds is none else '%ds'|format(c.avg_talk_seconds) }}</td><td>{{ '?' if c.contact_rate is none else '%s%%'|format(c.contact_rate) }}</td><td>{{ c.pending }}</td></tr>
       {% else %}<tr><td colspan="9">No callers or call activity for this date.</td></tr>{% endfor %}</tbody>
-    </table>
+    </table></div>
   </div>
   <h3>Call results</h3>
-  <table class="table"><thead><tr><th>Outcome</th><th>Calls</th></tr></thead><tbody>
+  <div class="table-wrap"><table class="table"><thead><tr><th>Outcome</th><th>Calls</th></tr></thead><tbody>
     {% for r in daily.outcomes %}<tr><td>{{ outcome_labels.get(r.outcome, r.outcome|replace('_',' ')|title) }}</td><td>{{ r.total }}</td></tr>
     {% else %}<tr><td colspan="2">No completed calls for this date.</td></tr>{% endfor %}
-  </tbody></table>
+  </tbody></table></div>
   <p style="color:var(--t2);font-size:.8rem;">Calls count once when a call result is saved. Clients reached are completed calls marked as a successful contact that also ran for the minimum PBX talk time; calls made without the PBX count as not reached. Calls use the date recorded; older records without a call timestamp use their assigned date. Pending calls use their assigned date.</p>
 </section>
 
@@ -67,7 +67,7 @@
 <h2 style="margin:20px 0 8px;">Sales quality — first-month failed debits</h2>
 <div class="card"><div class="card-body" style="padding:0;overflow-x:auto;">
   {% if sales.rows %}
-  <table class="table">
+  <div class="table-wrap"><table class="table">
     <thead><tr><th>Consultant</th><th>New members</th><th>First-month failures</th><th>Failure rate</th>
                <th>Recovered by Sales</th><th>Transferred to Reception</th><th>Still with Sales</th></tr></thead>
     <tbody>
@@ -77,7 +77,7 @@
           <td>{{ r.recovered }}</td><td>{{ r.transferred }}</td><td>{{ r.unresolved }}</td></tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}<p style="padding:20px;color:#4b5563;">No sales activity for this month.</p>{% endif %}
 </div></div>
 
@@ -98,14 +98,14 @@
 
 <div class="card" style="margin-top:16px;"><div class="card-body" style="padding:0;overflow-x:auto;">
   {% if performance.callers %}
-  <table class="table">
+  <div class="table-wrap"><table class="table">
     <thead><tr><th>Caller</th><th>Assigned</th><th>Calls made</th><th>Successful contacts</th></tr></thead>
     <tbody>
     {% for c in performance.callers %}
       <tr><td>{{ c.name or 'Unassigned' }}</td><td>{{ c.assigned }}</td><td>{{ c.calls or 0 }}</td><td>{{ c.contacts or 0 }}</td></tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}<p style="padding:20px;color:#4b5563;">No call tasks for this month.</p>{% endif %}
 </div></div>
 {% endblock %}

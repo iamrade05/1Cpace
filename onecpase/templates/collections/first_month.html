@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}First-Month Failed Debits · 1Cpase{% endblock %}
+{% block title %}First-Month Failed Debits · 1Cpace{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -14,7 +14,7 @@
 <div class="card">
   <div class="card-body" style="padding:0;overflow-x:auto;">
     {% if cases %}
-    <table class="table">
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr>
           <th>Member</th>{% if manager_view %}<th>Consultant</th>{% endif %}
@@ -56,7 +56,7 @@
         </tr>
       {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <p style="padding:20px;color:#4b5563;">No first-month failed debits right now.</p>
     {% endif %}

@@ -798,7 +798,7 @@ def call_profile(task_id: int):
     member_for_visit = db.execute(
         "SELECT * FROM members WHERE id=?", (task["member_id"],)
     ).fetchone()
-    tenant_name = g.tenant["name"] if g.get("tenant") else "1Cpase"
+    tenant_name = g.tenant["name"] if g.get("tenant") else "1Cpace"
     return render_template(
         "collections/call_profile.html",
         task=task,
@@ -843,7 +843,7 @@ def _send_collection_reminder_email(member) -> bool:
     silently if mail isn't configured, since WhatsApp/SMS stay manual."""
     if not member["email"] or not current_app.config.get("MAIL_USERNAME"):
         return False
-    tenant_name = g.tenant["name"] if g.get("tenant") else "1Cpase"
+    tenant_name = g.tenant["name"] if g.get("tenant") else "1Cpace"
     try:
         msg = Message(
             subject=collection_care_email_subject(member["first_name"], tenant_name),
@@ -1385,6 +1385,8 @@ def _ptp_escalation_reason(row) -> str:
     discount = float(row["discount_pct"] or 0)
     if discount > 0 and not row["discount_basis"]:
         return f"{discount:.0f}% discount with no qualifying DebiCheck or upfront-cash basis"
+    if discount > 0 and row["discount_basis"] == "query_approval":
+        return f"{discount:.0f}% discount approved by a manager on the linked query"
     if discount > 0:
         return f"{discount:.0f}% discount on the {row['discount_basis']} tier"
     return "Non-standard arrangement referred by reception"

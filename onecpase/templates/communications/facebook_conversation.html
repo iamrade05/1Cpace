@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Facebook Conversation | 1Cpase{% endblock %}
+{% block title %}Facebook Conversation | 1Cpace{% endblock %}
 {% block page_title %}Facebook — {{ conv.sender_name or 'Conversation' }}{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Facebook — {{ conv.sender_name or 'Conversation' }}</h1></div></header>
 <style>
 .chat-thread { display:flex; flex-direction:column; gap:8px; padding:16px; max-height:520px; overflow-y:auto; background:#f9fafb; }
 .chat-bubble { max-width:65%; padding:8px 12px; border-radius:12px; font-size:.85rem; line-height:1.4; }

@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}New Query | 1Cpase{% endblock %}
+{% block title %}New Query | 1Cpace{% endblock %}
 {% block page_title %}Log New Query{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Log New Query</h1></div></header>
 <style>
 .qform-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 .qform-grid.three { grid-template-columns:1fr 1fr 1fr; }
@@ -28,7 +29,7 @@
       {% if member %}
       <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 16px;margin-bottom:12px;
                   display:flex;align-items:center;gap:12px;">
-        <div style="font-size:1.4rem;">👤</div>
+        <div style="font-size:1.4rem;"></div>
         <div>
           <div style="font-weight:700;color:#172033;">{{ member.first_name }} {{ member.last_name }}</div>
           <div style="font-size:.78rem;color:#0369a1;">{{ member.contact or '' }} &bull; Member #{{ member.id }}</div>
@@ -156,7 +157,8 @@
         </div>
         <div class="form-group">
           <label class="form-label">Months Completed *</label>
-          <input type="number" name="cancellation_months_completed" id="cancelMonthsCompleted" class="form-control" min="0">
+          <input type="number" name="cancellation_months_completed" id="cancelMonthsCompleted" class="form-control" min="0" max="36">
+          <small id="cancelMonthsHint" style="color:#9ca3af;"></small>
         </div>
         <div class="form-group">
           <label class="form-label">Monthly Fee (R) *</label>
@@ -180,7 +182,11 @@
       </div>
       <label style="display:flex;gap:8px;align-items:flex-start;font-size:.85rem;color:#374151;margin-top:4px;">
         <input type="checkbox" name="cancel_member" value="1" style="margin-top:3px;">
+        {% if is_manager %}
         <span>Cancel this member's account now (sets status to Cancelled)</span>
+        {% else %}
+        <span>Request cancellation of this member's account — a manager approves it before the account is cancelled</span>
+        {% endif %}
       </label>
       <div style="margin-top:10px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:.78rem;color:#7f1d1d;">
         The cancellation fee and settlement amount are calculated automatically per the
@@ -215,11 +221,23 @@
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:.85rem;color:#374151;">
         <strong>Recommended Action:</strong> <span id="dpRecommendation">—</span>
       </div>
+      <div id="proposalBlock" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0;">
+        <div class="qform-grid">
+          <div class="form-group">
+            <label class="form-label">Proposed discount % <span id="proposalRange" style="color:#9ca3af;font-size:.72rem;"></span></label>
+            <input type="number" step="0.5" min="0" max="100" name="proposed_discount_pct" id="proposedDiscount" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Reason / note for the manager <span style="color:#9ca3af;font-size:.72rem;">(only used when approval is needed)</span></label>
+            <input type="text" name="approval_reason" class="form-control" placeholder="e.g. member can pay R1,500 cash on Friday">
+          </div>
+        </div>
+      </div>
       <div id="managerApprovalWarning" style="display:none;margin-top:10px;background:#fee2e2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:.8rem;font-weight:700;color:#991b1b;">
-        ⚠ Manager approval required before applying this discount.
+         This discount needs a manager — the query will be saved as Pending Approval.
       </div>
       <div id="ptpRequirementsWarning" style="display:none;margin-top:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;font-size:.8rem;font-weight:700;color:#92400e;">
-        ⚠ A debit order / DebiCheck, bank statement and confirmed income are recommended before finalising a PTP.
+         The PTP module sends an arrangement to a manager unless a confirmed DebiCheck and a qualifying bank statement are on file.
       </div>
     </div>
   </div>
@@ -232,6 +250,9 @@
 
 <script>
 const TYPES = {{ query_types | tojson }};
+const STAFF_CEILING = {{ staff_discount_ceiling }};
+const PAYMENT_WORKFLOW = new Set({{ payment_workflow_categories | tojson }});
+let lastSummary = null;
 const HINTS = {{ query_type_hints | tojson }};
 function loadTypes(){
   const cat = document.getElementById('cat-select').value;
@@ -246,6 +267,16 @@ function loadTypes(){
   refreshDecisionPanel();
   refreshMembershipPanel();
   refreshCancellationPanel();
+}
+
+function refreshApprovalWarning(){
+  const data = lastSummary;
+  const category = document.getElementById('cat-select').value;
+  const warn = document.getElementById('managerApprovalWarning');
+  if (!data || !PAYMENT_WORKFLOW.has(category) || !data.is_owing) { warn.style.display = 'none'; return; }
+  const raw = document.getElementById('proposedDiscount').value;
+  const pct = raw === '' ? data.discount_percent : Number(raw);
+  warn.style.display = (data.manager_discretion || pct > STAFF_CEILING) ? 'block' : 'none';
 }
 
 function updateTypeHint(){
@@ -310,8 +341,19 @@ async function refreshDecisionPanel() {
     document.getElementById('dpOpenQueries').textContent = data.query_open;
     document.getElementById('dpPriority').textContent = data.payment_priority || 'Medium';
     document.getElementById('dpRecommendation').textContent = data.recommended_action;
-    document.getElementById('managerApprovalWarning').style.display =
-      data.manager_approval_required ? 'block' : 'none';
+    lastSummary = data;
+    const proposal = document.getElementById('proposalBlock');
+    const proposed = document.getElementById('proposedDiscount');
+    if (PAYMENT_WORKFLOW.has(category) && data.is_owing) {
+      proposal.style.display = 'block';
+      proposed.max = data.manager_discretion ? 100 : data.discount_max_percent;
+      if (proposed.value === '') proposed.value = data.discount_percent;
+      document.getElementById('proposalRange').textContent =
+        `(${data.discount_range_label}; up to ${STAFF_CEILING}% without a manager)`;
+    } else {
+      proposal.style.display = 'none';
+    }
+    refreshApprovalWarning();
     document.getElementById('ptpRequirementsWarning').style.display =
       (category === 'ptp_collections' && !data.ptp_requirements_met) ? 'block' : 'none';
     panel.style.display = 'block';
@@ -364,11 +406,14 @@ async function refreshCancellationPanel() {
   const memberId = memberInput ? memberInput.value : '';
   const category = categoryInput ? categoryInput.value : '';
 
+  const cancelRequired = ['cancelContractMonths', 'cancelMonthsCompleted', 'cancelMonthlyFee'];
   if (!memberId || !cancellationCategories.has(category)) {
     panel.style.display = 'none';
+    cancelRequired.forEach(id => document.getElementById(id).required = false);
     return;
   }
   panel.style.display = 'block';
+  cancelRequired.forEach(id => document.getElementById(id).required = true);
   if (cancelFieldsPrefilled) return;
 
   try {
@@ -381,6 +426,12 @@ async function refreshCancellationPanel() {
     if (months && monthsField && !monthsField.value) monthsField.value = months;
     const feeField = document.getElementById('cancelMonthlyFee');
     if (data.monthly_installment && feeField && !feeField.value) feeField.value = data.monthly_installment;
+    const doneField = document.getElementById('cancelMonthsCompleted');
+    if (doneField && doneField.value === '' && data.contract_months_completed !== null && data.contract_months_completed !== undefined) {
+      doneField.value = data.contract_months_completed;
+      document.getElementById('cancelMonthsHint').textContent =
+        `From join date and contract term (ends ${data.contract_end_date}). Check before saving.`;
+    }
     cancelFieldsPrefilled = true;
   } catch (e) { /* leave the fields for manual entry */ }
 }
@@ -392,6 +443,8 @@ document.addEventListener('DOMContentLoaded', function () {
   if (categoryInput) categoryInput.addEventListener('change', refreshMembershipPanel);
   if (categoryInput) categoryInput.addEventListener('change', refreshCancellationPanel);
   if (typeInput) typeInput.addEventListener('change', updateTypeHint);
+  const proposedInput = document.getElementById('proposedDiscount');
+  if (proposedInput) proposedInput.addEventListener('input', refreshApprovalWarning);
   refreshDecisionPanel();
   refreshMembershipPanel();
   refreshCancellationPanel();

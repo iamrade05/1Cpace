@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ full_name }} — Supplements | 1Cpase{% endblock %}
+{% block title %}{{ full_name }} — Supplements | 1Cpace{% endblock %}
 {% block page_title %}{{ full_name }} — Supplements{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>{{ full_name }} — Supplements</h1></div></header>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
   <a href="{{ url_for('members.member_detail', mid=m.id) }}" class="btn btn-ghost btn-sm">&larr; Back to Member</a>
   <a href="{{ url_for('fitness.supplements_index') }}" class="btn btn-ghost btn-sm">Supplements Guide</a>
@@ -11,7 +12,7 @@
 {% if assignments %}
 <div class="card">
   <div class="card-body">
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr><th>Supplement</th><th>Type</th><th>Goal</th><th>Risk</th><th>Start</th><th>End</th><th>Status</th></tr>
       </thead>
@@ -38,12 +39,12 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% else %}
 <div class="empty-state">
-  <div class="empty-icon">💊</div>
+  <div class="empty-icon"></div>
   <p>No supplements assigned to this member yet.</p>
   <a href="{{ url_for('fitness.supplements_index') }}" class="btn btn-primary">Browse Supplements</a>
 </div>

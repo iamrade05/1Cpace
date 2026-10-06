@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Link conversation | 1Cpase{% endblock %}
+{% block title %}Link conversation | 1Cpace{% endblock %}
 {% block page_title %}Link conversation{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Link conversation</h1></div></header>
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">
   <a href="{{ url_for('comms.whatsapp_conversation', number=number, conv_id=conv.id) }}" class="btn btn-ghost btn-sm">← Back to chat</a>
   <span style="font-weight:800;color:#172033;">{{ conv.contact_name or conv.contact_phone }}</span>

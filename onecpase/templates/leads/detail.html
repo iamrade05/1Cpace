@@ -3,6 +3,7 @@
 {% block page_title %}Prospect: {{ lead.full_name }}{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Prospect: {{ lead.full_name }}</h1></div></header>
 {% set color = status_colors.get(lead.lead_status, '#6b7280') %}
 <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
   <span style="background:{{ color }};color:#fff;padding:6px 14px;border-radius:20px;font-size:.78rem;font-weight:800;text-transform:uppercase;">{{ status_labels.get(lead.lead_status, lead.lead_status)|replace('_',' ') }}</span>
@@ -87,7 +88,7 @@
 
     <div class="form-card" style="margin-bottom:16px;">
       <h3 style="font-size:.82rem;color:#e94560;text-transform:uppercase;margin-bottom:12px;">Permanent Prospect Profile</h3>
-      <table style="width:100%;font-size:.83rem;">
+      <div class="table-wrap"><table style="width:100%;font-size:.83rem;" class="table">
         <tr><td style="color:#6b7280;width:130px;padding:4px;">Phone</td><td><strong>{{ lead.phone or '—' }} {% if lead.phone %}<button type="button" onclick="startPbxCall('{{ lead.phone|e }}')">Call</button>{% endif %}</strong></td></tr>
         <tr><td style="color:#6b7280;padding:4px;">Email</td><td>{{ lead.email or '—' }}</td></tr>
         <tr><td style="color:#6b7280;padding:4px;">Original source</td><td><strong>{{ lead.original_source or lead.source or '—' }}</strong></td></tr>
@@ -98,7 +99,7 @@
         <tr><td style="color:#6b7280;padding:4px;">Package</td><td>{{ lead.interested_package or '—' }}</td></tr>
         <tr><td style="color:#6b7280;padding:4px;">Consent</td><td>{{ 'Marketing permitted' if lead.marketing_consent and not lead.do_not_contact else 'No marketing' }}</td></tr>
         <tr><td style="color:#6b7280;padding:4px;">Captured</td><td>{{ lead.created_at|string|truncate(16, true, '') }}</td></tr>
-      </table>
+      </table></div>
       {% if lead.notes %}<div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px;font-size:.82rem;color:#4b5563;">{{ lead.notes }}</div>{% endif %}
       {% if lead.closure_reason %}<div class="alert alert-warning" style="margin-top:12px;"><strong>Closure:</strong> {{ lead.closure_reason }}{% if lead.objection_reason %}<br><strong>Objection:</strong> {{ lead.objection_reason }}{% endif %}{% if lead.recycle_reason %}<br><strong>Recycle Reason:</strong> {{ recycle_reason_labels.get(lead.recycle_reason, lead.recycle_reason) }}{% endif %}{% if lead.recycle_due_at %}<br><strong>Automatic Recall:</strong> {{ lead.recycle_due_at }}{% endif %}</div>{% endif %}
       {% if lead.duplicate_of_lead_id %}<div class="alert alert-info" style="margin-top:12px;">Duplicate of <a href="{{ url_for('leads.lead_detail', lid=lead.duplicate_of_lead_id) }}">{{ lead.duplicate_name or ('prospect #' ~ lead.duplicate_of_lead_id) }}</a></div>{% endif %}
@@ -213,8 +214,8 @@ async function startPbxCall(phone) {
     });
     const data = await r.json();
     if (!data.ok) throw new Error(data.error || 'PBX call failed');
-    alert('Call started.');
-  } catch (e) { alert(e.message); }
+    showUiMessage('Call started.');
+  } catch (e) { showUiMessage('The call could not start. Please try again or ask an admin to check the phone connection.', 'error'); }
 }
 </script>
 {% endblock %}

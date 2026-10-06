@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Payroll | 1Cpase{% endblock %}
+{% block title %}Payroll | 1Cpace{% endblock %}
 {% block page_title %}Payroll{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Payroll</h1></div></header>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
   <form method="get" style="display:flex; gap:8px; align-items:center;">
     <label style="font-size:0.85rem; color:#6b7280;">Month</label>
@@ -23,7 +24,7 @@
 {% if rows %}
 <div class="card">
   <div class="card-body">
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr><th>Staff</th><th>Role</th><th>Basic</th><th>Bonus</th><th>Deductions</th><th>Net</th><th>Status</th><th></th></tr>
       </thead>
@@ -32,9 +33,9 @@
         <tr>
           <td style="font-weight:600;">{{ r.staff_name }}</td>
           <td style="color:#6b7280; font-size:0.82rem;">{{ r.role or '—' }}</td>
-          <td>R{{ '%.2f'|format(r.basic or 0) }}</td>
-          <td>R{{ '%.2f'|format(r.bonus or 0) }}</td>
-          <td>R{{ '%.2f'|format(r.deductions or 0) }}</td>
+          <td class="num">R{{ '%.2f'|format(r.basic or 0) }}</td>
+          <td class="num">R{{ '%.2f'|format(r.bonus or 0) }}</td>
+          <td class="num">R{{ '%.2f'|format(r.deductions or 0) }}</td>
           <td style="font-weight:600;">R{{ '%.2f'|format(r.net or 0) }}</td>
           <td>
             {% if r.status == 'paid' %}<span class="badge badge-success">Paid</span>
@@ -51,12 +52,12 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% else %}
 <div class="empty-state">
-  <div class="empty-icon">💰</div>
+  <div class="empty-icon"></div>
   <p>No payroll records for {{ month }} yet.</p>
 </div>
 {% endif %}

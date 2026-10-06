@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ qry.reference }} | 1Cpase{% endblock %}
+{% block title %}{{ qry.reference }} | 1Cpace{% endblock %}
 {% block page_title %}Query {{ qry.reference }}{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Query {{ qry.reference }}</h1></div></header>
 {% set pc = priority_colours.get(qry.priority, '#9ca3af') %}
 {% set sc = status_colours.get(qry.status, '#9ca3af') %}
 <style>
@@ -20,7 +21,11 @@
 .acct-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid #f6f7f9; font-size:.82rem; }
 .acct-row:last-child { border-bottom:none; }
 .acct-label { font-size:.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#9ca3af; flex-shrink:0; }
-@media(max-width:900px){ .q-detail-grid { grid-template-columns:1fr; } }
+.decision-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.decision-grid .dcell { background:#f9fafb; border:1px solid #eef1f5; border-radius:8px; padding:10px 12px; }
+.decision-grid .dcell small { display:block; font-size:.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#9ca3af; margin-bottom:3px; }
+.decision-grid .dcell strong { font-size:.95rem; color:#172033; }
+@media(max-width:900px){ .q-detail-grid { grid-template-columns:1fr; } .decision-grid { grid-template-columns:1fr 1fr; } }
 </style>
 
 <!-- Top bar -->
@@ -28,25 +33,31 @@
   <a href="{{ url_for('queries.index') }}" class="btn btn-ghost btn-sm">← All Queries</a>
   <span style="font-weight:800;color:#172033;font-size:1rem;">{{ qry.reference }}</span>
   <span class="pbadge" style="background:{{ pc }}22;color:{{ pc }};">{{ qry.priority|title }}</span>
-  <span class="pbadge" style="background:{{ sc }}22;color:{{ sc }};">{{ qry.status|replace('_',' ')|title }}</span>
-  {% if qry.status not in ('closed','resolved') %}
+  <span class="pbadge" style="background:{{ sc }}22;color:{{ sc }};">{{ status_label(qry.status) }}</span>
+  {% if qry.approval_status and qry.approval_status != 'not_required' %}
+  <span class="pbadge" style="background:#7c3aed22;color:#7c3aed;">{{ approval_statuses.get(qry.approval_status, qry.approval_status) }}</span>
+  {% endif %}
+  {% if qry.status != 'closed' %}
   <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
-    {% if qry.member_id %}
+    {% if qry.member_id and has_perm('all_collections') and qry.approval_status != 'pending'
+          and not (linked_ptp and linked_ptp.ptp_status in ('pending','partially_paid')) %}
     <form method="POST" action="{{ url_for('queries.convert_ptp', qid=qry.id) }}" style="margin:0;">
       <button class="btn btn-ghost btn-sm" style="border-color:#e11d48;color:#e11d48;"
-              onclick="return confirm('Convert to PTP and open member PTP tab?')">
-        💳 Convert to PTP
+              >
+         Create PTP
       </button>
     </form>
     {% endif %}
     <button class="btn btn-ghost btn-sm" style="border-color:#7c3aed;color:#7c3aed;"
             onclick="document.getElementById('escalate-form').style.display='block'">
-      ⚡ Escalate
+       Escalate
     </button>
+    {% if qry.approval_status != 'pending' %}
     <button class="btn btn-ghost btn-sm" style="border-color:#059669;color:#059669;"
             onclick="document.getElementById('close-form').style.display='block'">
-      ✓ Close Query
+       Close Query
     </button>
+    {% endif %}
   </div>
   {% endif %}
 </div>
@@ -55,7 +66,7 @@
 {% if requires_ack %}
 <div style="background:#fef2f2;border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:8px;padding:14px 18px;margin-bottom:16px;">
   <div style="font-weight:800;color:#991b1b;font-size:.92rem;margin-bottom:5px;">
-    ⚠ Account owing — {{ cat_label(qry.category) }} requires a zero balance
+     Account owing — {{ cat_label(qry.category) }} requires a zero balance
   </div>
   <div style="font-size:.83rem;color:#7f1d1d;line-height:1.5;">
     This account has an outstanding balance of
@@ -73,7 +84,7 @@
   <form method="POST" action="{{ url_for('queries.escalate', qid=qry.id) }}">
     <div class="form-group" style="margin-bottom:10px;">
       <label class="form-label">Escalation Reason</label>
-      <textarea name="reason" class="form-control" rows="2" placeholder="Why is this being escalated?"></textarea>
+      <textarea name="reason" class="form-control" rows="2" required placeholder="Why is this being escalated?"></textarea>
     </div>
     <div style="display:flex;gap:8px;">
       <button type="submit" class="btn btn-sm" style="background:#7c3aed;color:#fff;">Confirm Escalate</button>
@@ -86,8 +97,15 @@
 <div id="close-form" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin-bottom:16px;">
   <form method="POST" action="{{ url_for('queries.close', qid=qry.id) }}">
     <div class="form-group" style="margin-bottom:10px;">
-      <label class="form-label">Resolution Notes</label>
-      <textarea name="resolution_notes" class="form-control" rows="2" placeholder="How was this resolved?"></textarea>
+      <label class="form-label">Closure Reason *</label>
+      <select name="closure_reason" class="form-control" required>
+        <option value="">— Select —</option>
+        {% for k,v in closure_reasons %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:10px;">
+      <label class="form-label">Resolution Notes *</label>
+      <textarea name="resolution_notes" class="form-control" rows="2" required placeholder="What was done for the member?"></textarea>
     </div>
     {% if requires_ack %}
     <label style="display:flex;gap:8px;align-items:flex-start;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px;margin-bottom:10px;font-size:.8rem;color:#7f1d1d;">
@@ -159,7 +177,7 @@
         {% if qry.resolution_notes %}
         <div class="q-info-row" style="background:#f0fdf4;border-radius:6px;padding:10px;border:none;margin:4px 0;">
           <div class="q-info-label" style="color:#059669;">Resolution</div>
-          <div style="white-space:pre-wrap;color:#166534;">{{ qry.resolution_notes }}</div>
+          <div style="white-space:pre-wrap;color:#166534;">{% if qry.closure_reason %}<strong>{% for k,v in closure_reasons %}{% if k==qry.closure_reason %}{{ v }}{% endif %}{% endfor %}</strong><br>{% endif %}{{ qry.resolution_notes }}</div>
         </div>
         {% endif %}
 
@@ -203,9 +221,113 @@
         </div>
         {% if qry.member_cancelled %}
         <div style="margin-top:12px;padding:8px 12px;background:#fee2e2;border:1px solid #fecaca;border-radius:6px;font-size:.8rem;font-weight:700;color:#991b1b;">
-          ✓ Member account was cancelled when this query was logged.
+           Member account cancelled{% if qry.manager_approved_by_name %} — approved by {{ qry.manager_approved_by_name }}{% endif %}.
+          Stop any active debit order / DebiCheck mandate separately.
+        </div>
+        {% elif qry.cancel_member_requested %}
+        <div style="margin-top:12px;padding:8px 12px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:6px;font-size:.8rem;font-weight:700;color:#5b21b6;">
+          Account cancellation requested — {% if qry.approval_status == 'pending' %}waiting for manager approval{% elif qry.approval_status == 'rejected' %}rejected by manager{% else %}not yet done{% endif %}.
         </div>
         {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Manager approval -->
+    {% if qry.approval_status and qry.approval_status != 'not_required' %}
+    <div class="card" style="margin-bottom:16px;border-left:4px solid #7c3aed;">
+      <div class="card-header"><h2>Manager Approval</h2></div>
+      <div class="card-body" style="padding:0 20px 16px;">
+        <div class="q-info-row"><div class="q-info-label">Status</div>
+          <div><strong>{{ approval_statuses.get(qry.approval_status, qry.approval_status) }}</strong></div></div>
+        <div class="q-info-row"><div class="q-info-label">Requested</div>
+          <div style="white-space:pre-wrap;">{{ qry.approval_reason or '—' }}</div></div>
+        {% if qry.proposed_discount_pct %}
+        <div class="q-info-row"><div class="q-info-label">Proposed discount</div>
+          <div><strong>{{ qry.proposed_discount_pct|round(2) }}%</strong>
+            {% if qry.outstanding_snapshot %} of R{{ '%.2f'|format(qry.outstanding_snapshot) }} at capture{% endif %}</div></div>
+        {% endif %}
+        <div class="q-info-row"><div class="q-info-label">Requested by</div>
+          <div style="font-size:.82rem;">{{ qry.approval_requested_by_name or '—' }}{% if qry.approval_requested_at %} &bull; {{ qry.approval_requested_at[:16] }}{% endif %}</div></div>
+        {% if qry.approval_status in ('approved','rejected') %}
+        <div class="q-info-row"><div class="q-info-label">Decided by</div>
+          <div style="font-size:.82rem;">{{ qry.manager_approved_by_name or '—' }}{% if qry.manager_approved_at %} &bull; {{ qry.manager_approved_at[:16] }}{% endif %}
+            {% if qry.approval_notes %}<div style="white-space:pre-wrap;color:#374151;margin-top:4px;">{{ qry.approval_notes }}</div>{% endif %}</div></div>
+        {% endif %}
+        {% if qry.approval_status == 'pending' %}
+          {% if is_manager and (qry.approval_requested_by != session.get('user_id') or session.get('role') == 'admin') %}
+          <form method="POST" action="{{ url_for('queries.decide', qid=qry.id) }}" style="margin-top:12px;">
+            <div class="form-group" style="margin-bottom:10px;">
+              <label class="form-label">Manager notes <span style="color:#9ca3af;font-size:.72rem;">(required to reject)</span></label>
+              <textarea name="approval_notes" class="form-control" rows="2"></textarea>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button type="submit" name="decision" value="approved" class="btn btn-sm" style="background:#059669;color:#fff;"> Approve</button>
+              <button type="submit" name="decision" value="rejected" class="btn btn-sm" style="background:#e11d48;color:#fff;"> Reject</button>
+            </div>
+          </form>
+          {% elif is_manager %}
+          <div style="margin-top:10px;font-size:.8rem;color:#6b7280;">You requested this — another manager must decide it.</div>
+          {% else %}
+          <div style="margin-top:10px;font-size:.8rem;color:#6b7280;">Waiting for a manager. The query can't be closed or turned into a PTP until it is decided.</div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% set can_request = qry.status != 'closed' and qry.approval_status != 'pending'
+          and ((payment_workflow and summary and summary.is_owing)
+               or (qry.category == 'cancellation' and qry.member_id and not qry.member_cancelled)) %}
+    {% if can_request %}
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <h2>Request Manager Approval</h2>
+        <button type="button" class="btn btn-ghost btn-sm"
+                onclick="var f=document.getElementById('approval-request');f.style.display=f.style.display==='none'?'block':'none';">Show</button>
+      </div>
+      <div class="card-body" id="approval-request" style="display:none;">
+        <form method="POST" action="{{ url_for('queries.request_approval', qid=qry.id) }}">
+          {% if payment_workflow and summary and summary.is_owing %}
+          <div class="form-group">
+            <label class="form-label">Proposed discount %
+              <span style="color:#9ca3af;font-size:.72rem;">
+                {{ summary.discount_range_label }} for {{ summary.arrears_months }} month(s); up to {{ staff_discount_ceiling }}% needs no manager
+              </span></label>
+            <input type="number" name="proposed_discount_pct" class="form-control" step="0.5" min="0"
+                   max="{{ 100 if summary.manager_discretion else summary.discount_max_percent }}"
+                   value="{{ qry.proposed_discount_pct or summary.discount_percent }}">
+          </div>
+          {% endif %}
+          {% if qry.category == 'cancellation' %}
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:.85rem;color:#374151;margin-bottom:10px;">
+            <input type="checkbox" name="cancel_member" value="1" style="margin-top:3px;" {% if qry.cancel_member_requested %}checked{% endif %}>
+            <span>Cancel this member's account once approved</span>
+          </label>
+          {% endif %}
+          <div class="form-group">
+            <label class="form-label">What should the manager approve, and why? *</label>
+            <textarea name="approval_reason" class="form-control" rows="2" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-sm" style="background:#7c3aed;color:#fff;">Send for approval</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Linked PTP -->
+    {% if linked_ptp %}
+    <div class="card" style="margin-bottom:16px;border-left:4px solid #1769aa;">
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+        <h2>Linked PTP #{{ linked_ptp.id }}</h2>
+        <a href="{{ url_for('members.member_detail', mid=qry.member_id) }}#ptp" style="font-size:.72rem;font-weight:700;color:#1769aa;text-decoration:none;">Open PTP →</a>
+      </div>
+      <div class="card-body" style="padding:0 20px 12px;">
+        <div class="q-info-row"><div class="q-info-label">PTP status</div><div><strong>{{ linked_ptp.ptp_status|replace('_',' ')|title }}</strong></div></div>
+        <div class="q-info-row"><div class="q-info-label">Promised</div><div>R{{ '%.2f'|format(linked_ptp.promise_amount or 0) }} by {{ linked_ptp.promise_date }}</div></div>
+        <div class="q-info-row"><div class="q-info-label">Discount</div><div>{{ (linked_ptp.discount_pct or 0)|round(2) }}%</div></div>
+        <div class="q-info-row"><div class="q-info-label">PTP approval</div><div>{{ (linked_ptp.manager_approval_status or 'not_required')|replace('_',' ')|title }}</div></div>
+        <div style="font-size:.76rem;color:#6b7280;margin-top:8px;">This query follows the PTP: paid, broken and declined arrangements update its status automatically.</div>
       </div>
     </div>
     {% endif %}
@@ -219,8 +341,11 @@
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
             <div class="form-group">
               <label class="form-label">Status</label>
-              <select name="status" class="form-control">
-                {% set status_options = payment_arrears_statuses if qry.category == 'payments' else statuses %}
+              <select name="status" class="form-control" {% if qry.approval_status == 'pending' %}disabled title="Waiting for a manager decision"{% endif %}>
+                {% set option_keys = status_options|map('first')|list %}
+                {% if qry.status not in option_keys %}
+                <option value="" selected>{{ status_label(qry.status) }} (unchanged)</option>
+                {% endif %}
                 {% for k,v in status_options %}
                 <option value="{{ k }}" {% if qry.status==k %}selected{% endif %}>{{ v }}</option>
                 {% endfor %}
@@ -400,14 +525,14 @@
           <div style="font-size:.78rem;color:#7c2d12;margin-top:8px;line-height:1.45;">
             <strong>Recommended:</strong> {{ summary.recommended_action }}
           </div>
-          {% if summary.manager_approval_required %}
+          {% if summary.manager_approval_required and qry.approval_status != 'approved' %}
           <div style="margin-top:8px;background:#fee2e2;border:1px solid #fecaca;border-radius:6px;padding:7px 10px;font-size:.76rem;font-weight:700;color:#991b1b;">
-            ⚠ Manager approval required before applying this discount.
+             The recommended discount is above {{ staff_discount_ceiling }}%{% if summary.manager_discretion %} / at manager discretion{% endif %} — request manager approval before offering it.
           </div>
           {% endif %}
           {% if qry.category == 'ptp_collections' and not summary.ptp_requirements_met %}
           <div style="margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:7px 10px;font-size:.76rem;font-weight:700;color:#92400e;">
-            ⚠ A debit order / DebiCheck, bank statement and confirmed income are recommended before finalising a PTP.
+             The PTP module will send this to a manager unless a confirmed DebiCheck{% if not summary.debicheck_confirmed %} (missing){% endif %} and a qualifying bank statement{% if not summary.statement_qualified %} (missing){% endif %} are on file.
           </div>
           {% endif %}
         </div>
@@ -449,7 +574,7 @@
         <div style="margin-top:12px;border-top:1px solid #f3f4f6;padding-top:10px;">
           <button type="button" class="btn btn-ghost btn-sm" style="width:100%;justify-content:center;"
                   onclick="var b=document.getElementById('acct-banking');b.style.display=(b.style.display==='none'||!b.style.display)?'block':'none';">
-            🏦 Show banking
+             Show banking
           </button>
           <div id="acct-banking" style="display:none;margin-top:10px;">
             <div class="acct-row"><span class="acct-label">Bank</span><span>{{ summary.bank or '—' }}</span></div>
@@ -479,7 +604,7 @@
           </div>
           <div style="background:#f9fafb;border-radius:6px;padding:10px 12px;">
             <div style="font-size:.6rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;margin-bottom:3px;">Status</div>
-            <span class="pbadge" style="background:{{ sc }}22;color:{{ sc }};">{{ qry.status|replace('_',' ')|title }}</span>
+            <span class="pbadge" style="background:{{ sc }}22;color:{{ sc }};">{{ status_label(qry.status) }}</span>
           </div>
         </div>
         {% if qry.assigned_to_name %}
@@ -494,7 +619,7 @@
           {% if qry.follow_up_date <= today %}color:#e11d48;{% else %}color:#374151;{% endif %}">
           <span style="color:#9ca3af;font-weight:700;">FOLLOW-UP</span><br>
           <strong>{{ qry.follow_up_date }}</strong>
-          {% if qry.follow_up_date <= today %}<span style="font-size:.7rem;"> ⚠ Overdue</span>{% endif %}
+          {% if qry.follow_up_date <= today %}<span style="font-size:.7rem;">  Overdue</span>{% endif %}
         </div>
         {% endif %}
         {% if qry.due_date %}
@@ -516,15 +641,17 @@
           {% for n in notes %}
           {% set dot_colours = {
               'status_change': '#d97706', 'assignment': '#1769aa',
-              'escalated': '#7c3aed', 'closed': '#059669', 'ptp': '#e11d48'
+              'escalated': '#7c3aed', 'closed': '#059669', 'ptp': '#e11d48',
+              'approval': '#7c3aed', 'created': '#1769aa', 'cancelled': '#991b1b'
           } %}
           {% set dot_icons = {
-              'status_change': '🔄', 'assignment': '👤',
-              'escalated': '⚡', 'closed': '✓', 'ptp': '💳', 'note': '💬'
+              'status_change': '', 'assignment': '',
+              'escalated': '', 'closed': '', 'ptp': '', 'note': '',
+              'approval': '', 'created': '', 'cancelled': ''
           } %}
           <div class="tl-item">
             <div class="tl-dot" style="background:{{ (dot_colours.get(n.action_type,'#e5e7eb')) + '33' }};">
-              {{ dot_icons.get(n.action_type, '💬') }}
+              {{ dot_icons.get(n.action_type, '') }}
             </div>
             <div class="tl-body">
               <div style="font-size:.83rem;color:#374151;">{{ n.note }}</div>

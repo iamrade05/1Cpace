@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Admin Panel | 1Cpase{% endblock %}
+{% block title %}Admin Panel | 1Cpace{% endblock %}
 {% block page_title %}Admin Panel{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Admin Panel</h1></div></header>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:28px;">
   <div class="form-card" style="text-align:center;padding:28px;">
     <div style="font-size:2.2rem;font-weight:900;color:#185FA5;">{{ stats.users }}</div>
@@ -38,16 +39,16 @@
       System Modules
     </h2>
     {% set modules = [
-      ('dashboard','Dashboard','📊'),
-      ('members','Members','👥'),
-      ('leads','Sales / Leads','🎯'),
-      ('applications','Applications','📋'),
-      ('collections','Collections','💳'),
-      ('hr','HR & Leave','🏢'),
-      ('fitness','Fitness Classes','🏋️'),
-      ('operations','Operations','⚙️'),
-      ('reports','Reports','📈'),
-      ('contracts','Contracts','📄'),
+      ('dashboard','Dashboard',''),
+      ('members','Members',''),
+      ('leads','Sales / Leads',''),
+      ('applications','Applications',''),
+      ('collections','Collections',''),
+      ('hr','HR & Leave',''),
+      ('fitness','Fitness Classes',''),
+      ('operations','Operations',''),
+      ('reports','Reports',''),
+      ('contracts','Contracts',''),
     ] %}
     {% for key, label, icon in modules %}
     <div style="display:flex;justify-content:space-between;align-items:center;

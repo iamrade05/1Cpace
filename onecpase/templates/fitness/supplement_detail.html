@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ s.name }} | 1Cpase{% endblock %}
+{% block title %}{{ s.name }} | 1Cpace{% endblock %}
 {% block page_title %}{{ s.name }}{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>{{ s.name }}</h1></div></header>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
   <span style="color:{{ risk_colors[s.risk_level] }}; background:{{ risk_bg[s.risk_level] }};
                padding:4px 12px; border-radius:8px; font-size:0.85rem; font-weight:600;">
@@ -15,7 +16,7 @@
   <div>
     <div class="card" style="margin-bottom:16px;">
       <div class="card-body">
-        <table>
+        <div class="table-wrap"><table class="table">
           <tbody>
             <tr><td style="color:#6b7280; width:140px;">Brand</td><td>{{ s.brand or '—' }}</td></tr>
             <tr><td style="color:#6b7280;">Type</td><td>{{ s.supp_type | replace('_',' ') | capitalize }}</td></tr>
@@ -23,7 +24,7 @@
             <tr><td style="color:#6b7280;">Dosage</td><td>{{ s.dosage or '—' }}</td></tr>
             <tr><td style="color:#6b7280; vertical-align:top;">Description</td><td>{{ s.description or '—' }}</td></tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
 
@@ -31,7 +32,7 @@
       <div class="card-header"><h2>Assigned Members</h2></div>
       <div class="card-body">
         {% if assignments %}
-        <table>
+        <div class="table-wrap"><table class="table">
           <thead><tr><th>Member</th><th>Start</th><th>End</th><th>Dosage</th><th>Status</th></tr></thead>
           <tbody>
             {% for a in assignments %}
@@ -47,10 +48,10 @@
             </tr>
             {% endfor %}
           </tbody>
-        </table>
+        </table></div>
         {% else %}
         <div class="empty-state" style="padding:32px;">
-          <div class="empty-icon">👥</div>
+          <div class="empty-icon"></div>
           <p>No members assigned yet.</p>
         </div>
         {% endif %}

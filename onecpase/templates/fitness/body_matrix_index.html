@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Body Matrix | 1Cpase{% endblock %}
+{% block title %}Body Matrix | 1Cpace{% endblock %}
 {% block page_title %}Body Matrix Tracking{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Body Matrix Tracking</h1></div></header>
 <div class="card" style="margin-bottom:16px;">
   <div style="padding:12px 20px;">
     <form method="get" style="display:flex;gap:8px;align-items:center;max-width:420px;">
@@ -17,7 +18,7 @@
 {% if members %}
 <div class="card">
   <div class="card-body">
-    <table>
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr><th>Member</th><th>Entries</th><th>Last Entry</th><th></th></tr>
       </thead>
@@ -35,12 +36,12 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% else %}
 <div class="empty-state">
-  <div class="empty-icon">📊</div>
+  <div class="empty-icon"></div>
   <p>{% if search %}No members match "{{ search }}".{% else %}No active members found.{% endif %}</p>
 </div>
 {% endif %}

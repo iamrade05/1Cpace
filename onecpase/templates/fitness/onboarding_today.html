@@ -1,16 +1,17 @@
 {% extends "base.html" %}
-{% block title %}New Member Daily Fitness Onboarding | 1Cpase{% endblock %}
+{% block title %}New Member Daily Fitness Onboarding | 1Cpace{% endblock %}
 {% block page_title %}New Member Daily Fitness Onboarding{% endblock %}
 {% block content %}
+<header class="page-header"><div><h1>New Member Daily Fitness Onboarding</h1></div></header>
 <form method="get" style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
   <input type="date" name="date" value="{{ day }}" onchange="this.form.submit()">
   <a class="btn" href="{{ url_for('onboarding.report') }}">Onboarding performance</a>
 </form>
 {% if awaiting %}<div class="card" style="border-left:4px solid #dc2626;margin-bottom:18px;"><div class="card-body"><strong>{{ awaiting|length }} new member{{ '' if awaiting|length == 1 else 's' }} awaiting a fitness interaction.</strong></div></div>{% endif %}
 <div class="card" style="margin-bottom:20px;"><div class="card-header"><strong>Arrivals — {{ day }}</strong></div><div class="card-body" style="overflow-x:auto;">
-{% if visits %}<table class="table"><thead><tr><th>Member</th><th>Day</th><th>Checked in</th><th>Instructor</th><th>Assistance</th><th>Outcome</th><th></th></tr></thead><tbody>
+{% if visits %}<div class="table-wrap"><table class="table"><thead><tr><th>Member</th><th>Day</th><th>Checked in</th><th>Instructor</th><th>Assistance</th><th>Outcome</th><th></th></tr></thead><tbody>
 {% for v in visits %}<tr {% if not v.recorded_at %}style="background:#fef2f2;"{% endif %}><td><strong>{{ v.first_name }} {{ v.last_name }}</strong><br><small>{{ v.package or '—' }}</small></td><td>DAY {{ v.visit_no }}</td><td>{{ (v.checked_in_at or '')[11:16] or '—' }}</td><td>{{ v.instructor_name or '—' }}</td><td>{% for c in (v.actions or '').split(',') if c %}<span class="badge">{{ action_labels.get(c, c) }}</span>{% endfor %}</td><td>{{ v.outcome or '—' }}</td><td><a class="btn btn-sm" href="{{ url_for('onboarding.record_visit', vid=v.id) }}">{{ 'Record' if not v.recorded_at else 'Edit' }}</a></td></tr>{% endfor %}
-</tbody></table>{% else %}<p style="color:#6b7280;">No new members have checked in on this date.</p>{% endif %}</div></div>
+</tbody></table></div>{% else %}<p style="color:#6b7280;">No new members have checked in on this date.</p>{% endif %}</div></div>
 <div class="card"><div class="card-header"><strong>Mark a manual arrival</strong></div><div class="card-body"><form method="post" action="{{ url_for('onboarding.manual_arrival') }}" style="display:flex;gap:10px;flex-wrap:wrap;"><select name="member_id" required><option value="">Select member…</option>{% for m in members_for_manual %}<option value="{{ m.id }}">{{ m.first_name }} {{ m.last_name }}</option>{% endfor %}</select><button class="btn btn-primary" type="submit">Mark arrived</button></form></div></div>
-{% if reviews_due %}<div class="card" style="margin-top:20px;"><div class="card-header"><strong>7-Day Reviews due ({{ reviews_due|length }})</strong></div><div class="card-body"><table class="table"><thead><tr><th>Member</th><th>Visits</th><th></th></tr></thead><tbody>{% for r in reviews_due %}<tr><td>{{ r.first_name }} {{ r.last_name }}</td><td>{{ r.visits_recorded }} / {{ window_visits }}</td><td><a class="btn btn-sm btn-primary" href="{{ url_for('onboarding.seven_day_review', oid=r.id) }}">Complete review</a></td></tr>{% endfor %}</tbody></table></div></div>{% endif %}
+{% if reviews_due %}<div class="card" style="margin-top:20px;"><div class="card-header"><strong>7-Day Reviews due ({{ reviews_due|length }})</strong></div><div class="card-body"><div class="table-wrap"><table class="table"><thead><tr><th>Member</th><th>Visits</th><th></th></tr></thead><tbody>{% for r in reviews_due %}<tr><td>{{ r.first_name }} {{ r.last_name }}</td><td>{{ r.visits_recorded }} / {{ window_visits }}</td><td><a class="btn btn-sm btn-primary" href="{{ url_for('onboarding.seven_day_review', oid=r.id) }}">Complete review</a></td></tr>{% endfor %}</tbody></table></div></div></div>{% endif %}
 {% endblock %}

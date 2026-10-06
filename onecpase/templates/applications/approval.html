@@ -1,12 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Approval Queue | 1Cpase{% endblock %}
+{% block title %}Approval Queue | 1Cpace{% endblock %}
 {% block page_title %}Manager Approval Queue{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Manager Approval Queue</h1></div></header>
 
 {% if not pending %}
 <div style="text-align:center; padding:60px 0;">
-  <div style="font-size:2.5rem; margin-bottom:12px;">✓</div>
+  <div style="font-size:2.5rem; margin-bottom:12px;"></div>
   <div style="font-size:1rem; font-weight:600; color:#1a1a2e;">All clear — no pending approvals.</div>
   <a href="{{ url_for('applications.applications_index') }}"
      style="display:inline-block; margin-top:16px; font-size:0.85rem; color:#e94560;">
@@ -44,7 +45,7 @@
       {% if item.reason %}
       <div style="margin-top:6px; font-size:0.8rem; background:#fef3c7; padding:8px 12px;
                   border-radius:6px; color:#78350f;">
-        ⚠️ {{ item.reason }}
+         {{ item.reason }}
       </div>
       {% endif %}
     </div>
@@ -114,7 +115,7 @@
              style="font-size:0.8rem; margin-bottom:6px;" placeholder="Approval comment (optional)">
       <button type="submit" class="btn btn-primary"
               style="font-size:0.8rem; background:#059669; border-color:#059669; width:100%;">
-        ✓ Approve
+         Approve
       </button>
     </form>
     <form method="POST"
@@ -124,7 +125,7 @@
              style="font-size:0.8rem; margin-bottom:6px;" placeholder="Reason for declining *">
       <button type="submit" class="btn btn-secondary"
               style="font-size:0.8rem; border-color:#ef4444; color:#ef4444; width:100%;">
-        ✗ Decline
+         Decline
       </button>
     </form>
   </div>

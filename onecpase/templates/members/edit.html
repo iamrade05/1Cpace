@@ -1,72 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Edit Member | 1Cpase{% endblock %}
+{% block title %}Edit Member | 1Cpace{% endblock %}
 {% block page_title %}Edit Member{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>Edit Member</h1></div></header>
 {% set m = member %}
 
-<style>
-/* ── Tab nav ── */
-.tab-nav {
-  display:flex; gap:0; background:#fff; border-radius:12px;
-  border:1px solid #e5e7eb; box-shadow:0 2px 8px rgba(0,0,0,.06);
-  margin-bottom:20px; overflow-x:auto; padding:6px;
-}
-.tab-btn {
-  display:flex; align-items:center; gap:9px; flex:1; justify-content:center;
-  padding:10px 14px; border:none; background:none; cursor:pointer;
-  font-size:0.8rem; font-weight:600; color:#6b7280;
-  border-radius:8px; white-space:nowrap;
-  transition:background .15s,color .15s;
-}
-.tab-btn .tab-num {
-  display:inline-flex; align-items:center; justify-content:center;
-  width:24px; height:24px; border-radius:50%; font-size:0.72rem;
-  font-weight:700; background:#f3f4f6; color:#6b7280;
-  transition:background .15s,color .15s; flex-shrink:0;
-}
-.tab-btn.active { background:#EEF4FA; color:#185FA5; }
-.tab-btn.active .tab-num { background:#185FA5; color:#fff; }
-/* ── Section heading ── */
-.section-heading {
-  font-size:1rem; font-weight:700; color:#1F2933;
-  margin-bottom:18px; padding-bottom:12px;
-  border-bottom:2px solid #EEF4FA;
-}
-/* ── Tab panes ── */
-.tab-pane { display:none; }
-.tab-pane.active { display:block; }
-/* ── Footer nav ── */
-.tab-footer {
-  display:flex; justify-content:space-between; align-items:center;
-  padding:18px 0 4px; margin-top:12px;
-}
-.tab-footer .btn {
-  padding: 11px 28px; font-size:0.88rem; font-weight:700;
-  border-radius:8px; letter-spacing:0.2px;
-}
-/* ── Submit button full-width dark ── */
-.btn-submit-dark {
-  display:block; width:100%; padding:14px;
-  background:#1F2933; color:#fff; border:none; border-radius:8px;
-  font-size:0.95rem; font-weight:700; letter-spacing:0.3px;
-  cursor:pointer; margin-top:8px; transition:background .15s;
-}
-.btn-submit-dark:hover { background:#111827; }
-/* ── Age badge ── */
-.age-badge {
-  display:inline-block; background:#EEF4FA; color:#185FA5;
-  font-size:0.72rem; font-weight:700; padding:2px 8px;
-  border-radius:10px; margin-left:8px; vertical-align:middle;
-}
-</style>
+
 
 <div>
 
   {% if m.itensity_ref %}
-  <div style="background:#d1fae5;border:1px solid #6ee7b7;border-radius:8px;padding:10px 16px;
-              margin-bottom:16px;font-size:0.82rem;color:#065f46;">
-    ✓ Pushed to Itensity — Ref: <strong>{{ m.itensity_ref }}</strong>
+  <div class="u-d9e99425">
+     Pushed to Itensity — Ref: <strong>{{ m.itensity_ref }}</strong>
   </div>
   {% endif %}
 
@@ -94,7 +40,7 @@
   <!-- Tab 1: Personal -->
   <div class="tab-pane active" id="pane-0">
 
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Personal Details</h2>
       <div class="form-grid-2">
         <div class="form-group">
@@ -108,7 +54,7 @@
         <div class="form-group">
           <label class="form-label">
             SA ID Number
-            <span id="ageBadge" class="age-badge" style="display:none;"></span>
+            <span id="ageBadge" class="age-badge u-6b99de8b"></span>
           </label>
           <input type="text" name="id_number" id="idField" class="form-control" required
                  minlength="13" maxlength="13" pattern="[0-9]{13}"
@@ -145,24 +91,21 @@
       </div>
     </div>
 
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Address</h2>
       <!-- Address search -->
-      <div class="form-group" style="margin-bottom:14px;">
+      <div class="form-group u-2b583d73">
         <label class="form-label">Search Address</label>
-        <div style="display:flex;gap:8px;">
+        <div class="u-a76d597a">
           <input type="text" id="addressSearch" class="form-control"
                  placeholder="Type suburb, city or full address…"
                  autocomplete="off">
           <button type="button" onclick="searchAddress()"
-                  style="padding:0 16px;background:#185FA5;color:#fff;border:none;
-                         border-radius:6px;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;">
+                  class="u-daf3abcd">
             Find
           </button>
         </div>
-        <div id="addressResults" style="display:none;position:absolute;z-index:200;
-             background:#fff;border:1px solid #e5e7eb;border-radius:6px;
-             box-shadow:0 4px 12px rgba(0,0,0,.12);max-width:500px;margin-top:2px;"></div>
+        <div id="addressResults" class="u-12b51545"></div>
       </div>
       <div class="form-grid-2">
         <div class="form-group">
@@ -200,10 +143,10 @@
 
   <!-- Tab 2: Membership -->
   <div class="tab-pane" id="pane-1">
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Membership</h2>
 
-      <div class="form-group" style="margin-bottom:18px;">
+      <div class="form-group u-905d8b3d">
         <label class="form-label">Tariff</label>
         <select name="tariff" id="tariffSelect" class="form-control" onchange="applyTariff(this.value)">
           <option value="">— Select tariff —</option>
@@ -221,18 +164,15 @@
         </select>
       </div>
 
-      <div id="tariffSummary" style="background:#EEF4FA;border:2px solid #185FA5;
-           border-radius:10px;padding:16px 20px;margin-bottom:18px;
-           display:{% if m.tariff %}flex{% else %}none{% endif %};
-           justify-content:space-between;align-items:center;">
+      <div id="tariffSummary" class="form-summary {% if not m.tariff %}initial-hidden{% endif %}">
         <div>
-          <div style="font-size:0.72rem;color:#378ADD;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Selected Tariff</div>
-          <div id="tariffSummaryName" style="font-size:1rem;font-weight:800;color:#1F2933;margin-top:2px;">{{ (m.package if m.tariff == 'Custom' and m.package else m.tariff) or '' }}</div>
-          <div id="tariffSummaryDuration" style="font-size:0.8rem;color:#6b7280;margin-top:2px;">{{ m.contract_duration or '' }}</div>
+          <div class="u-6c37e23d">Selected Tariff</div>
+          <div id="tariffSummaryName" class="u-0de03ae9">{{ (m.package if m.tariff == 'Custom' and m.package else m.tariff) or '' }}</div>
+          <div id="tariffSummaryDuration" class="u-2bfd787d">{{ m.contract_duration or '' }}</div>
         </div>
-        <div style="text-align:right;">
-          <div style="font-size:0.72rem;color:#378ADD;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">Monthly</div>
-          <div id="tariffSummaryAmount" style="font-size:1.8rem;font-weight:900;color:#185FA5;">R {{ '%.2f'|format(m.monthly_installment or 0) }}</div>
+        <div class="u-54c2afb7">
+          <div class="u-6c37e23d">Monthly</div>
+          <div id="tariffSummaryAmount" class="u-f9bd67a7">R{{ '{:,.2f}'.format(m.monthly_installment or 0) }}</div>
         </div>
       </div>
 
@@ -255,7 +195,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Package Label <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+          <label class="form-label">Package Label <span class="u-7e3a9447">(optional)</span></label>
           <input type="text" name="package" id="pkgLabel" class="form-control" value="{{ m.package or '' }}">
         </div>
       </div>
@@ -269,9 +209,9 @@
 
   <!-- Tab 3: Payment & Banking -->
   <div class="tab-pane" id="pane-2">
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Payment &amp; Banking</h2>
-      <div class="form-grid-2" style="margin-bottom:12px;">
+      <div class="form-grid-2 u-da12f285">
         <div class="form-group">
           <label class="form-label">Payment Type</label>
           <select name="payment_type" id="paymentType" class="form-control" onchange="toggleDebit()">
@@ -321,11 +261,10 @@
             <label class="form-label">Branch Code</label>
             <input type="text" name="branch_code" id="branchCode" class="form-control"
                    maxlength="6" value="{{ m.branch_code or '' }}">
-            <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">
+            <div class="u-8ebf2543">
               {% for b, c in [('ABSA','632005'),('FNB','250655'),('Nedbank','198765'),('Std Bank','051001'),('Capitec','470010'),('Disc','679000'),('Tyme','678910')] %}
               <button type="button" onclick="document.getElementById('branchCode').value='{{ c }}'"
-                      style="font-size:10px;padding:2px 7px;background:#1F2933;border:1px solid #374151;
-                             border-radius:4px;color:#9ca3af;cursor:pointer;">
+                      class="u-24d234d9">
                 {{ b }} {{ c }}
               </button>
               {% endfor %}
@@ -333,17 +272,16 @@
           </div>
         </div>
 
-        <div style="margin-top:12px;">
+        <div class="u-56f43562">
           {% set has_payer = m.payer_name or m.payer_id_number %}
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:0.84rem;font-weight:500;color:#374151;margin-bottom:8px;">
+          <label class="u-c5f79546">
             <input type="checkbox" id="selfPayer" onchange="togglePayer(this)"
                    {% if not has_payer %}checked{% endif %}
-                   style="width:15px;height:15px;accent-color:#185FA5;">
+                   class="u-0af1098e">
             Member is paying for themselves
           </label>
-          <div id="payerFields" style="display:{% if has_payer %}block{% else %}none{% endif %};
-               background:#fef9f0;border:1px solid #fde68a;border-radius:8px;padding:14px;">
-            <div style="font-size:0.72rem;font-weight:700;color:#d97706;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">
+          <div id="payerFields" class="panel {% if not has_payer %}initial-hidden{% endif %}">
+            <div class="u-5363ffc9">
               Third-Party Payer
             </div>
             <div class="form-grid-2">
@@ -361,9 +299,9 @@
         </div>
       </div>
 
-      <div class="form-group" style="margin-top:14px;">
+      <div class="form-group u-d6f2af6e">
         <label class="form-label">Marketing Opt-In</label>
-        <select name="opt_in" class="form-control" style="max-width:200px;">
+        <select name="opt_in" class="form-control u-a828909e">
           <option value="yes" {% if m.opt_in %}selected{% endif %}>Yes</option>
           <option value="no" {% if not m.opt_in %}selected{% endif %}>No</option>
         </select>
@@ -378,7 +316,7 @@
 
   <!-- Tab 4: Additional -->
   <div class="tab-pane" id="pane-3">
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Additional Information</h2>
       <div class="form-grid-2">
         <div class="form-group">
@@ -408,9 +346,9 @@
       </div>
     </div>
 
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Contract Extras</h2>
-      <span class="form-hint" style="display:block;margin-bottom:12px;">
+      <span class="form-hint u-668a9d3d">
         Optional fields — only printed on a member's contract if switched on for that section
         in Admin &rarr; Contract Templates &rarr; Sections &amp; Fields.
       </span>
@@ -444,7 +382,7 @@
       </div>
     </div>
 
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Emergency Contact</h2>
       <div class="form-grid-2">
         <div class="form-group">
@@ -466,7 +404,7 @@
       </div>
     </div>
 
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">Fitness Profile</h2>
       <div class="form-grid-2">
         <div class="form-group">
@@ -493,9 +431,9 @@
 
   <!-- Tab 5: PAR-Q -->
   <div class="tab-pane" id="pane-4">
-    <div class="form-card" style="margin-bottom:16px;">
+    <div class="form-card u-87c136df">
       <h2 class="section-heading">PAR-Q Health Screening</h2>
-      <p style="font-size:0.78rem;color:#6b7280;margin-bottom:16px;">
+      <p class="u-4ad5f0c5">
         Answer <strong>Yes</strong> or <strong>No</strong> to each question honestly.
         A YES answer does not prevent membership — it may require a doctor's clearance.
       </p>
@@ -511,32 +449,30 @@
         ('parq_q9','Are you 69 years of age or older and not accustomed to vigorous exercise?'),
       ] %}
       {% for field, question in parq %}
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;
-                  padding:10px 0;border-bottom:1px solid #f3f4f6;gap:16px;">
-        <div style="font-size:0.82rem;color:#374151;flex:1;">{{ loop.index }}. {{ question }}</div>
-        <div style="display:flex;gap:14px;flex-shrink:0;">
-          <label style="display:flex;align-items:center;gap:5px;font-size:0.82rem;cursor:pointer;font-weight:500;">
+      <div class="u-2b1d66bf">
+        <div class="u-90df720c">{{ loop.index }}. {{ question }}</div>
+        <div class="u-db0572db">
+          <label class="u-fcba7f7e">
             <input type="radio" name="{{ field }}" value="no"
                    {% if not m[field] %}checked{% endif %}
-                   style="accent-color:#185FA5;"> No
+                   class="u-f0796f87"> No
           </label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:0.82rem;cursor:pointer;font-weight:500;color:#ef4444;">
+          <label class="u-fcba7f7e">
             <input type="radio" name="{{ field }}" value="yes"
                    {% if m[field] %}checked{% endif %}
-                   style="accent-color:#ef4444;"> Yes
+                   class="u-f0796f87"> Yes
           </label>
         </div>
       </div>
       {% endfor %}
-      <div id="parqWarning" style="display:none;margin-top:14px;background:#fef2f2;border:1px solid #fca5a5;
-           border-radius:8px;padding:10px 14px;font-size:0.8rem;color:#b91c1c;">
-        ⚠️ One or more YES answers detected. The member may require a doctor's clearance before starting exercise.
+      <div id="parqWarning" class="u-454f0eca">
+         One or more YES answers detected. The member may require a doctor's clearance before starting exercise.
       </div>
     </div>
 
-    <div class="tab-footer" style="flex-direction:column;gap:10px;">
-      <button type="submit" class="btn-submit-dark">Save Changes</button>
-      <button type="button" class="btn btn-secondary" onclick="goTab(3)" style="width:100%;text-align:center;">&larr; Back to Additional</button>
+    <div class="tab-footer u-9a3e0aa0">
+      <button type="submit" class="btn btn-primary">Save Changes</button>
+      <button type="button" class="btn btn-secondary u-694e1bc0" onclick="goTab(3)">&larr; Back to Additional</button>
     </div>
   </div>
 
@@ -590,14 +526,12 @@ function searchAddress() {
     .then(results => {
       addrRes.innerHTML = '';
       if (!results.length) {
-        addrRes.innerHTML = '<div style="padding:10px 14px;font-size:0.8rem;color:#6b7280;">No results found.</div>';
+        addrRes.innerHTML = '<div class="u-7a42fa9f">No results found.</div>';
       } else {
         results.forEach(r => {
           const row = document.createElement('div');
           row.textContent = r.display_name;
-          row.style.cssText = 'padding:8px 14px;font-size:0.8rem;cursor:pointer;border-bottom:1px solid #f3f4f6;color:#374151;';
-          row.addEventListener('mouseenter', () => row.style.background = '#EEF4FA');
-          row.addEventListener('mouseleave', () => row.style.background = '');
+          row.className = 'member-picker-option';
           row.addEventListener('click', () => fillAddress(r.address));
           addrRes.appendChild(row);
         });
@@ -649,7 +583,7 @@ function applyTariff(val) {
     document.getElementById('monthlyInstallment').value = amount.toFixed(2);
     document.getElementById('tariffSummaryName').textContent     = val;
     document.getElementById('tariffSummaryDuration').textContent = months + '-month contract';
-    document.getElementById('tariffSummaryAmount').textContent   = 'R ' + amount.toFixed(2);
+    document.getElementById('tariffSummaryAmount').textContent   = 'R' + amount.toLocaleString('en-ZA', {minimumFractionDigits:2, maximumFractionDigits:2});
     summary.style.display = 'flex';
   } else {
     summary.style.display = 'none';

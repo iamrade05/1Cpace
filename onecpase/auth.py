@@ -210,7 +210,7 @@ def _send_otp_email(to_email: str, full_name: str, code: str) -> bool:
     """Returns True on success, False if mail is not configured or fails."""
     if not current_app.config.get("MAIL_USERNAME"):
         return False
-    tenant_name = g.tenant["name"] if g.get("tenant") else "1Cpase"
+    tenant_name = g.tenant["name"] if g.get("tenant") else "1Cpace"
     try:
         msg = Message(
             subject=f"{tenant_name} — Your login code",
@@ -221,7 +221,7 @@ def _send_otp_email(to_email: str, full_name: str, code: str) -> bool:
                     border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
           <div style="background:#185FA5;padding:24px 32px;">
             <h1 style="color:#fff;margin:0;font-size:1.5rem;font-weight:800;">{tenant_name}</h1>
-            <p style="color:#EEF4FA;margin:4px 0 0;font-size:0.85rem;">Powered by 1Cpase</p>
+            <p style="color:#EEF4FA;margin:4px 0 0;font-size:0.85rem;">Powered by 1Cpace</p>
           </div>
           <div style="padding:32px;">
             <p style="color:#374151;font-size:0.95rem;">Hi <strong>{full_name}</strong>,</p>
@@ -461,7 +461,7 @@ def logout():
         session.clear()
         session["platform_admin_id"] = platform_admin_id
         session["platform_admin_username"] = platform_username
-        flash("You returned to the 1Cpase platform.", "info")
+        flash("You returned to the 1Cpace platform.", "info")
         response = redirect(url_for("platform.tenants_index"))
         from .tenants import TENANT_COOKIE_NAME
         response.delete_cookie(TENANT_COOKIE_NAME)

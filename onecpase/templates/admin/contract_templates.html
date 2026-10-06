@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Contract Templates | 1Cpase{% endblock %}
+{% block title %}Contract Templates | 1Cpace{% endblock %}
 {% block page_title %}Contract Templates{% endblock %}
 
 {% block content %}
@@ -12,7 +12,7 @@
 </div>
 
 <div class="table-card">
-  <table class="data-table">
+  <div class="table-wrap"><table class="data-table table">
     <thead><tr><th>Template</th><th>Agreement</th><th>Terms</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead>
     <tbody>
       {% for template in templates %}
@@ -32,6 +32,6 @@
       </tr>
       {% else %}<tr><td colspan="6" class="empty-state">No contract templates have been created.</td></tr>{% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 {% endblock %}

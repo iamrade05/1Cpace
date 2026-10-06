@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ event.name }} Registrations | 1Cpase{% endblock %}
+{% block title %}{{ event.name }} Registrations | 1Cpace{% endblock %}
 {% block page_title %}{{ event.name }} — Registrations{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>{{ event.name }} — Registrations</h1></div></header>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
   <p style="font-size:0.85rem;color:#6b7280;">
     {{ registrations|length }} registered ·
@@ -22,7 +23,7 @@
 </div>
 
 <div class="table-card" style="overflow-x:auto;">
-  <table class="data-table">
+  <div class="table-wrap"><table class="data-table table">
     <thead>
       <tr>
         <th>#</th>
@@ -58,14 +59,14 @@
         <td style="font-size:0.78rem;">{{ r.emergency_contact_name }} · {{ r.emergency_contact_phone }}{% if r.emergency_contact_relation %} ({{ r.emergency_contact_relation }}){% endif %}</td>
         <td>
           {% if r.checked_in %}
-          <span style="font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#d1fae5;color:#065f46;">✓ Arrived</span>
+          <span style="font-size:0.72rem;font-weight:700;padding:2px 8px;border-radius:10px;background:#d1fae5;color:#065f46;"> Arrived</span>
           {% else %}
           <span style="font-size:0.72rem;color:#9ca3af;">—</span>
           {% endif %}
         </td>
         <td>
           {% if r.ticket_sent %}
-          <span style="font-size:0.72rem;color:#065f46;">✓ Sent</span>
+          <span style="font-size:0.72rem;color:#065f46;"> Sent</span>
           {% else %}
           <span style="font-size:0.72rem;color:#b45309;">Not sent</span>
           {% endif %}
@@ -76,6 +77,6 @@
       <tr><td colspan="13" style="color:#9ca3af;text-align:center;padding:24px;">No registrations yet.</td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 {% endblock %}

@@ -61,18 +61,47 @@ NEXT_ACTION_BY_STAGE = {
 
 COMMUNICATION_ORDER = ("CALL", "WHATSAPP", "SMS", "EMAIL")
 
-# Authoritative arrears settlement policy, used by both the PTP recovery plan
-# and the Queries account decision so the two cannot drift apart.
+# Authoritative arrears settlement policy, used by Collections, the PTP
+# recovery plan and the Queries account decision so they cannot drift apart.
 # Discount is applied FIRST. The upfront contribution is then calculated
-# against the discounted balance. Higher discounts require manager approval.
-# 2 months 25%, 3-4 months 35%, 5 months 40%, 6 months and over 50%. Accounts
-# above six months are also held to the recovery minimum in collections_decision.
-ARREARS_DISCOUNT_RULES = ((6, 50), (5, 40), (3, 35), (2, 25))
-ARREARS_DISCOUNT_MANAGER_RULES = ((6, True), (4, True), (2, False))
+# against the discounted balance.
+#
+# Each tier is (min_months, max_months, min_pct, max_pct, recommended_pct).
+# max_months None means "and over". 9+ months is at manager discretion
+# (anywhere from 0 to 100%), so no discount is recommended automatically.
+ARREARS_DISCOUNT_RULES = (
+    (9, None, 0, 100, 0),
+    (6, 8, 60, 75, 75),
+    (4, 5, 35, 50, 50),
+    (2, 3, 25, 25, 25),
+)
+# Staff may give up to this discount on their own; anything above it, and any
+# account at manager discretion, needs a manager.
+STAFF_DISCOUNT_CEILING = 50
+MANAGER_DISCRETION_FROM_MONTHS = 9
+
+
+def discount_range_label(min_percent, max_percent, months_owing=0):
+    if int(months_owing or 0) >= MANAGER_DISCRETION_FROM_MONTHS:
+        return "Manager discretion"
+    if min_percent == max_percent:
+        return f"{min_percent}%"
+    return f"{min_percent}%–{max_percent}%"
+
+
+def discount_needs_manager(discount_percent, months_owing=0):
+    """True when a discount of this size, on an account this old, needs a manager."""
+    if int(months_owing or 0) >= MANAGER_DISCRETION_FROM_MONTHS:
+        return True
+    return float(discount_percent or 0) > STAFF_DISCOUNT_CEILING
 
 
 def arrears_discount_policy(months_owing):
-    """Return the approved discount tier and whether manager approval is required."""
+    """Return the discount tier for an account and whether a manager must approve.
+
+    ``discount_percent`` is the recommended figure; ``min_percent`` and
+    ``max_percent`` bound what may be offered within the tier.
+    """
     try:
         months = int(months_owing or 0)
     except (TypeError, ValueError) as exc:
@@ -80,20 +109,19 @@ def arrears_discount_policy(months_owing):
     if months < 0:
         raise ValueError("months_owing cannot be negative")
 
-    discount_percent = 0
-    manager_approval_required = False
-    for min_months, percent in ARREARS_DISCOUNT_RULES:
-        if months >= min_months:
-            discount_percent = percent
-            break
-    for min_months, requires_manager in ARREARS_DISCOUNT_MANAGER_RULES:
-        if months >= min_months:
-            manager_approval_required = requires_manager
+    min_pct = max_pct = recommended = 0
+    for min_months, max_months, lo, hi, rec in ARREARS_DISCOUNT_RULES:
+        if months >= min_months and (max_months is None or months <= max_months):
+            min_pct, max_pct, recommended = lo, hi, rec
             break
 
     return {
-        "discount_percent": discount_percent,
-        "manager_approval_required": manager_approval_required,
+        "discount_percent": recommended,
+        "min_percent": min_pct,
+        "max_percent": max_pct,
+        "range_label": discount_range_label(min_pct, max_pct, months),
+        "manager_discretion": months >= MANAGER_DISCRETION_FROM_MONTHS,
+        "manager_approval_required": discount_needs_manager(recommended, months),
     }
 
 VALID_CALL_OUTCOMES = {
@@ -566,6 +594,11 @@ def classify_ptp(promise_amount, verified_paid, promise_date, today=None):
 def supersede_open_ptps(db, member_id, keep_ptp_id):
     """A new promise replaces earlier open ones. The old rows are kept, marked
     superseded, so history survives and the daily sweep cannot break them."""
+    replaced = [r["id"] for r in db.execute(
+        """SELECT id FROM ptp_agreements
+           WHERE member_id=? AND id<>? AND ptp_status IN ('pending','partially_paid')""",
+        (member_id, keep_ptp_id),
+    ).fetchall()]
     cursor = db.execute(
         """UPDATE ptp_agreements SET ptp_status='superseded', updated_at=datetime('now','localtime')
            WHERE member_id=? AND id<>? AND ptp_status IN ('pending','partially_paid')""",
@@ -576,6 +609,10 @@ def supersede_open_ptps(db, member_id, keep_ptp_id):
            WHERE member_id=? AND ptp_id<>? AND status IN ('DRAFT','SUBMITTED','PENDING','RETURNED')""",
         (member_id, keep_ptp_id),
     )
+    if replaced:
+        from .queries import sync_from_ptp
+        for ptp_id in replaced:
+            sync_from_ptp(db, ptp_id, "superseded")
     return cursor.rowcount
 
 
@@ -743,6 +780,26 @@ def _engine_table_statements(backend):
             decided_by INTEGER, decided_at TEXT, decision_reason TEXT,
             FOREIGN KEY (member_id) REFERENCES members(id)
         )""",
+        # NuPay Transaction Report uploads. These tables only ever hold NuPay's own results and the
+        # last comparison; nothing here changes a member's collections history.
+        f"""CREATE TABLE IF NOT EXISTS nupay_import_runs (
+            id {id_type}, uploaded_by INTEGER, filenames TEXT, rows_read INTEGER DEFAULT 0,
+            rows_new INTEGER DEFAULT 0, uploaded_at {timestamp}
+        )""",
+        f"""CREATE TABLE IF NOT EXISTS nupay_transactions (
+            id {id_type}, run_id INTEGER, txn_key TEXT NOT NULL UNIQUE, member_id INTEGER,
+            mandate_id TEXT, client_reference TEXT, contract_reference TEXT, instalment INTEGER,
+            total_instalments INTEGER, amount {real_type} DEFAULT 0, action_date TEXT, cycle_date TEXT,
+            status TEXT, tracking TEXT, created_at {timestamp}
+        )""",
+        f"""CREATE TABLE IF NOT EXISTS reconciliation_snapshot (
+            member_id INTEGER PRIMARY KEY, grp TEXT NOT NULL, arrears_now {real_type} DEFAULT 0,
+            months_now INTEGER DEFAULT 0, arrears_after {real_type} DEFAULT 0, months_after INTEGER DEFAULT 0,
+            last_success TEXT, last_failed TEXT, mandate_status TEXT, itensity_status TEXT,
+            itensity_payment TEXT, flags TEXT, computed_at {timestamp}
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_nupay_txn_member ON nupay_transactions(member_id, action_date)",
+        "CREATE INDEX IF NOT EXISTS idx_reconciliation_group ON reconciliation_snapshot(grp)",
         "CREATE INDEX IF NOT EXISTS idx_collection_notes_member ON collection_notes(member_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_collection_discount_member ON collection_discount_requests(member_id, status)",
         "CREATE INDEX IF NOT EXISTS idx_collection_stage_case ON collection_stage_history(case_id, changed_at)",

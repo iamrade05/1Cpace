@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Reconciliation · 1Cpace{% endblock %}
+{% block page_title %}Reconciliation{% endblock %}
+
+{% macro badge(tone, text) %}<span class="badge {{ {'ok':'badge-success','warn':'badge-warning','bad':'badge-danger','mute':'badge-gray'}[tone] }}">{{ text }}</span>{% endmacro %}
+{% macro money(v) %}R{{ '{:,.2f}'.format(v or 0) }}{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Reconciliation</h1>
+    <p class="page-sub">NuPay payments compared with Itensity and this app, member by member, so collections only chases people who really owe.</p>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a class="btn" href="{{ url_for('reconciliation.members') }}">All members</a>
+    {% if can_change and data.ready %}
+    <form method="post" action="{{ url_for('reconciliation.rebuild') }}" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-primary" type="submit">Run check</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if data.ready %}
+<div class="kpi-grid">
+  <div class="kpi-card"><div class="kpi-label">Members checked</div><div class="kpi-value">{{ '{:,}'.format(data.members) }}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Showing arrears</div><div class="kpi-value">{{ '{:,}'.format(data.showing_arrears) }}</div><div class="page-sub">{{ money(data.showing_amount) }} in total</div></div>
+  <div class="kpi-card"><div class="kpi-label">Paying, arrears wrong</div><div class="kpi-value" style="color:var(--ok);">{{ '{:,}'.format(data.wrong_count) }}</div><div class="page-sub">{{ money(data.wrong_amount) }} clears once recorded</div></div>
+  <div class="kpi-card"><div class="kpi-label">Paying but blocked at the gym</div><div class="kpi-value" style="color:var(--red);">{{ '{:,}'.format(data.blocked_paying) }}</div><div class="page-sub"><a href="{{ url_for('reconciliation.members', flag='gym access is blocked') }}">See the list</a></div></div>
+</div>
+
+<section class="table-card" style="overflow-x:auto;margin-bottom:20px;">
+  <div class="table-wrap"><table class="data-table table" style="min-width:760px;">
+    <thead><tr><th>Group</th><th style="text-align:right;">Members</th><th style="text-align:right;">Arrears now</th><th style="text-align:right;">After recording</th><th>What to do</th></tr></thead>
+    <tbody>
+      {% for g in data.table %}
+      <tr>
+        <td>{{ badge(g.tone, g.label) }}</td>
+        <td style="text-align:right;"><a href="{{ url_for('reconciliation.members', group=g.key) }}"><strong>{{ '{:,}'.format(g.members) }}</strong></a></td>
+        <td style="text-align:right;">{{ money(g.now) }}</td>
+        <td style="text-align:right;">{{ money(g.after) }}</td>
+        <td>{{ g.action }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+
+<section class="form-card" style="margin-bottom:20px;">
+  <h3 style="margin-bottom:8px;">Status differences to look at</h3>
+  <div style="display:flex;gap:24px;flex-wrap:wrap;">
+    <div><a href="{{ url_for('reconciliation.members', flag='gym access is blocked') }}"><strong>{{ data.blocked_paying }}</strong></a> paying on NuPay but blocked at the gym</div>
+    <div><a href="{{ url_for('reconciliation.members', flag='marked inactive here') }}"><strong>{{ data.inactive_paying }}</strong></a> paying but marked Inactive here</div>
+    <div><a href="{{ url_for('reconciliation.members', flag='Itensity Active but inactive here') }}"><strong>{{ data.status_drift }}</strong></a> Active in Itensity but Inactive here</div>
+  </div>
+  <p class="page-sub" style="margin-top:8px;">Last checked {{ data.computed_at }}{% if not has_roster %} · no Itensity file found, so Itensity-based groups are not shown{% endif %}. Nothing on this page changes a member's balance or access.</p>
+</section>
+{% else %}
+<section class="form-card" style="margin-bottom:20px;">
+  <h3 style="margin-bottom:8px;">No NuPay report loaded yet</h3>
+  <p>In NuPay go to <strong>DebiCheck → Reporting → Transaction Report</strong>, choose all statuses, delivery <strong>File Download (CSV Format)</strong>, set the dates, and upload the files below. A ZIP of the CSVs works too.</p>
+</section>
+{% endif %}
+
+{% if can_change %}
+<section class="form-card" style="margin-bottom:20px;">
+  <h3 style="margin-bottom:8px;">Upload a NuPay Transaction Report</h3>
+  <form method="post" action="{{ url_for('reconciliation.upload') }}" enctype="multipart/form-data" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="reports" multiple accept=".csv,.zip" required aria-label="NuPay report files">
+    <button class="btn btn-primary" type="submit">Upload and check</button>
+  </form>
+  <p class="page-sub" style="margin-top:8px;">Uploading the same report again adds nothing twice. This only stores NuPay's results and refreshes the comparison.</p>
+</section>
+{% endif %}
+
+{% if data.runs %}
+<section class="table-card" style="overflow-x:auto;">
+  <div class="table-wrap"><table class="data-table table">
+    <thead><tr><th>Uploaded</th><th>By</th><th>Files</th><th style="text-align:right;">Rows</th><th style="text-align:right;">New</th></tr></thead>
+    <tbody>
+      {% for r in data.runs %}
+      <tr><td>{{ r.uploaded_at }}</td><td>{{ r.uploader or '—' }}</td><td style="max-width:360px;word-break:break-word;">{{ r.filenames }}</td><td style="text-align:right;">{{ '{:,}'.format(r.rows_read or 0) }}</td><td style="text-align:right;">{{ '{:,}'.format(r.rows_new or 0) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+{% endblock %}

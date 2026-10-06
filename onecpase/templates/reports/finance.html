@@ -2,7 +2,7 @@
 {% block title %}Reports – Finance{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>📊 Reports – Finance</h1>
+  <h1> Reports – Finance</h1>
 </div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
   <a href="{{ url_for('reports.overview') }}" style="padding:6px 14px;border-radius:20px;font-size:0.78rem;font-weight:700;text-decoration:none;transition:all 0.15s;background:#f3f4f6;color:#6b7280;">Overview</a>
@@ -54,7 +54,7 @@
   <div class="card">
     <div class="card-header"><h3 class="card-title">Monthly Collections</h3></div>
     <div class="card-body" style="padding:0;">
-      <table class="data-table" style="font-size:.83rem;">
+      <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
         <thead>
           <tr>
             <th>Month</th>
@@ -81,7 +81,7 @@
           <tr><td colspan="7" class="text-center text-muted">No collections data for period</td></tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
   </div>
 
@@ -90,7 +90,7 @@
     <div class="card">
       <div class="card-header"><h3 class="card-title">Payment Methods</h3></div>
       <div class="card-body" style="padding:0;">
-        <table class="data-table" style="font-size:.83rem;">
+        <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
           <thead><tr><th>Method</th><th class="text-right">Count</th><th class="text-right">Total</th></tr></thead>
           <tbody>
             {% for r in payment_methods %}
@@ -103,13 +103,13 @@
             <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
             {% endfor %}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
     <div class="card">
       <div class="card-header"><h3 class="card-title">By Status</h3></div>
       <div class="card-body" style="padding:0;">
-        <table class="data-table" style="font-size:.83rem;">
+        <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
           <thead><tr><th>Status</th><th class="text-right">Count</th><th class="text-right">Total</th></tr></thead>
           <tbody>
             {% for r in status_breakdown %}
@@ -126,7 +126,7 @@
             <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
             {% endfor %}
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   </div>
@@ -137,7 +137,7 @@
 <div class="card" style="margin-bottom:1rem;">
   <div class="card-header"><h3 class="card-title">Revenue by Package</h3></div>
   <div class="card-body" style="padding:0;">
-    <table class="data-table" style="font-size:.83rem;">
+    <div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
       <thead>
         <tr><th>Package</th><th class="text-right">Members Billed</th><th class="text-right">Collected</th></tr>
       </thead>
@@ -152,7 +152,7 @@
         <tr><td colspan="3" class="text-center text-muted">No data</td></tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 
@@ -163,7 +163,7 @@
     <a href="{{ url_for('reports.arrears') }}" class="btn btn-xs btn-outline">Full Arrears Report →</a>
   </div>
   <div class="card-body" style="padding:0;">
-    <table class="data-table" style="font-size:.82rem;">
+    <div class="table-wrap"><table class="data-table table" style="font-size:.82rem;">
       <thead>
         <tr><th>#</th><th>Name</th><th>Package</th><th>Status</th><th class="text-right">Outstanding</th><th>Contact</th></tr>
       </thead>
@@ -181,7 +181,7 @@
         <tr><td colspan="6" class="text-center text-muted">No outstanding balances</td></tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 {% endblock %}

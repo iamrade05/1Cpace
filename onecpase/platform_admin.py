@@ -1,5 +1,5 @@
 """
-Platform-operator area: add/manage gyms (tenants) on this 1Cpase install.
+Platform-operator area: add/manage gyms (tenants) on this 1Cpace install.
 
 A platform admin is a different principal from a gym's own role="admin"
 user — gym admins only exist inside that one gym's isolated database and
@@ -94,7 +94,7 @@ def _power_user_for_tenant(tenant, admin):
             (admin["id"],),
         ).fetchone()
         password_hash = generate_password_hash(secrets.token_urlsafe(48))
-        full_name = f"1Cpase Power User ({admin['username']})"
+        full_name = f"1Cpace Power User ({admin['username']})"
         if user:
             conn.execute(
                 """UPDATE users
@@ -112,7 +112,7 @@ def _power_user_for_tenant(tenant, admin):
                 """INSERT INTO users
                    (username, password_hash, full_name, role, department, active,
                     must_change_password, is_platform_user, platform_admin_id)
-                   VALUES (?, ?, ?, 'admin', '1Cpase Platform', 1, 0, 1, ?)""",
+                   VALUES (?, ?, ?, 'admin', '1Cpace Platform', 1, 0, 1, ?)""",
                 (username, password_hash, full_name, admin["id"]),
             )
             user_id = cursor.lastrowid
@@ -250,7 +250,7 @@ def tenant_exit():
     if session.get("is_power_user"):
         _audit("tenant_exit", tenant["id"] if tenant else None)
     _leave_tenant_session()
-    flash("You returned to the 1Cpase platform.", "info")
+    flash("You returned to the 1Cpace platform.", "info")
     response = redirect(url_for("platform.tenants_index"))
     response.delete_cookie(TENANT_COOKIE_NAME)
     return response

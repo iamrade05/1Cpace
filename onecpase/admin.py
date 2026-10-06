@@ -688,7 +688,7 @@ def user_edit(uid: int):
         flash("User not found.", "warning")
         return redirect(url_for("admin.users_index"))
     if user["is_platform_user"]:
-        flash("Platform power-user identities are managed by 1Cpase.", "error")
+        flash("Platform power-user identities are managed by 1Cpace.", "error")
         return redirect(url_for("admin.users_index"))
 
     all_perms  = sorted({p for perms in MODULE_PERMISSIONS.values() for p, _ in perms})

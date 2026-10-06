@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ conv.contact_name or conv.contact_phone }} | 1Cpase{% endblock %}
+{% block title %}{{ conv.contact_name or conv.contact_phone }} | 1Cpace{% endblock %}
 {% block page_title %}WhatsApp — {{ conv.contact_name or conv.contact_phone }}{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>WhatsApp — {{ conv.contact_name or conv.contact_phone }}</h1></div></header>
 <style>
 .chat-thread { display:flex; flex-direction:column; gap:8px; padding:16px; max-height:520px; overflow-y:auto; background:#f9fafb; }
 .chat-bubble { max-width:65%; padding:8px 12px; border-radius:12px; font-size:.85rem; line-height:1.4; }
@@ -18,7 +19,7 @@
   <span style="font-size:.78rem;color:#9ca3af;">{{ conv.contact_phone }}</span>
   <div style="margin-left:auto;">
     <a href="{{ url_for('comms.whatsapp_link_lead', number=number, conv_id=conv.id) }}" class="btn btn-ghost btn-sm">
-      {% if conv.linked_lead_id or conv.linked_member_id %}🔗 Linked{% else %}🔗 Link to lead / member{% endif %}
+      {% if conv.linked_lead_id or conv.linked_member_id %} Linked{% else %} Link to lead / member{% endif %}
     </a>
   </div>
 </div>

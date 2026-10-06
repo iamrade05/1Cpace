@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Collection Queue · 1Cpase{% endblock %}
+{% block title %}Collection Queue · 1Cpace{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -20,7 +20,7 @@
 <div class="card">
   <div class="card-body" style="padding:0;overflow-x:auto;">
     {% if cases %}
-    <table class="table">
+    <div class="table-wrap"><table class="table">
       <thead>
         <tr><th>Member</th><th>Balance</th><th>Age</th><th>Stage</th><th>Owner</th>
             <th>Last contact</th><th>PTP</th><th>DebiCheck</th><th>Access</th><th>Next action</th></tr>
@@ -30,11 +30,11 @@
         <tr>
           <td>
             <a href="{{ url_for('collections.member_profile', mid=c.member_id) }}">{{ c.first_name }} {{ c.last_name }}</a>
-            {% if c.priority == 1 %}<span class="badge badge-red">Critical</span>
+            {% if c.priority == 1 %}<span class="badge badge-danger">Critical</span>
             {% elif c.priority == 2 %}<span class="badge badge-orange">High</span>{% endif %}
             <div style="color:#6b7280;font-size:.8rem;">{{ c.contact or '' }}</div>
           </td>
-          <td>R{{ '%.2f'|format(c.arrears_amount or 0) }}</td>
+          <td class="num">R{{ '%.2f'|format(c.arrears_amount or 0) }}</td>
           <td>{{ c.months_owing or 0 }} mo</td>
           <td>{{ (c.collection_stage or 'CONTACT_REQUIRED')|replace('_', ' ')|title }}</td>
           <td>{% if c.owner_type == 'SALES' %}Sales{% if c.owner_name %} · {{ c.owner_name }}{% endif %}{% else %}Reception{% endif %}</td>
@@ -46,7 +46,7 @@
         </tr>
       {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <p style="padding:20px;color:#4b5563;">No open cases in this queue.</p>
     {% endif %}

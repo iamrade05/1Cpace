@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Bookings: {{ fc.name }} | 1Cpase{% endblock %}
+{% block title %}Bookings: {{ fc.name }} | 1Cpace{% endblock %}
 {% block page_title %}{{ fc.name }} — Bookings{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>{{ fc.name }} — Bookings</h1></div></header>
 
 <!-- Class info bar -->
 <div style="background:#fff; border-radius:10px; padding:16px 20px; margin-bottom:20px;
@@ -39,7 +40,7 @@
     <div class="card-body">
       {% set active_bookings = bookings | selectattr('status','eq','booked') | list %}
       {% if active_bookings %}
-      <table>
+      <div class="table-wrap"><table class="table">
         <thead>
           <tr><th>Member</th><th>Package</th><th>Date Booked</th><th>Status</th><th></th></tr>
         </thead>
@@ -56,7 +57,7 @@
             <td>
               {% if b.status == 'booked' %}
               <form method="post" action="{{ url_for('fitness.booking_cancel', bid=b.id) }}"
-                    onsubmit="return confirm('Cancel this booking?')">
+                    data-confirm="Cancel this booking?">
                 <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
               </form>
               {% endif %}
@@ -64,10 +65,10 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
       {% else %}
       <div class="empty-state" style="padding:32px;">
-        <div class="empty-icon">📋</div>
+        <div class="empty-icon"></div>
         <p>No active bookings yet.</p>
       </div>
       {% endif %}

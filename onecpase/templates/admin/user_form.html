@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ 'Edit' if user else 'Add' }} User | 1Cpase{% endblock %}
+{% block title %}{{ 'Edit' if user else 'Add' }} User | 1Cpace{% endblock %}
 {% block page_title %}{{ 'Edit User —' + user.full_name if user else 'Add Staff User' }}{% endblock %}
 
 {% block content %}
+<header class="page-header"><div><h1>{{ 'Edit User —' + user.full_name if user else 'Add Staff User' }}</h1></div></header>
 <div class="form-card" style="max-width:900px;">
 <form method="POST">
 
