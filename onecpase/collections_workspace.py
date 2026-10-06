@@ -368,10 +368,12 @@ def sales_quality_report(db, month):
 
 def performance_report(db, month):
     """Reception and collections activity for one month."""
+    from .collections_engine import reached_sql
+
     callers = db.execute(
-        """SELECT t.assigned_to AS staff_id, u.full_name AS name, COUNT(*) AS assigned,
+        f"""SELECT t.assigned_to AS staff_id, u.full_name AS name, COUNT(*) AS assigned,
                   SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS calls,
-                  SUM(CASE WHEN t.successful_contact=1 THEN 1 ELSE 0 END) AS contacts
+                  SUM(CASE WHEN {reached_sql(_min_talk(db))} THEN 1 ELSE 0 END) AS contacts
            FROM collection_call_tasks t LEFT JOIN users u ON u.id = t.assigned_to
            WHERE substr(t.task_date,1,7)=? GROUP BY 1, 2 ORDER BY calls DESC, name""", (month,)).fetchall()
     totals = {
@@ -398,3 +400,63 @@ def performance_report(db, month):
     }
     totals["contact_rate"] = round(100.0 * totals["contacts"] / totals["calls"], 1) if totals["calls"] else None
     return {"month": month, "callers": callers, "totals": totals}
+
+
+def _min_talk(db):
+    from .collections_engine import DEFAULT_CONTACT_TALK_SECONDS, get_collection_rule_int
+
+    return get_collection_rule_int(db, "contact_talk_seconds", DEFAULT_CONTACT_TALK_SECONDS)
+
+
+def daily_call_report(db, day, call_target=100, contact_target=10):
+    """Attempts use the actual call date; pending work uses its assigned date.
+
+    A client counts as reached only with a contact outcome AND enough PBX talk time.
+    """
+    from .collections_engine import reached_sql, talk_seconds_sql
+
+    min_talk = _min_talk(db)
+    reached = reached_sql(min_talk)
+    talk = talk_seconds_sql()
+    rows = db.execute(
+        f"""SELECT u.id AS staff_id, u.full_name AS name,
+                  SUM(CASE WHEN t.status='completed' AND
+                      substr(COALESCE(t.called_at,t.task_date),1,10)=? THEN 1 ELSE 0 END) AS calls,
+                  SUM(CASE WHEN t.status='completed' AND {reached} AND
+                      substr(COALESCE(t.called_at,t.task_date),1,10)=? THEN 1 ELSE 0 END) AS contacts,
+                  SUM(CASE WHEN t.status='completed' AND
+                      substr(COALESCE(t.called_at,t.task_date),1,10)=? THEN {talk} ELSE 0 END) AS talk_seconds,
+                  SUM(CASE WHEN t.status='pending' AND t.task_date=? THEN 1 ELSE 0 END) AS pending
+           FROM users u LEFT JOIN collection_call_tasks t ON t.assigned_to=u.id
+           WHERE (u.active=1 AND u.is_collections_caller=1)
+              OR (t.status='completed' AND substr(COALESCE(t.called_at,t.task_date),1,10)=?)
+              OR (t.status='pending' AND t.task_date=?)
+           GROUP BY u.id,u.full_name ORDER BY calls DESC,u.full_name""",
+        (day, day, day, day, day, day),
+    ).fetchall()
+    callers = []
+    for row in rows:
+        item = dict(row)
+        item['talk_seconds'] = item['talk_seconds'] or 0
+        item['avg_talk_seconds'] = round(item['talk_seconds'] / item['calls']) if item['calls'] else None
+        item['contact_rate'] = round(100 * item['contacts'] / item['calls'], 1) if item['calls'] else None
+        item['call_progress'] = round(100 * item['calls'] / call_target, 1) if call_target else 0
+        item['contact_progress'] = round(100 * item['contacts'] / contact_target, 1) if contact_target else 0
+        callers.append(item)
+    outcomes = db.execute(
+        """SELECT COALESCE(outcome,'unknown') AS outcome, COUNT(*) AS total
+           FROM collection_call_tasks WHERE status='completed'
+           AND substr(COALESCE(called_at,task_date),1,10)=?
+           GROUP BY outcome ORDER BY total DESC,outcome""", (day,),
+    ).fetchall()
+    calls = sum(row['total'] for row in outcomes)
+    contacts = _scalar(db, f"""SELECT COUNT(*) FROM collection_call_tasks t
+        WHERE t.status='completed' AND {reached}
+        AND substr(COALESCE(t.called_at,t.task_date),1,10)=?""", (day,))
+    pending = _scalar(db, "SELECT COUNT(*) FROM collection_call_tasks WHERE status='pending' AND task_date=?", (day,))
+    return {'day': day, 'callers': callers, 'outcomes': outcomes,
+            'calls': calls, 'contacts': contacts, 'pending': pending,
+            'talk_seconds': sum(c['talk_seconds'] for c in callers),
+            'contact_rate': round(100 * contacts / calls,1) if calls else None,
+            'call_target': call_target, 'contact_target': contact_target,
+            'min_talk_seconds': min_talk}

@@ -1,9 +1,10 @@
 import calendar
+import re
 import sqlite3
 import threading
 from datetime import date, datetime, timedelta
 
-from flask import (Blueprint, current_app, flash, g, redirect, render_template,
+from flask import (Blueprint, current_app, flash, g, jsonify, redirect, render_template,
                    request, session, url_for)
 from flask_mail import Message
 from .auth import permission_required, roles_required
@@ -19,13 +20,16 @@ from .collections_engine import (
     complete_call,
     decide_collection_exception,
     find_duplicate_collection,
+    DEFAULT_CONTACT_TALK_SECONDS,
     get_collection_rule_int,
     grant_exception_access,
     log_collection_communication,
     next_communication,
+    reached_sql,
     reconcile_open_cases,
     return_collection_exception,
     sync_collection_case,
+    talk_seconds_sql,
     transfer_due_sales_cases,
 )
 
@@ -33,10 +37,25 @@ collections_bp = Blueprint("collections", __name__, url_prefix="/collections")
 
 PAYMENT_METHODS = ["cash", "card", "eft", "debicheck", "snapscan", "other"]
 STATUSES = ["pending", "paid", "partial", "failed", "reversed"]
-DAILY_CALL_TARGET = 40
-DAILY_CONTACT_TARGET = 5
+MIN_DAILY_CALL_TARGET = 80
+DAILY_CALL_TARGET = 100
+DAILY_CONTACT_TARGET = 10
+# Follow-up question asked after an outcome is picked: (prompt, [choices]).
+# "Other" always forces a written note; the notes box stays open on every outcome.
+OUTCOME_FOLLOW_UPS = {
+    "already_paid": ("What did the client pay?", [
+        "Total amount owing", "Paid arrears", "Paid cancellation", "Paid for this month", "Other",
+    ]),
+    "disputed": ("Which amount is the client disputing?", [
+        "Balance", "Installment amount", "Arrears amount", "Premium amount", "Other",
+    ]),
+    "refused": ("Why is the client refusing to pay?", [
+        "Not using the gym", "Cannot afford it", "Unhappy with the service", "Wants to cancel", "Other",
+    ]),
+}
 CALL_OUTCOMES = [
     ("reminder_delivered", "Reminder delivered", True),
+    ("want_to_reactivate", "Want to reactivate", True),
     ("promised_to_pay", "Promise to Pay", True),
     ("asked_callback", "Client requested a callback", True),
     ("already_paid", "Client says already paid", True),
@@ -240,6 +259,46 @@ def _old_owing_candidates(db, excluded: set[int], today: date) -> list[dict]:
     return candidates
 
 
+CALL_REST_DAYS = 5
+
+
+def _recently_called_member_ids(db, today: date) -> set[int]:
+    """Clients phoned in the last CALL_REST_DAYS days, whatever the outcome.
+
+    A client called on a Monday rests for the next five days (Tue-Sat) and is
+    next eligible on Sunday, so a "no answer" cannot bounce back into
+    tomorrow's queue.
+    """
+    since = (today - timedelta(days=CALL_REST_DAYS)).isoformat()
+    return {
+        row["member_id"] for row in db.execute(
+            """SELECT DISTINCT member_id FROM collection_call_tasks
+               WHERE status='completed' AND substr(COALESCE(called_at, task_date), 1, 10) >= ?""",
+            (since,),
+        ).fetchall()
+    }
+
+
+def _order_never_contacted_first(db, candidates: list[dict]) -> list[dict]:
+    """Reach everyone nobody has phoned before cycling back to anyone else.
+
+    Tiers: never called, then called but never reached, then reached before.
+    The existing order (queue, then balance) is kept within each tier.
+    """
+    rows = db.execute(
+        """SELECT member_id, MAX(COALESCE(successful_contact, 0)) AS reached
+           FROM collection_call_tasks WHERE status='completed' GROUP BY member_id"""
+    ).fetchall()
+    history = {row["member_id"]: row["reached"] for row in rows}
+
+    def tier(candidate):
+        if candidate["member_id"] not in history:
+            return 0
+        return 2 if history[candidate["member_id"]] else 1
+
+    return sorted(candidates, key=tier)  # sorted() is stable
+
+
 def _ensure_daily_call_tasks(db, today: date | None = None) -> dict | None:
     today = today or date.today()
     callers = _collections_callers(db)
@@ -282,6 +341,8 @@ def _ensure_daily_call_tasks(db, today: date | None = None) -> dict | None:
             "SELECT member_id FROM collection_call_tasks WHERE task_date=?", (task_date,)
         ).fetchall()
     }
+    # Called within the last CALL_REST_DAYS days (any outcome) - not eligible again yet.
+    existing |= _recently_called_member_ids(db, today)
     current = []
     if cycle:
         current = [candidate for candidate in _cycle_candidates(db, cycle) if candidate["member_id"] not in existing]
@@ -295,7 +356,7 @@ def _ensure_daily_call_tasks(db, today: date | None = None) -> dict | None:
     }
     current = [candidate for candidate in current if candidate["member_id"] not in sales_owned]
     excluded = existing | sales_owned | {candidate["member_id"] for candidate in current}
-    candidates = current + _old_owing_candidates(db, excluded, today)
+    candidates = _order_never_contacted_first(db, current + _old_owing_candidates(db, excluded, today))
     for candidate in candidates:
         available = [
             caller for caller in callers
@@ -461,9 +522,19 @@ def reports():
 
     db = get_db()
     month = workspace.report_month(request.args.get("month"))
+    try:
+        report_day = date.fromisoformat(request.args.get("day", "")).isoformat()
+    except ValueError:
+        report_day = date.today().isoformat()
     return render_template(
         "collections/reports.html",
         month=month,
+        daily=workspace.daily_call_report(
+            db, report_day,
+            get_collection_rule_int(db, "daily_call_target", DAILY_CALL_TARGET),
+            DAILY_CONTACT_TARGET,
+        ),
+        outcome_labels=dict((key, label) for key, label, _ in CALL_OUTCOMES),
         financial=workspace.financial_report(db, month),
         sales=workspace.sales_quality_report(db, month),
         performance=workspace.performance_report(db, month),
@@ -530,11 +601,13 @@ def call_queue():
         params.append(caller_filter)
     query += " ORDER BY t.status='completed', t.priority, t.id"
     tasks = db.execute(query, params).fetchall()
+    min_talk = get_collection_rule_int(db, "contact_talk_seconds", DEFAULT_CONTACT_TALK_SECONDS)
     summary_rows = db.execute(
-        """SELECT u.id, u.full_name,
+        f"""SELECT u.id, u.full_name,
                   COUNT(t.id) AS assigned,
                   SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS calls,
-                  SUM(CASE WHEN t.successful_contact=1 THEN 1 ELSE 0 END) AS contacts
+                  SUM(CASE WHEN {reached_sql(min_talk)} THEN 1 ELSE 0 END) AS contacts,
+                  SUM({talk_seconds_sql()}) AS talk_seconds
            FROM users u
            LEFT JOIN collection_call_tasks t ON t.assigned_to=u.id AND t.task_date=?
            WHERE u.active=1 AND COALESCE(u.is_collections_caller,0)=1
@@ -559,8 +632,95 @@ def call_queue():
         call_outcomes=CALL_OUTCOMES,
         daily_call_target=daily_call_target,
         daily_contact_target=DAILY_CONTACT_TARGET,
+        min_talk_seconds=min_talk,
         today_label=date.today().strftime("%d %B %Y"),
     )
+
+
+def _offer_from_request(db, member_id: int, form) -> dict:
+    """Run the shared Promise-to-Pay decision for a member from posted inputs.
+
+    Arrears and months owing always come from the verified account, never from
+    the form - the receptionist only chooses the conditions of the offer.
+    """
+    from .collections_decision import INTENT_INSTALMENTS, INTENT_SETTLE, decide_offer, load_policy
+    from .members import _build_payment_profile
+    from .ptp import compute_arrears_from_profile
+
+    rows = db.execute(
+        "SELECT * FROM collections WHERE member_id=? ORDER BY collection_date DESC, id DESC", (member_id,)
+    ).fetchall()
+    arrears = compute_arrears_from_profile(_build_payment_profile(rows))
+    from .debicheck import normalise_debicheck_status
+
+    mandate = db.execute(
+        "SELECT status, submitted_at FROM debicheck_mandates WHERE member_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone()
+
+    def amount(name):
+        try:
+            return max(float(form.get(name) or 0), 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def has(sql, *params):
+        return db.execute(sql, params).fetchone() is not None
+
+    flags = {
+        "open_dispute": has(
+            "SELECT 1 FROM queries WHERE member_id=? AND query_type='Debit order dispute' "
+            "AND status NOT IN ('resolved','closed') LIMIT 1", member_id),
+        "unverified_payment_claim": has(
+            "SELECT 1 FROM queries WHERE member_id=? AND query_type='Proof of payment' "
+            "AND status NOT IN ('resolved','closed') LIMIT 1", member_id),
+        "broken_ptp": has("SELECT 1 FROM ptp_agreements WHERE member_id=? AND ptp_status='broken' LIMIT 1", member_id),
+        "legal_referral": has("SELECT 1 FROM legal_referrals WHERE member_id=? AND status='open' LIMIT 1", member_id),
+        "bank_statement_on_file": has(
+            "SELECT 1 FROM member_documents WHERE member_id=? AND lower(COALESCE(document_type,'')) LIKE '%bank%' LIMIT 1",
+            member_id),
+    }
+    offered = amount("upfront_offered")
+    verified = str(form.get("upfront_verified", "")).lower() in ("1", "true", "on", "yes")
+    intention = form.get("intention") if form.get("intention") in (INTENT_SETTLE, INTENT_INSTALMENTS) else INTENT_INSTALMENTS
+    result = decide_offer(
+        flags=flags,
+        arrears=arrears["total_arrears"],
+        months_owing=arrears["months_in_arrears"],
+        debicheck_status=normalise_debicheck_status(mandate["status"]) if mandate else None,
+        debicheck_submitted_at=mandate["submitted_at"] if mandate else None,
+        upfront_offered=offered,
+        upfront_received=offered if verified else 0,
+        intention=intention,
+        returning_member=str(form.get("returning_member", "")).lower() in ("1", "true", "on", "yes"),
+        bank_statement_status=form.get("bank_statement_status"),
+        policy=load_policy(db),
+    )
+    # Where each next step happens. Items with no link are waiting on someone else.
+    links = {
+        "Set up DebiCheck": url_for("debicheck.add", member_id=member_id),
+        "Set up a new DebiCheck": url_for("debicheck.add", member_id=member_id),
+        "Record the proof of payment": url_for("members.member_detail", mid=member_id) + "#ptp",
+        "Upload the bank statement for review": url_for("members.member_detail", mid=member_id),
+        "Verify the payment before working out what is owed": url_for("members.member_detail", mid=member_id),
+    }
+    for item in result["checklist"]:
+        item["url"] = links.get(item["action"])
+    return result
+
+
+@collections_bp.get("/call-queue/<int:task_id>/offer-preview")
+@permission_required("collections_call_queue")
+def offer_preview(task_id: int):
+    db = get_db()
+    task = db.execute(
+        "SELECT member_id, assigned_to FROM collection_call_tasks WHERE id=?", (task_id,)
+    ).fetchone()
+    if not task:
+        return jsonify(error="Call task not found"), 404
+    if session.get("role") != "admin" and task["assigned_to"] != session.get("user_id"):
+        return jsonify(error="This client is assigned to another caller"), 403
+    return jsonify(_offer_from_request(db, task["member_id"], request.args))
 
 
 @collections_bp.route("/call-queue/<int:task_id>/profile")
@@ -651,7 +811,9 @@ def call_profile(task_id: int):
         queries=queries,
         previous_calls=previous_calls,
         last_gym_visit=_get_last_gym_visit(db, member_for_visit),
+        initial_offer=_offer_from_request(db, task["member_id"], {}),
         call_outcomes=CALL_OUTCOMES,
+        outcome_follow_ups=OUTCOME_FOLLOW_UPS,
         whatsapp_message=collection_care_message(task["first_name"], tenant_name),
     )
 
@@ -728,19 +890,49 @@ def record_call_result(task_id: int):
         flash("That call has already been completed.", "warning")
         return redirect(url_for("collections.call_queue"))
 
-    if outcome == "refused" and not notes:
-        flash("Record the client's reason for refusing before saving this outcome.", "error")
-        return redirect(url_for("collections.call_profile", task_id=task_id))
-    if outcome == "disputed" and not notes:
-        flash("Describe what the client is disputing before saving this outcome.", "error")
-        return redirect(url_for("collections.call_profile", task_id=task_id))
+    follow_up = OUTCOME_FOLLOW_UPS.get(outcome)
+    if follow_up:
+        prompt, choices = follow_up
+        detail = request.form.get("detail", "").strip()
+        if detail and detail not in choices:
+            flash("Select one of the listed answers.", "error")
+            return redirect(url_for("collections.call_profile", task_id=task_id))
+        # A written note alone is still accepted so older clients keep working.
+        if not detail and not notes:
+            flash(f"{prompt} Select an answer or add a note before saving.", "error")
+            return redirect(url_for("collections.call_profile", task_id=task_id))
+        if detail == "Other" and not notes:
+            flash(f"{prompt} Describe it in the notes when you choose Other.", "error")
+            return redirect(url_for("collections.call_profile", task_id=task_id))
+        if detail:
+            notes = f"{detail} — {notes}" if notes else detail
+
+    if outcome == "promised_to_pay" and request.form.get("intention"):
+        # Record the conditional offer exactly as the shared calculation sees it.
+        # The promise itself changes no balance and applies no discount.
+        offer = _offer_from_request(db, task["member_id"], request.form)
+        summary = (
+            f"Conditional offer [{offer['policy_version']}]: {offer['decision_label']}. "
+            f"Owing R{offer['original_arrears']:,.2f} ({offer['months_owing']} mo), "
+            f"discount {offer['discount_percent']:g}% (R{offer['discount_amount']:,.2f}), "
+            f"total R{offer['total_to_collect']:,.2f}, upfront received R{offer['upfront_received']:,.2f}, "
+            f"remaining R{offer['remaining_to_collect']:,.2f}."
+        )
+        if offer["conditions"]:
+            summary += " Outstanding: " + "; ".join(offer["conditions"]) + "."
+        notes = f"{summary} {notes}".strip()
 
     callback_date = None
     if outcome == "asked_callback":
         callback_date = request.form.get("callback_date", "").strip()
+        callback_time = request.form.get("callback_time", "").strip()
         if not callback_date or callback_date <= date.today().isoformat():
             flash("Pick a future date for the callback.", "error")
             return redirect(url_for("collections.call_profile", task_id=task_id))
+        if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", callback_time):
+            flash("Enter the time the client wants to be called back.", "error")
+            return redirect(url_for("collections.call_profile", task_id=task_id))
+        notes = f"Callback {callback_date} at {callback_time}" + (f" — {notes}" if notes else "")
 
     successful = 1 if call_result["successful_contact"] else 0
     next_channel = call_result["next_action"] or None
@@ -1124,11 +1316,13 @@ def daily_call_progress(db, today: date | None = None) -> dict:
     """
     task_date = (today or date.today()).isoformat()
     target_per_caller = get_collection_rule_int(db, "daily_call_target", DAILY_CALL_TARGET)
+    min_talk = get_collection_rule_int(db, "contact_talk_seconds", DEFAULT_CONTACT_TALK_SECONDS)
     row = db.execute(
-        """SELECT COUNT(id) AS assigned,
-                  COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0) AS calls,
-                  COALESCE(SUM(CASE WHEN successful_contact=1 THEN 1 ELSE 0 END), 0) AS contacts
-           FROM collection_call_tasks WHERE task_date=?""",
+        f"""SELECT COUNT(t.id) AS assigned,
+                  COALESCE(SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END), 0) AS calls,
+                  COALESCE(SUM(CASE WHEN {reached_sql(min_talk)} THEN 1 ELSE 0 END), 0) AS contacts,
+                  COALESCE(SUM({talk_seconds_sql()}), 0) AS talk_seconds
+           FROM collection_call_tasks t WHERE t.task_date=?""",
         (task_date,),
     ).fetchone()
     caller_count = len(_collections_callers(db))
@@ -1146,6 +1340,9 @@ def daily_call_progress(db, today: date | None = None) -> dict:
         "assigned": assigned,
         "calls": calls,
         "contacts": contacts,
+        "talk_seconds": row["talk_seconds"] or 0,
+        "min_talk_seconds": min_talk,
+        "contact_target": DAILY_CONTACT_TARGET * caller_count,
         "caller_count": caller_count,
         "target_per_caller": target_per_caller,
         "daily_target": daily_target,

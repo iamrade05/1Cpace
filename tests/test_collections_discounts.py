@@ -1,3 +1,9 @@
+from datetime import date, timedelta
+
+# Relative to today so the first-debit window (45 days) never expires under the tests.
+RECENT_JOIN = (date.today() - timedelta(days=20)).isoformat()
+FIRST_DEBIT = (date.today() - timedelta(days=10)).isoformat()
+
 import pytest
 
 from onecpase.collections_engine import (
@@ -74,13 +80,13 @@ def test_notes_are_typed_and_system_notes_cannot_be_forged(app):
 def test_handover_writes_a_system_note(app):
     with app.app_context():
         db = get_db()
-        mid = _member(db, 2, join="2026-08-20", consultant=1)
+        mid = _member(db, 2, join=RECENT_JOIN, consultant=1)
         db.execute("""INSERT INTO collections (member_id, outstanding_balance, amount_paid, collection_date, status, notes)
-                      VALUES (?, 500, 0, '2026-09-01', 'failed', 'type=Recurring Fee')""", (mid,))
-        case_id = sync_collection_case(db, mid, failed_debit_date="2026-09-01", arrears_amount=500, months_owing=1)
+                      VALUES (?, 500, 0, ?, 'failed', 'type=Recurring Fee')""", (mid, FIRST_DEBIT))
+        case_id = sync_collection_case(db, mid, failed_debit_date=FIRST_DEBIT, arrears_amount=500, months_owing=1)
         apply_case_ownership(db, case_id, months_owing=2)
         note = db.execute("SELECT * FROM collection_notes WHERE case_id=? AND note_type='HANDOVER'", (case_id,)).fetchone()
-        assert note and note["staff_id"] is None and "second-month arrears threshold" in note["note_text"]
+        assert note and note["staff_id"] is None and "second month arrears" in note["note_text"]
 
 
 # ── Discount requests ────────────────────────────────────────────────────────

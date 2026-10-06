@@ -85,7 +85,7 @@ def test_asked_callback_creates_future_task(app):
         _login(client)
         resp = client.post(
             f"/collections/call-queue/{task_id}/result",
-            data={"outcome": "asked_callback", "notes": "call me Friday", "callback_date": future},
+            data={"outcome": "asked_callback", "notes": "call me Friday", "callback_date": future, "callback_time": "14:30"},
         )
         assert resp.status_code == 302
     with app.app_context():
@@ -95,6 +95,53 @@ def test_asked_callback_creates_future_task(app):
         assert row is not None
         assert row["member_id"] == ctx["mid_a"]
         assert row["priority"] == 1
+
+
+def _post_result(app, data):
+    with app.app_context():
+        task_id = _seed(app)["make_task"]()
+    with app.test_client() as client:
+        _login(client)
+        client.post(f"/collections/call-queue/{task_id}/result", data=data)
+    with app.app_context():
+        return get_db().execute(
+            "SELECT status, notes FROM collection_call_tasks WHERE id=?", (task_id,)
+        ).fetchone()
+
+
+def test_callback_requires_time(app):
+    future = (date.today() + timedelta(days=3)).isoformat()
+    row = _post_result(app, {"outcome": "asked_callback", "callback_date": future})
+    assert row["status"] == "pending"
+
+
+def test_callback_time_saved_in_notes(app):
+    future = (date.today() + timedelta(days=3)).isoformat()
+    row = _post_result(app, {"outcome": "asked_callback", "callback_date": future, "callback_time": "09:15"})
+    assert row["status"] == "completed"
+    assert f"Callback {future} at 09:15" in row["notes"]
+
+
+def test_already_paid_choice_recorded(app):
+    row = _post_result(app, {"outcome": "already_paid", "detail": "Paid arrears", "notes": "EFT Monday"})
+    assert row["status"] == "completed"
+    assert row["notes"] == "Paid arrears — EFT Monday"
+
+
+def test_dispute_other_requires_notes(app):
+    row = _post_result(app, {"outcome": "disputed", "detail": "Other"})
+    assert row["status"] == "pending"
+
+
+def test_refused_reason_choice_recorded(app):
+    row = _post_result(app, {"outcome": "refused", "detail": "Not using the gym"})
+    assert row["status"] == "completed"
+    assert row["notes"] == "Not using the gym"
+
+
+def test_invalid_detail_rejected(app):
+    row = _post_result(app, {"outcome": "disputed", "detail": "Banana"})
+    assert row["status"] == "pending"
 
 
 def test_disputed_creates_query(app):
@@ -189,14 +236,24 @@ def test_ptp_discount_with_mandate_auto_approves(app):
                        '2026-08-01', 'approved')""",
             (ctx["mid_a"],),
         )
+        # What the approval rules now ask for before reception can approve alone:
+        # a qualifying bank statement, a normal monthly instalment, and a balance
+        # above the automatic minimum once discounted.
+        db.execute(
+            """INSERT INTO member_documents (member_id, document_type, original_name, stored_name, analysis_json)
+               VALUES (?, 'Bank Statement', 'statement.pdf', 'statement.pdf', '{"verification_qualified": true}')""",
+            (ctx["mid_a"],),
+        )
+        db.execute("UPDATE members SET monthly_installment=399 WHERE id=?", (ctx["mid_a"],))
         db.commit()
     with app.test_client() as client:
         _login(client, uid=1, role="admin")
         resp = client.post(
             f"/members/{ctx['mid_a']}/ptp/create",
             data={
-                "promise_amount": "500", "promise_date": "2026-09-01", "payment_method": "debit_order",
-                "arrangement_type": "full", "notes": "test", "arrears_amount": "1000", "discount_pct": "25",
+                "promise_amount": "500", "promise_date": (date.today() + timedelta(days=14)).isoformat(),
+                "payment_method": "debit_order", "arrangement_type": "full", "notes": "test",
+                "arrears_amount": "3000", "discount_pct": "25",
             },
         )
         assert resp.status_code == 302

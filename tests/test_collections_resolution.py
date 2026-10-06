@@ -1,3 +1,9 @@
+from datetime import date, timedelta
+
+# Relative to today so the first-debit window (45 days) never expires under the tests.
+RECENT_JOIN = (date.today() - timedelta(days=20)).isoformat()
+FIRST_DEBIT = (date.today() - timedelta(days=10)).isoformat()
+
 from onecpase.collections_engine import reconcile_open_cases, sync_collection_case
 from onecpase.database import get_db
 from onecpase.ptp import _run_collections_automations
@@ -24,7 +30,7 @@ def _charge(db, mid, month, amount=500, paid=0, status="failed"):
 
 
 def _case(db, mid, months=1, amount=500):
-    case_id = sync_collection_case(db, mid, failed_debit_date="2026-09-01",
+    case_id = sync_collection_case(db, mid, failed_debit_date=FIRST_DEBIT,
                                    arrears_amount=amount, months_owing=months)
     db.commit()
     return case_id
@@ -105,7 +111,7 @@ def test_sales_case_still_transfers_when_recalculation_shows_two_months(app):
         db = get_db()
         mid = _member(db, 5)
         db.execute("INSERT INTO membership_applications (member_id, created_by) VALUES (?, 1)", (mid,))
-        db.execute("UPDATE members SET join_date='2026-08-20' WHERE id=?", (mid,))
+        db.execute("UPDATE members SET join_date=? WHERE id=?", (RECENT_JOIN, mid))
         _charge(db, mid, "2026-08")
         case_id = _case(db, mid)
         assert _row(db, case_id)["owner_type"] == "SALES"

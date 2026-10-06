@@ -14,10 +14,44 @@
     <p class="page-sub">Financial position, sales quality and collections performance for {{ month }}.</p>
   </div>
   <form method="get" style="display:flex;gap:8px;align-items:center;">
+    <input type="hidden" name="day" value="{{ daily.day }}">
     <input type="month" name="month" value="{{ month }}" class="form-control" aria-label="Month">
     <button class="btn btn-primary" type="submit">Show</button>
   </form>
 </div>
+
+<section class="form-card" style="margin-bottom:20px;">
+  <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;">
+    <h2>Daily Call Stats</h2>
+    <form method="get" style="display:flex;gap:8px;align-items:center;">
+      <input type="hidden" name="month" value="{{ month }}">
+      <input type="date" name="day" value="{{ daily.day }}" class="form-control" aria-label="Call report date" required>
+      <button type="submit" class="btn btn-primary">Show call stats</button>
+    </form>
+  </div>
+  <p>Activity for {{ daily.day }}. Daily targets per caller: {{ daily.call_target }} calls and {{ daily.contact_target }} clients reached. A client is reached with a contact outcome and at least {{ daily.min_talk_seconds }} seconds of PBX talk time.</p>
+  <div class="kpi-grid">
+    {{ stat('Calls attempted', daily.calls) }}
+    {{ stat('Clients reached', daily.contacts) }}
+    {{ stat('Total talk time', '%dm %ds'|format(daily.talk_seconds // 60, daily.talk_seconds % 60)) }}
+    {{ stat('Contact rate', '?' if daily.contact_rate is none else '%s%%'|format(daily.contact_rate)) }}
+    {{ stat('Pending calls', daily.pending) }}
+  </div>
+  <div style="overflow-x:auto;">
+    <table class="table">
+      <thead><tr><th>Caller</th><th>Calls / target</th><th>Call progress</th><th>Reached / target</th><th>Reached progress</th><th>Talk time</th><th>Avg talk / call</th><th>Contact rate</th><th>Pending</th></tr></thead>
+      <tbody>{% for c in daily.callers %}
+        <tr><td>{{ c.name }}</td><td>{{ c.calls }} / {{ daily.call_target }}</td><td>{{ c.call_progress }}%</td><td>{{ c.contacts }} / {{ daily.contact_target }}</td><td>{{ c.contact_progress }}%</td><td>{{ '%dm %ds'|format(c.talk_seconds // 60, c.talk_seconds % 60) }}</td><td>{{ '?' if c.avg_talk_seconds is none else '%ds'|format(c.avg_talk_seconds) }}</td><td>{{ '?' if c.contact_rate is none else '%s%%'|format(c.contact_rate) }}</td><td>{{ c.pending }}</td></tr>
+      {% else %}<tr><td colspan="9">No callers or call activity for this date.</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <h3>Call results</h3>
+  <table class="table"><thead><tr><th>Outcome</th><th>Calls</th></tr></thead><tbody>
+    {% for r in daily.outcomes %}<tr><td>{{ outcome_labels.get(r.outcome, r.outcome|replace('_',' ')|title) }}</td><td>{{ r.total }}</td></tr>
+    {% else %}<tr><td colspan="2">No completed calls for this date.</td></tr>{% endfor %}
+  </tbody></table>
+  <p style="color:var(--t2);font-size:.8rem;">Calls count once when a call result is saved. Clients reached are completed calls marked as a successful contact that also ran for the minimum PBX talk time; calls made without the PBX count as not reached. Calls use the date recorded; older records without a call timestamp use their assigned date. Pending calls use their assigned date.</p>
+</section>
 
 <h2 style="margin:8px 0;">Financial</h2>
 <div class="kpi-grid">

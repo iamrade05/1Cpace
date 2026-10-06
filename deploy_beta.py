@@ -48,6 +48,16 @@ APP_DIR = "/opt/onecpase"
 SERVICE = "onecpase"
 OWNER = "onecpase:onecpase"
 BACKUP_DIR = "/opt/onecpase-backups"
+KEEP_BACKUPS = 3
+BACKUP_EXCLUDES = (
+    "./venv",
+    "./.release-*",
+    "./onecpase.previous",
+    "./backups",
+    "./whatsapp_web_session",
+    "./__pycache__",
+    "*.log",
+)
 DEFAULT_HOST = "102.211.207.233"
 DEFAULT_KEY = Path.home() / ".ssh" / "1cpace_absolute_ed25519"
 PUBLIC_HEALTH_URL = "https://beta.1cpace.co.za/healthz"
@@ -214,6 +224,14 @@ def report(client: paramiko.SSHClient, args: argparse.Namespace) -> None:
     ))
 
 
+def prune_backups(client: paramiko.SSHClient) -> None:
+    """Keep only the newest KEEP_BACKUPS of each kind; the disk filled once."""
+    for prefix in ("onecpase_", "data_"):
+        run(client, f"cd {shlex.quote(BACKUP_DIR)} && ls -1 {prefix}*.tar.gz 2>/dev/null "
+                    f"| sort | head -n -{KEEP_BACKUPS} | xargs -r rm -f", check=False)
+    print(f"Pruned {BACKUP_DIR} to the newest {KEEP_BACKUPS} of each backup kind.")
+
+
 def deploy(client: paramiko.SSHClient, archive: Path, args: argparse.Namespace) -> None:
     app = shlex.quote(args.app_dir)
     stamp = run(client, "date +%Y%m%d_%H%M%S")
@@ -231,11 +249,15 @@ def deploy(client: paramiko.SSHClient, archive: Path, args: argparse.Namespace) 
     # databases, before anything is moved.
     run(client, f"mkdir -p {shlex.quote(BACKUP_DIR)}")
     backup = f"{BACKUP_DIR}/onecpase_{stamp}.tar.gz"
-    run(client, f"tar -czf {shlex.quote(backup)} -C {app} --exclude=venv "
-                f"--exclude='.release-*' . 2>/dev/null || true")
+    # Only the code is worth snapshotting here: the venv is rebuilt, the
+    # previous package and the whatsapp session are large and recoverable, and
+    # earlier backups must never be nested inside the next one.
+    excludes = " ".join(f"--exclude={shlex.quote(p)}" for p in BACKUP_EXCLUDES)
+    run(client, f"tar -czf {shlex.quote(backup)} -C {app} {excludes} . 2>/dev/null || true")
     run(client, f"tar -czf {shlex.quote(BACKUP_DIR)}/data_{stamp}.tar.gz "
                 f"-C /var/data/onecpase . 2>/dev/null || true")
     print(f"Backed up to {BACKUP_DIR}/onecpase_{stamp}.tar.gz and data_{stamp}.tar.gz")
+    prune_backups(client)
 
     # Stage the new tree, then swap. The package is replaced outright so
     # modules deleted upstream do not survive on the server.

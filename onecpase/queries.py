@@ -316,20 +316,20 @@ def _payment_arrears_decision(total_outstanding, arrears_months):
         ptp_required = "No"
         priority = "medium"
     elif arrears_months >= 6:
-        recommendation = "Offer 75% settlement discount or create urgent PTP."
+        recommendation = f"Offer {discount_percent}% settlement discount or create urgent PTP."
         access_decision = "Keep access blocked until payment is received."
         manager_approval_required = True
         ptp_required = "Yes"
         priority = "high"
     elif arrears_months >= 4:
-        recommendation = "Offer 50% settlement discount and confirm payment date."
+        recommendation = f"Offer {discount_percent}% settlement discount and confirm payment date."
         access_decision = "Keep access blocked until settlement or approved PTP."
-        # A 50% write-off is a manager decision, same as the 75% tier.
+        # Four months and over is a manager decision under the shared policy.
         manager_approval_required = True
         ptp_required = "Yes"
         priority = "high"
     elif arrears_months >= 2:
-        recommendation = "Offer 25% settlement discount or create PTP."
+        recommendation = f"Offer {discount_percent}% settlement discount or create PTP."
         access_decision = "Keep access blocked unless manager approves temporary access."
         manager_approval_required = False
         ptp_required = "Yes"

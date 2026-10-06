@@ -62,7 +62,7 @@ def test_old_member_one_month_behind_does_not_go_to_sales(app):
         db = get_db()
         case = _case(db, _member(db, 2, join_date="2025-01-10"))
         assert case["owner_type"] == "RECEPTION"
-        assert case["assignment_reason"] == "STANDARD_ARREARS"
+        assert case["assignment_reason"] == "MEMBERSHIP_OVER_FIRST_DEBIT_WINDOW"
 
 
 def test_member_with_earlier_recurring_payment_is_not_first_debit(app):
@@ -115,3 +115,35 @@ def test_daily_sweep_transfers_only_cases_at_threshold(app):
         assert moved == 1
         owners = {r["id"]: r["owner_type"] for r in db.execute("SELECT id, owner_type FROM collections_cases")}
         assert owners[due["id"]] == "RECEPTION" and owners[stay["id"]] == "SALES"
+
+
+def test_age_transfer_uses_today_not_historical_failure_date(app):
+    with app.app_context():
+        db = get_db()
+        case = _case(db, _member(db, 8))
+        assert apply_case_ownership(db, case['id'], months_owing=1, today='2026-11-04') == 'SALES'
+        assert transfer_due_sales_cases(db, {case['member_id']: {'months_in_arrears': 1}},
+                                        today='2026-11-05') == 1
+        reason = db.execute('SELECT assignment_reason FROM collections_cases WHERE id=?',
+                            (case['id'],)).fetchone()[0]
+        assert reason == 'MEMBERSHIP_OVER_FIRST_DEBIT_WINDOW'
+
+
+def test_second_scheduled_debit_transfers_even_with_one_month_owing(app):
+    with app.app_context():
+        db = get_db()
+        mid = _member(db, 9)
+        db.execute("UPDATE members SET debit_order_date='25' WHERE id=?", (mid,))
+        case = _case(db, mid, failed='2026-09-25')
+        assert apply_case_ownership(db, case['id'], months_owing=1, today='2026-10-24') == 'SALES'
+        assert apply_case_ownership(db, case['id'], months_owing=1, today='2026-10-25') == 'RECEPTION'
+        assert db.execute('SELECT assignment_reason FROM collections_cases WHERE id=?',
+                          (case['id'],)).fetchone()[0] == 'SECOND_SCHEDULED_DEBIT'
+
+
+def test_second_debit_month_end_and_join_after_debit_day():
+    from datetime import date
+    from onecpase.collections_engine import second_scheduled_debit
+    assert second_scheduled_debit(date(2026, 1, 31), 31) == date(2026, 2, 28)
+    assert second_scheduled_debit(date(2026, 1, 26), 25) == date(2026, 3, 25)
+    assert second_scheduled_debit(date(2026, 1, 1), None) is None

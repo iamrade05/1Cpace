@@ -83,25 +83,26 @@ def test_weekend_cycle_uses_friday_and_two_reminder_days(app):
         assert cycle["phase"] == "reminder"
 
 
-def test_only_configured_callers_receive_40_daily_calls(app):
+def test_only_configured_callers_receive_100_daily_calls(app):
     with app.app_context():
-        _seed_callers_and_members(90)
+        _seed_callers_and_members(250)
         db = get_db()
         _ensure_daily_call_tasks(db, date(2026, 8, 12))
         rows = db.execute(
             """SELECT assigned_to, COUNT(*) AS total
                FROM collection_call_tasks GROUP BY assigned_to ORDER BY assigned_to"""
         ).fetchall()
-        assert [(row["assigned_to"], row["total"]) for row in rows] == [(10, 40), (11, 40)]
+        assert [(row["assigned_to"], row["total"]) for row in rows] == [(10, 100), (11, 100)]
         assert db.execute(
             "SELECT COUNT(*) FROM collection_call_tasks WHERE assigned_to=12"
         ).fetchone()[0] == 0
         assert db.execute(
             "SELECT COUNT(*) FROM collection_call_tasks WHERE queue_type='reminder'"
-        ).fetchone()[0] == 80
+        ).fetchone()[0] == 200
 
 
-def test_call_result_counts_attempt_and_successful_contact(app):
+@pytest.mark.parametrize("outcome", ["reminder_delivered", "want_to_reactivate"])
+def test_call_result_counts_attempt_and_successful_contact(app, outcome):
     with app.app_context():
         _seed_callers_and_members(2)
         db = get_db()
@@ -119,7 +120,7 @@ def test_call_result_counts_attempt_and_successful_contact(app):
             sess["permissions"] = ["collections_call_queue"]
         response = client.post(
             f"/collections/call-queue/{task['id']}/result",
-            data={"outcome": "reminder_delivered", "notes": "Reminder confirmed"},
+            data={"outcome": outcome, "notes": "Client contacted"},
         )
         assert response.status_code == 302
         row = get_db().execute(
@@ -350,11 +351,55 @@ def test_daily_call_progress_real_percentages_are_unchanged(app):
                 "UPDATE collection_call_tasks SET status='completed', successful_contact=1 WHERE id=?",
                 (task["id"],),
             )
+            db.execute(
+                """INSERT INTO pbx_call_logs (external_call_id, collection_task_id, direction, talk_duration)
+                   VALUES (?, ?, 'outbound', 65)""",
+                (f"pbx-{task['id']}", task["id"]),
+            )
         db.commit()
 
         result = daily_call_progress(db, today=date(2026, 8, 12))
         assert result["calls"] == 4
         assert result["contacts"] == 4
-        assert result["daily_target"] == 80  # 40 per caller x 2 callers
-        assert result["target_progress_pct"] == 5.0    # 4/80 * 100
+        assert result["daily_target"] == 200  # 100 per caller x 2 callers
+        assert result["target_progress_pct"] == 2.0    # 4/200 * 100
         assert result["contact_rate_pct"] == 100.0      # 4/4 * 100
+
+
+def _completed_call(db, member_id, task_date, successful):
+    db.execute(
+        """INSERT INTO collection_call_tasks
+           (task_date, member_id, queue_type, assigned_to, status, successful_contact, called_at, outcome)
+           VALUES (?, ?, 'old_owing', 10, 'completed', ?, ?, 'no_answer')""",
+        (task_date, member_id, successful, task_date + " 09:00:00"),
+    )
+
+
+def test_client_called_today_does_not_return_for_five_days(app):
+    with app.app_context():
+        _seed_callers_and_members(3)
+        db = get_db()
+        ids = [row["id"] for row in db.execute("SELECT id FROM members ORDER BY id").fetchall()]
+        _completed_call(db, ids[0], "2026-08-10", 0)  # 2 days ago, unanswered: still resting
+        _completed_call(db, ids[1], "2026-08-07", 0)  # 5 days ago: last resting day
+        _completed_call(db, ids[2], "2026-08-06", 0)  # 6 days ago: eligible again
+        db.commit()
+        _ensure_daily_call_tasks(db, date(2026, 8, 12))
+        queued = {row["member_id"] for row in db.execute(
+            "SELECT member_id FROM collection_call_tasks WHERE task_date='2026-08-12'").fetchall()}
+        assert queued == {ids[2]}
+
+
+def test_never_called_clients_come_before_ones_already_called(app):
+    from onecpase.collections import _order_never_contacted_first
+
+    with app.app_context():
+        _seed_callers_and_members(3)
+        db = get_db()
+        never, tried, reached = [row["id"] for row in db.execute("SELECT id FROM members ORDER BY id").fetchall()]
+        _completed_call(db, tried, "2026-07-01", 0)
+        _completed_call(db, reached, "2026-07-01", 1)
+        db.commit()
+        candidates = [{"member_id": m} for m in (reached, tried, never)]
+        ordered = [c["member_id"] for c in _order_never_contacted_first(db, candidates)]
+        assert ordered == [never, tried, reached]

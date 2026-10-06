@@ -21,7 +21,7 @@ ALL_PHASES = "all"
 # endpoints — inbound WhatsApp/Facebook webhooks and the PBX, which answer to
 # outside systems rather than to staff.
 ALWAYS_ON = frozenset(
-    {"auth", "dashboard", "health", "platform", "tenants", "comms_webhooks", "pbx"}
+    {"auth", "dashboard", "health", "platform", "tenants", "comms_webhooks", "pbx", "turnstile"}
 )
 
 # phase number → (name, blueprints it opens)
@@ -54,7 +54,7 @@ PHASES: dict[int, tuple[str, frozenset[str]]] = {
     4: ("Fitness", frozenset({"fitness", "onboarding"})),
     5: ("Reports", frozenset({"reports", "access_report"})),
     6: ("HR", frozenset({"hr"})),
-    7: ("Operations", frozenset({"operations", "turnstile"})),
+    7: ("Operations", frozenset({"operations"})),
 }
 
 # Nav sections in base.html, and the phase each one belongs to. The sales

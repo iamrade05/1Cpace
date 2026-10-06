@@ -39,10 +39,14 @@
       <div><div style="font-size:.7rem;color:var(--t2);text-transform:uppercase;">Calls</div><div style="font-size:1.55rem;font-weight:800;color:{{ 'var(--ok)' if (summary.calls or 0) >= daily_call_target else 'var(--txt)' }};">{{ summary.calls or 0 }}<span style="font-size:.8rem;color:var(--t2);"> / {{ daily_call_target }}</span></div></div>
       <div><div style="font-size:.7rem;color:var(--t2);text-transform:uppercase;">Clients reached</div><div style="font-size:1.55rem;font-weight:800;color:{{ 'var(--ok)' if (summary.contacts or 0) >= daily_contact_target else 'var(--txt)' }};">{{ summary.contacts or 0 }}<span style="font-size:.8rem;color:var(--t2);"> / {{ daily_contact_target }}</span></div></div>
     </div>
-    <div style="margin-top:10px;color:var(--t2);font-size:.78rem;">{{ summary.assigned or 0 }} calls assigned for {{ today_label }}</div>
+    {% set talk = (summary.talk_seconds or 0)|int %}
+    <div style="margin-top:10px;color:var(--t2);font-size:.78rem;">{{ summary.assigned or 0 }} calls assigned for {{ today_label }} · Talk time {{ talk // 60 }}m {{ talk % 60 }}s</div>
+    <div style="margin-top:4px;color:var(--t2);font-size:.72rem;">Reached = contact outcome + {{ min_talk_seconds }}s or more on the phone</div>
   </div>
   {% endfor %}
 </div>
+
+{% if has_perm('all_collections') %}<a class="btn btn-ghost" style="margin-bottom:16px;" href="{{ url_for('collections.reports') }}">Call Stats &amp; Reports</a>{% endif %}
 
 <div class="form-card" style="margin-bottom:16px;">
   <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">

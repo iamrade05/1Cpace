@@ -29,7 +29,6 @@ CLOSED_AT_PHASE_ONE = (
     "reports.index",
     "hr.staff_index",
     "operations.equipment_index",
-    "turnstile.index",
     "access_report.index",
 )
 
@@ -38,6 +37,7 @@ OPEN_AT_PHASE_ONE = (
     "leads.leads_index",
     "members.members_index",
     "debicheck.index",
+    "turnstile.index",  # always on, even before Phase 7
 )
 
 

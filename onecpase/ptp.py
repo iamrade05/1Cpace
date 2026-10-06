@@ -1013,7 +1013,29 @@ def ptp_create(mid: int):
         )
     else:
         flash("PTP created successfully.", "success")
+    # A PTP is only as good as the mandate behind it. Open the DebiCheck form
+    # straight away, filled in from what the system already holds for this
+    # client (the receptionist edits it; nothing is typed from scratch). Skipped
+    # when a usable mandate exists, or this user cannot create one.
+    can_create_mandate = session.get("role") == "admin" or "new_debicheck" in (session.get("permissions") or [])
+    if can_create_mandate and not _has_usable_mandate(db, mid):
+        flash("Now confirm the DebiCheck details below. They are filled in from the client's record.", "info")
+        return redirect(url_for("debicheck.add", member_id=mid, from_ptp=ptp_id))
     return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
+
+
+def _has_usable_mandate(db, member_id: int) -> bool:
+    """True when the member has a mandate that is confirmed or still waiting on the
+    client. A request left unapproved for more than a day has lapsed and does not count."""
+    from .collections_decision import authorisation_lapsed
+
+    rows = db.execute(
+        """SELECT status, submitted_at FROM debicheck_mandates
+           WHERE member_id=? AND lower(COALESCE(status,'')) NOT IN
+             ('failed','rejected','declined','cancelled','canceled','expired')""",
+        (member_id,),
+    ).fetchall()
+    return any(not authorisation_lapsed(r["status"], r["submitted_at"]) for r in rows)
 
 
 # ── Log Contact ────────────────────────────────────────────────────────────

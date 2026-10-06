@@ -150,21 +150,22 @@ def test_arrears_discount_policy_requires_manager_at_four_months():
         "manager_approval_required": False,
     }
     assert arrears_discount_policy(3) == {
-        "discount_percent": 25,
+        "discount_percent": 35,
         "manager_approval_required": False,
     }
     assert arrears_discount_policy(4) == {
-        "discount_percent": 50,
+        "discount_percent": 35,
         "manager_approval_required": True,
     }
     assert arrears_discount_policy(5) == {
-        "discount_percent": 50,
+        "discount_percent": 40,
         "manager_approval_required": True,
     }
     assert arrears_discount_policy(6) == {
-        "discount_percent": 75,
+        "discount_percent": 50,
         "manager_approval_required": True,
     }
+    assert arrears_discount_policy(9)["discount_percent"] == 50
 
 
 def test_queries_account_decision_follows_the_shared_arrears_policy():

@@ -96,6 +96,15 @@ def test_sales_quality_failure_rate_recovery_and_transfer(app):
         assert mine["unresolved"] == 0
 
 
+def _talk(db, task_id, seconds):
+    """A PBX call dialled from this task that ran for `seconds` of talk time."""
+    db.execute(
+        """INSERT INTO pbx_call_logs (external_call_id, collection_task_id, direction, status, talk_duration)
+           VALUES (?, ?, 'outbound', 'ANSWERED', ?)""",
+        (f"test-{task_id}-{seconds}", task_id, seconds),
+    )
+
+
 def test_performance_report_totals(app):
     with app.app_context():
         db = get_db()
@@ -103,8 +112,10 @@ def test_performance_report_totals(app):
                    "VALUES (5, 'caller5', 'x', 'Caller Five', 'reception', 'Reception')")
         mid = _member(db, 20)
         for day, status, contact in (("2026-09-01", "completed", 1), ("2026-09-02", "completed", 0), ("2026-09-03", "pending", 0)):
-            db.execute("""INSERT INTO collection_call_tasks (task_date, member_id, queue_type, assigned_to, status, successful_contact)
-                          VALUES (?, ?, 'failed_debit', 5, ?, ?)""", (day, mid, status, contact))
+            task_id = db.execute("""INSERT INTO collection_call_tasks (task_date, member_id, queue_type, assigned_to, status, successful_contact)
+                          VALUES (?, ?, 'failed_debit', 5, ?, ?)""", (day, mid, status, contact)).lastrowid
+            if contact:
+                _talk(db, task_id, 75)
             mid = _member(db, 21 + int(day[-1]))
         db.execute("""INSERT INTO ptp_agreements (member_id, promise_amount, promise_date, payment_method, ptp_status,
                           created_at, updated_at, discount_pct)
@@ -126,3 +137,92 @@ def test_reports_page_renders_and_survives_a_bad_month(app, client):
     assert page.status_code == 200
     assert b"Sales quality" in page.data and b"Reception calls" in page.data
     assert client.get("/collections/reports?month=nonsense").status_code == 200
+
+
+def test_daily_call_stats_use_call_date_and_count_reactivation(app):
+    from onecpase.collections_workspace import daily_call_report
+    with app.app_context():
+        db = get_db()
+        db.execute("INSERT OR IGNORE INTO users (id, username, password_hash, full_name, role, department) "
+                   "VALUES (1, 'statscaller', 'x', 'Stats Caller', 'reception', 'Reception')")
+        db.execute("UPDATE users SET is_collections_caller=1 WHERE id=1")
+        for number, status, connected, assigned_day, called_at, outcome in (
+            (100, 'completed', 1, '2026-09-01', '2026-09-02 09:00:00', 'want_to_reactivate'),
+            (101, 'completed', 0, '2026-09-02', '2026-09-02 10:00:00', 'no_answer'),
+            (102, 'pending', 0, '2026-09-02', None, None),
+            (103, 'completed', 1, '2026-09-02', '2026-09-03 09:00:00', 'reminder_delivered'),
+        ):
+            mid = _member(db, number)
+            task_id = db.execute("""INSERT INTO collection_call_tasks
+                (task_date, member_id, queue_type, assigned_to, status, successful_contact, called_at, outcome)
+                VALUES (?, ?, 'failed_debit', 1, ?, ?, ?, ?)""",
+                (assigned_day, mid, status, connected, called_at, outcome)).lastrowid
+            if connected:
+                _talk(db, task_id, 90)
+        db.commit()
+        report = daily_call_report(db, '2026-09-02')
+        assert (report['calls'], report['contacts'], report['pending'], report['contact_rate']) == (2, 1, 1, 50.0)
+        caller = next(c for c in report['callers'] if c['staff_id'] == 1)
+        assert caller['call_progress'] == 2.0
+        assert caller['contact_progress'] == 10.0
+        assert {r['outcome']: r['total'] for r in report['outcomes']} == {'want_to_reactivate': 1, 'no_answer': 1}
+        assert daily_call_report(db, '2025-01-01')['contact_rate'] is None
+
+
+def test_daily_call_stats_page_and_bad_date(app, client):
+    with client.session_transaction() as session:
+        session['user_id'] = 1
+        session['role'] = 'admin'
+        session['username'] = 'admin'
+    page = client.get('/collections/reports?month=2026-09&day=2026-09-02')
+    assert page.status_code == 200
+    assert b'Daily Call Stats' in page.data
+    assert b'100 calls and 10 clients reached' in page.data
+    assert b'2026-09-02' in page.data
+    assert client.get('/collections/reports?day=bad-date').status_code == 200
+
+
+def test_client_reached_needs_sixty_seconds_of_talk_time(app):
+    from onecpase.collections_workspace import daily_call_report
+    with app.app_context():
+        db = get_db()
+        db.execute("INSERT OR IGNORE INTO users (id, username, password_hash, full_name, role, department) "
+                   "VALUES (2, 'talkcaller', 'x', 'Talk Caller', 'reception', 'Reception')")
+        db.execute("UPDATE users SET is_collections_caller=1 WHERE id=2")
+        day = '2026-09-10'
+        for number, seconds in ((200, 59), (201, 60), (202, 0)):
+            task_id = db.execute(
+                """INSERT INTO collection_call_tasks
+                   (task_date, member_id, queue_type, assigned_to, status, successful_contact, called_at, outcome)
+                   VALUES (?, ?, 'failed_debit', 2, 'completed', 1, ?, 'reminder_delivered')""",
+                (day, _member(db, number), day + ' 09:00:00')).lastrowid
+            if seconds:
+                _talk(db, task_id, seconds)
+        db.commit()
+        report = daily_call_report(db, day)
+        caller = next(c for c in report['callers'] if c['staff_id'] == 2)
+        assert (report['calls'], report['contacts']) == (3, 1)  # only the 60s call counts
+        assert caller['talk_seconds'] == 119
+        assert caller['avg_talk_seconds'] == 40
+
+
+def test_handset_call_to_the_member_counts_as_talk_time(app):
+    from onecpase.collections_workspace import daily_call_report
+    with app.app_context():
+        db = get_db()
+        db.execute("INSERT OR IGNORE INTO users (id, username, password_hash, full_name, role, department) "
+                   "VALUES (3, 'handset', 'x', 'Handset Caller', 'reception', 'Reception')")
+        db.execute("UPDATE users SET is_collections_caller=1 WHERE id=3")
+        day = '2026-09-11'
+        mid = _member(db, 210)
+        db.execute(
+            """INSERT INTO collection_call_tasks
+               (task_date, member_id, queue_type, assigned_to, status, successful_contact, called_at, outcome)
+               VALUES (?, ?, 'failed_debit', 3, 'completed', 1, ?, 'promised_to_pay')""",
+            (day, mid, day + ' 10:00:00'))
+        # Dialled on the handset, so no collection_task_id - matched on member, caller and day.
+        db.execute(
+            """INSERT INTO pbx_call_logs (external_call_id, member_id, user_id, direction, status, talk_duration, start_time)
+               VALUES ('hs-1', ?, 3, 'outbound', 'ANSWERED', 100, ?)""", (mid, day + ' 10:01:00'))
+        db.commit()
+        assert daily_call_report(db, day)['contacts'] == 1

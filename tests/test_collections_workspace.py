@@ -1,3 +1,9 @@
+from datetime import date, timedelta
+
+# Relative to today so the first-debit window (45 days) never expires under the tests.
+RECENT_JOIN = (date.today() - timedelta(days=20)).isoformat()
+FIRST_DEBIT = (date.today() - timedelta(days=10)).isoformat()
+
 from onecpase.collections_engine import (
     log_collection_communication,
     refresh_case_workflow,
@@ -21,8 +27,8 @@ def _case(db, mid, amount=500, months=1):
     db.execute(
         """INSERT INTO collections (member_id, outstanding_balance, amount_paid,
                collection_date, status, notes)
-           VALUES (?, ?, 0, '2026-09-01', 'failed', 'type=Recurring Fee')""", (mid, amount))
-    case_id = sync_collection_case(db, mid, failed_debit_date="2026-09-01",
+           VALUES (?, ?, 0, ?, 'failed', 'type=Recurring Fee')""", (mid, amount, FIRST_DEBIT))
+    case_id = sync_collection_case(db, mid, failed_debit_date=FIRST_DEBIT,
                                    arrears_amount=amount, months_owing=months)
     db.commit()
     return case_id
@@ -44,7 +50,7 @@ def test_queue_is_ordered_by_priority_then_balance(app):
 def test_filters_pick_the_right_cases(app):
     with app.app_context():
         db = get_db()
-        sales_member = _member(db, 4, join="2026-08-20")                   # first debit -> Sales
+        sales_member = _member(db, 4, join=RECENT_JOIN)                   # first debit -> Sales
         db.execute("INSERT INTO membership_applications (member_id, created_by) VALUES (?, 1)", (sales_member,))
         sales = _case(db, sales_member)
         refresh = _case(db, _member(db, 5), months=3)                     # old, 3 months
@@ -64,7 +70,7 @@ def test_filters_pick_the_right_cases(app):
 def test_my_queue_includes_cases_the_user_owns(app):
     with app.app_context():
         db = get_db()
-        mid = _member(db, 7, join="2026-08-20")
+        mid = _member(db, 7, join=RECENT_JOIN)
         db.execute("INSERT INTO membership_applications (member_id, created_by) VALUES (?, 1)", (mid,))
         case = _case(db, mid)
         assert case in {r["id"] for r in case_queue(db, "mine", user_id=1)}
@@ -105,13 +111,13 @@ def test_member_profile_builds_one_timeline_across_everything(app):
 
     with app.app_context():
         db = get_db()
-        mid = _member(db, 20, join="2026-08-20")
+        mid = _member(db, 20, join=RECENT_JOIN)
         db.execute("INSERT INTO membership_applications (member_id, created_by) VALUES (?, 1)", (mid,))
         case_id = _case(db, mid)
         log_collection_communication(db, mid, "call", case_id=case_id, outcome="promised_to_pay",
                                      notes="Pays Friday", created_by=1)
         db.execute("""INSERT INTO ptp_agreements (member_id, promise_amount, promise_date, payment_method, ptp_status, created_by)
-                      VALUES (?, 500, '2026-10-30', 'eft', 'pending', 1)""", (mid,))
+                      VALUES (?, 500, ?, 'eft', 'pending', 1)""", (mid, (date.today() + timedelta(days=30)).isoformat()))
         apply_case_ownership(db, case_id, months_owing=2)
         refresh_case_workflow(db, case_id)
         db.commit()

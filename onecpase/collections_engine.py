@@ -5,13 +5,15 @@ business decisions that must be consistent across Collections, PTP, DebiCheck,
 and access control.
 """
 
+import calendar
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
 
 
 MONEY_QUANTUM = Decimal("0.01")
 DEFAULT_COLLECTION_RULES = {
-    "daily_call_target": ("40", "integer"),
+    "daily_call_target": ("100", "integer"),
+    "contact_talk_seconds": ("60", "integer"),
     "upfront_min_percent": ("30", "decimal"),
     "upfront_max_percent": ("40", "decimal"),
     "minimum_arrears_installment": ("30.00", "decimal"),
@@ -63,7 +65,9 @@ COMMUNICATION_ORDER = ("CALL", "WHATSAPP", "SMS", "EMAIL")
 # and the Queries account decision so the two cannot drift apart.
 # Discount is applied FIRST. The upfront contribution is then calculated
 # against the discounted balance. Higher discounts require manager approval.
-ARREARS_DISCOUNT_RULES = ((6, 75), (4, 50), (2, 25))
+# 2 months 25%, 3-4 months 35%, 5 months 40%, 6 months and over 50%. Accounts
+# above six months are also held to the recovery minimum in collections_decision.
+ARREARS_DISCOUNT_RULES = ((6, 50), (5, 40), (3, 35), (2, 25))
 ARREARS_DISCOUNT_MANAGER_RULES = ((6, True), (4, True), (2, False))
 
 
@@ -94,6 +98,7 @@ def arrears_discount_policy(months_owing):
 
 VALID_CALL_OUTCOMES = {
     "reminder_delivered",
+    "want_to_reactivate",
     "promised_to_pay",
     "asked_callback",
     "already_paid",
@@ -106,6 +111,7 @@ VALID_CALL_OUTCOMES = {
 }
 SUCCESSFUL_CALL_OUTCOMES = {
     "reminder_delivered",
+    "want_to_reactivate",
     "promised_to_pay",
     "asked_callback",
     "already_paid",
@@ -355,8 +361,10 @@ def evaluate_collection_case(
             "access": "ALLOWED",
             "debicheck_required": False,
             "upfront_required": False,
+            "payment_required": True,
+            "arrangement_options": ["pay_at_gym", "debit_order"],
             "escalation": False,
-            "action": "COLLECTION_FOLLOW_UP",
+            "action": "PAYMENT_OR_ARRANGEMENT_REQUIRED",
         }
 
     if months_owing == 2:
@@ -449,7 +457,7 @@ def complete_call(outcome):
     }
 
 
-def calculate_daily_call_kpi(calls_completed, target=40, contacts=0, calls_attempted=None):
+def calculate_daily_call_kpi(calls_completed, target=100, contacts=0, calls_attempted=None):
     target = int(target)
     completed = max(int(calls_completed), 0)
     attempted = completed if calls_attempted is None else max(int(calls_attempted), 0)
@@ -782,6 +790,9 @@ def ensure_collections_engine_schema(db, backend="sqlite"):
         insert += " ON CONFLICT (rule_key) DO NOTHING"
     for key, (value, value_type) in DEFAULT_COLLECTION_RULES.items():
         db.execute(insert, (key, value, value_type))
+    # Upgrade the previous daily quota for existing tenant databases.
+    db.execute("UPDATE collection_rules SET rule_value='100' "
+               "WHERE rule_key='daily_call_target' AND rule_value='40'")
     db.commit()
 
 
@@ -804,6 +815,34 @@ def get_collection_rule_int(db, key, default):
         return int(get_collection_rule(db, key, default))
     except (TypeError, ValueError):
         return default
+
+
+DEFAULT_CONTACT_TALK_SECONDS = 60
+
+
+def talk_seconds_sql(alias: str = "t") -> str:
+    """SQL expression: PBX talk time (seconds) for one collection_call_tasks row.
+
+    Talk time is answer-to-hang-up, not ring time. A PBX call belongs to the
+    task when it was dialled from the task, or - for calls dialled on the handset
+    - when the same caller phoned that member on the task's day.
+    """
+    return (
+        "COALESCE((SELECT SUM(COALESCE(p.talk_duration, 0)) FROM pbx_call_logs p "
+        f"WHERE p.collection_task_id = {alias}.id "
+        f"OR (p.collection_task_id IS NULL AND p.member_id = {alias}.member_id "
+        f"AND p.direction = 'outbound' AND p.user_id = {alias}.assigned_to "
+        f"AND substr(CAST(COALESCE(p.start_time, p.created_at) AS TEXT), 1, 10) = {alias}.task_date)), 0)"
+    )
+
+
+def reached_sql(min_talk_seconds: int, alias: str = "t") -> str:
+    """SQL condition: the client was genuinely reached.
+
+    A contact outcome alone is not enough - the call must also have run for at
+    least min_talk_seconds of real conversation.
+    """
+    return f"({alias}.successful_contact = 1 AND {talk_seconds_sql(alias)} >= {int(min_talk_seconds)})"
 
 
 def sync_collection_case(
@@ -900,17 +939,41 @@ def is_first_debit_failure(db, member_id, failed_debit_date, months_owing):
 
 
 def determine_owner(*, months_owing, first_debit_failure, original_sales_consultant_id,
-                    transfer_months=2):
-    """Returns (owner_type, owner_staff_id, reason). Two months owing always
-    belongs to Reception; a first-debit failure belongs to the signing consultant."""
+                    transfer_months=2, membership_age_days=None, first_debit_window_days=45,
+                    second_debit_reached=False):
+    """Return Reception at two months owing, over 45 days, or the second debit.
+
+    Only an eligible first-debit failure stays with the signing consultant.
+    """
     if int(months_owing or 0) >= int(transfer_months):
         return OWNER_RECEPTION, None, REASON_SECOND_MONTH
+    if membership_age_days is not None and membership_age_days > first_debit_window_days:
+        return OWNER_RECEPTION, None, "MEMBERSHIP_OVER_FIRST_DEBIT_WINDOW"
+    if second_debit_reached:
+        return OWNER_RECEPTION, None, "SECOND_SCHEDULED_DEBIT"
     if first_debit_failure and original_sales_consultant_id:
         return OWNER_SALES, original_sales_consultant_id, REASON_FIRST_MONTH
     return OWNER_RECEPTION, None, REASON_STANDARD
 
 
-def apply_case_ownership(db, case_id, *, months_owing, failed_debit_date=None, transferred_by=None):
+def second_scheduled_debit(joined, debit_day):
+    """Second monthly contractual debit on or after joining; clamp month-end days."""
+    try:
+        day = int(debit_day)
+    except (TypeError, ValueError):
+        return None
+    if joined is None or not 1 <= day <= 31:
+        return None
+    month_index = joined.year * 12 + joined.month - 1
+    year, month = divmod(month_index, 12)
+    first = date(year, month + 1, min(day, calendar.monthrange(year, month + 1)[1]))
+    month_index += 1 if first >= joined else 2
+    year, month = divmod(month_index, 12)
+    return date(year, month + 1, min(day, calendar.monthrange(year, month + 1)[1]))
+
+
+def apply_case_ownership(db, case_id, *, months_owing, failed_debit_date=None, transferred_by=None,
+                         today=None):
     """Set or transfer the case owner and record every change. Once a case is
     with Reception it never goes back to Sales, even if part-paid. The same
     case is handed over, so Sales history stays visible. Returns the owner type."""
@@ -928,10 +991,18 @@ def apply_case_ownership(db, case_id, *, months_owing, failed_debit_date=None, t
     first = is_first_debit_failure(
         db, case["member_id"], failed_debit_date or case["failed_debit_date"], months_owing
     ) if (not assigned or case["owner_type"] == OWNER_SALES) else False
+    today = _parse_date(today) or date.today()
+    member = db.execute("SELECT join_date, debit_order_date FROM members WHERE id=?",
+                        (case["member_id"],)).fetchone()
+    joined = _parse_date(member["join_date"] if member else None)
+    second_debit = second_scheduled_debit(joined, member["debit_order_date"] if member else None)
     owner, staff, reason = determine_owner(
         months_owing=months_owing, first_debit_failure=first,
         original_sales_consultant_id=consultant,
         transfer_months=get_collection_rule_int(db, "sales_transfer_months", 2),
+        membership_age_days=(today - joined).days if joined else None,
+        first_debit_window_days=get_collection_rule_int(db, "first_debit_window_days", 45),
+        second_debit_reached=bool(second_debit and today >= second_debit),
     )
     if assigned and (owner, staff) == (case["owner_type"], case["owner_staff_id"]):
         return owner
@@ -943,8 +1014,8 @@ def apply_case_ownership(db, case_id, *, months_owing, failed_debit_date=None, t
     if assigned and case["owner_type"] == OWNER_SALES and owner == OWNER_RECEPTION:
         add_collection_note(
             db, case["member_id"], "HANDOVER",
-            "Collection ownership transferred from Sales to Reception because the account reached "
-            "the second-month arrears threshold.", case_id=case_id)
+            f"Collection ownership transferred from Sales to Reception: {reason.replace('_', ' ').lower()}.",
+            case_id=case_id)
     db.execute(
         """INSERT INTO collection_assignment_history
            (case_id, member_id, from_owner_type, from_staff_id, to_owner_type, to_staff_id,
@@ -957,7 +1028,7 @@ def apply_case_ownership(db, case_id, *, months_owing, failed_debit_date=None, t
     return owner
 
 
-def transfer_due_sales_cases(db, arrears_by_member=None):
+def transfer_due_sales_cases(db, arrears_by_member=None, *, today=None):
     """Daily sweep: hand any Sales-owned case that has reached the transfer
     threshold to Reception. Returns the number transferred."""
     if arrears_by_member is None:
@@ -972,7 +1043,7 @@ def transfer_due_sales_cases(db, arrears_by_member=None):
         (OWNER_SALES,),
     ).fetchall():
         months = arrears_by_member.get(case["member_id"], {}).get("months_in_arrears", 0)
-        if apply_case_ownership(db, case["id"], months_owing=months) == OWNER_RECEPTION:
+        if apply_case_ownership(db, case["id"], months_owing=months, today=today) == OWNER_RECEPTION:
             moved += 1
     return moved
 

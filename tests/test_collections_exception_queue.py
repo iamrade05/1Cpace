@@ -5,8 +5,16 @@ manager's decision, not reception's. These tests pin that the escalations the
 rule engine produces are visible to a manager and decidable with an audit
 trail — and invisible to everyone else.
 """
+from datetime import date, timedelta
+
 from onecpase.collections_engine import create_collection_exception
 from onecpase.database import get_db
+
+# Two weeks out, so an arrangement never runs into the past as the calendar moves on.
+PROMISE_DATE = (date.today() + timedelta(days=14)).isoformat()
+
+# Permissions are rebuilt from the user row, so a manager sign-in needs a real manager user.
+MANAGER_ID = 99
 
 
 def _seed(app):
@@ -168,7 +176,8 @@ def _seed_arrears_member(app, months, *, approved_mandate=False):
         db = get_db()
         db.execute(
             """INSERT INTO users (id, username, password_hash, full_name, role, active)
-               VALUES (1, 'recep', 'x', 'Reception One', 'reception', 1)"""
+               VALUES (1, 'recep', 'x', 'Reception One', 'reception', 1),
+                      (99, 'mgr99', 'x', 'Manager Ninety-Nine', 'manager', 1)"""
         )
         member_id = db.execute(
             """INSERT INTO members (member_ref, first_name, last_name, id_number,
@@ -186,6 +195,13 @@ def _seed_arrears_member(app, months, *, approved_mandate=False):
                    VALUES (?, 500, 0, ?, 'failed', 'type=Recurring Fee')""",
                 (member_id, f"{year}-{zero_month + 1:02d}-01"),
             )
+        # Bank-statement evidence is part of what lets reception's arrangement stand
+        # without a manager, so the seeded member has a qualifying statement on file.
+        db.execute(
+            """INSERT INTO member_documents (member_id, document_type, original_name, stored_name, analysis_json)
+               VALUES (?, 'Bank Statement', 'statement.pdf', 'statement.pdf', '{"verification_qualified": true}')""",
+            (member_id,),
+        )
         if approved_mandate:
             db.execute(
                 """INSERT INTO debicheck_mandates (member_id, merchant_id, auth_type,
@@ -203,9 +219,9 @@ def _create_ptp(client, member_id):
     return client.post(
         f"/members/{member_id}/ptp/create",
         data={
-            "promise_amount": "300", "promise_date": "2026-10-01",
+            "promise_amount": "300", "promise_date": PROMISE_DATE,
             "payment_method": "cash", "arrangement_type": "partial",
-            "notes": "Client offered R300 a month", "arrears_amount": "1500",
+            "notes": "Client offered R300 a month", "arrears_amount": "3000",
         },
         follow_redirects=False,
     )
@@ -237,7 +253,7 @@ def test_non_standard_request_at_three_months_is_escalated(app, client):
     rows = _open_exceptions(app, member_id)
     assert len(rows) == 1
     assert "no qualifying DebiCheck" in rows[0]["reason"]
-    assert "R300.00 by 2026-10-01" in rows[0]["requested_action"]
+    assert f"R300.00 by {PROMISE_DATE}" in rows[0]["requested_action"]
     with app.app_context():
         ptp = get_db().execute(
             "SELECT manager_approval_status FROM ptp_agreements WHERE member_id = ?",
@@ -282,12 +298,12 @@ def test_escalated_request_reaches_the_manager_queue(app, client):
     _sign_in(client, role="reception", user_id=1, permissions=["all_collections"])
     _create_ptp(client, member_id)
 
-    _sign_in(client, role="manager", user_id=1)
+    _sign_in(client, role="manager", user_id=MANAGER_ID)
     response = client.get("/collections/exceptions")
 
     assert response.status_code == 200
     assert b"Deep Arrears" in response.data
-    assert b"R300.00 by 2026-10-01" in response.data
+    assert f"R300.00 by {PROMISE_DATE}".encode() in response.data
 
 
 # ── An approved exception grants time-limited access ─────────────────────────
@@ -314,7 +330,7 @@ def _escalate_three_months_owing(app, client, *, days_ahead=7):
         data={
             "promise_amount": "300", "promise_date": promise_date.isoformat(),
             "payment_method": "cash", "arrangement_type": "partial",
-            "notes": "Client offered R300 a month", "arrears_amount": "1500",
+            "notes": "Client offered R300 a month", "arrears_amount": "3000",
         },
         follow_redirects=False,
     )
@@ -329,7 +345,7 @@ def _escalate_three_months_owing(app, client, *, days_ahead=7):
 
 
 def _decide_exception(client, exception_id, decision, notes="Manager decision"):
-    _sign_in(client, role="manager", user_id=1)
+    _sign_in(client, role="manager", user_id=MANAGER_ID)
     response = client.post(
         f"/collections/exceptions/{exception_id}/decide",
         data={"decision": decision, "notes": notes},
@@ -422,7 +438,7 @@ def test_declining_the_exception_also_declines_the_linked_arrangement(app, clien
 def test_approving_the_arrangement_also_decides_the_linked_exception(app, client):
     member_id, exception_id, ptp_id, _ = _escalate_three_months_owing(app, client)
 
-    _sign_in(client, role="manager", user_id=1)
+    _sign_in(client, role="manager", user_id=MANAGER_ID)
     client.post(
         f"/members/{member_id}/ptp/{ptp_id}/approve",
         data={"decision": "approved", "approval_notes": "Signed off", "return_to": "exception_queue"},
@@ -445,7 +461,7 @@ def test_second_arrangement_during_an_approved_exception_is_escalated_again(app,
         data={
             "promise_amount": "300", "promise_date": (date.today() + timedelta(days=14)).isoformat(),
             "payment_method": "cash", "arrangement_type": "partial",
-            "notes": "Asked to push the date out", "arrears_amount": "1500",
+            "notes": "Asked to push the date out", "arrears_amount": "3000",
         },
         follow_redirects=False,
     )
@@ -540,13 +556,19 @@ def test_dashboard_call_kpis_match_the_call_queue_definitions(app):
                     f"07100000{index + 21}",
                 ),
             ).lastrowid
-            db.execute(
+            task_id = db.execute(
                 """INSERT INTO collection_call_tasks
                    (task_date, member_id, queue_type, priority, assigned_to, status,
                     successful_contact)
                    VALUES (?, ?, 'old_owing', ?, 7, ?, ?)""",
                 (today, member_id, index + 1, status, contacted),
-            )
+            ).lastrowid
+            if contacted:
+                db.execute(
+                    """INSERT INTO pbx_call_logs (external_call_id, collection_task_id, direction, talk_duration)
+                       VALUES (?, ?, 'outbound', 80)""",
+                    (f"pbx-{task_id}", task_id),
+                )
         db.commit()
 
         progress = daily_call_progress(db)
@@ -554,7 +576,7 @@ def test_dashboard_call_kpis_match_the_call_queue_definitions(app):
     assert progress["assigned"] == 3
     assert progress["calls"] == 2
     assert progress["contacts"] == 1
-    # One caller against the configured 40-call target.
+    # One caller against the configured 100-call target.
     assert progress["daily_target"] == progress["target_per_caller"]
     assert progress["contact_rate_pct"] == 50.0
     assert progress["queue_counts"]["old_owing"] == 3
@@ -576,7 +598,7 @@ def test_discounted_promise_opens_a_discount_request_that_follows_the_manager(ap
     _sign_in(client, role="reception", user_id=1, permissions=["all_collections"])
     response = client.post(
         f"/members/{member_id}/ptp/create",
-        data={"promise_amount": "300", "promise_date": "2026-10-01", "payment_method": "cash",
+        data={"promise_amount": "300", "promise_date": PROMISE_DATE, "payment_method": "cash",
               "arrangement_type": "partial", "notes": "R300 a month", "arrears_amount": "1500",
               "discount_pct": "25"},
     )

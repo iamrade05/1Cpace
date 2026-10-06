@@ -62,6 +62,18 @@
   </section>
 </div>
 
+<section class="form-card" style="margin-bottom:16px;">
+  <h3>Collection SMS Options</h3>
+  <p style="color:var(--t2);">Copy a message into your SMS service, then record it below when SMS is the required contact method.</p>
+  {% for message in ['Please contact your gym to discuss your outstanding balance.', 'We miss you at the gym. Please call our team to discuss your outstanding balance and your options to restart membership.'] %}
+  <div style="margin:12px 0;">
+    <label class="form-label">{{ message|length }} characters</label>
+    <textarea id="collection-sms-{{ loop.index }}" class="form-control" rows="3" readonly>{{ message }}</textarea>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('collection-sms-{{ loop.index }}').value)">Copy SMS</button>
+  </div>
+  {% endfor %}
+</section>
+
 <section class="form-card" style="border-left:4px solid var(--info);">
   <h3 style="margin-bottom:6px;">Record Today’s Call</h3>
   {% if task.status == 'completed' %}
@@ -102,29 +114,138 @@
   {% endif %}
   {% else %}
   <form method="post" action="{{ url_for('collections.record_call_result', task_id=task.id) }}">
-    <div class="form-grid-2">
-      <div class="form-group"><label class="form-label">Call outcome *</label><select name="outcome" id="outcome-select" class="form-control" required onchange="outcomeChanged()"><option value="">Select result…</option>{% for key,label,successful in call_outcomes %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
-      <div class="form-group"><label class="form-label" id="notes-label">Notes / promise date</label><input name="notes" id="notes-input" class="form-control" placeholder="Record what the client said"></div>
+    <div class="form-group"><label class="form-label">Call outcome *</label><select name="outcome" id="outcome-select" class="form-control" required onchange="outcomeChanged()"><option value="">Select result…</option>{% for key,label,successful in call_outcomes %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
+    <div class="form-group" id="detail-group" style="display:none;">
+      <label class="form-label" id="detail-label"></label>
+      <select name="detail" id="detail-select" class="form-control" onchange="detailChanged()"></select>
     </div>
-    <div class="form-group" id="callback-date-group" style="display:none;">
-      <label class="form-label">Callback date *</label>
-      <input type="date" name="callback_date" id="callback-date-input" class="form-control">
+    <div class="form-grid-2" id="callback-group" style="display:none;">
+      <div class="form-group"><label class="form-label">Callback date *</label><input type="date" name="callback_date" id="callback-date-input" class="form-control"></div>
+      <div class="form-group"><label class="form-label">Callback time *</label><input type="time" name="callback_time" id="callback-time-input" class="form-control"></div>
     </div>
+    <div id="offer-panel" class="form-card" style="display:none;margin-bottom:14px;border-left:4px solid var(--red);">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+        <strong>Promise to Pay — offer decision</strong>
+        <span class="badge badge-gray" id="offer-decision">Calculating…</span>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group"><label class="form-label">Client wants to</label>
+          <select name="intention" id="offer-intention" class="form-control"><option value="instalments">Pay upfront, then instalments</option><option value="settle">Settle in full</option></select></div>
+        <div class="form-group"><label class="form-label">Upfront the client can pay now (R)</label>
+          <input type="number" min="0" step="0.01" name="upfront_offered" id="offer-upfront" class="form-control" placeholder="0.00"></div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:.85rem;margin-bottom:8px;"><input type="checkbox" name="upfront_verified" id="offer-verified" value="1"> Upfront payment received and verified</label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:.85rem;margin-bottom:8px;"><input type="checkbox" name="returning_member" id="offer-returning" value="1"> Client wants to return as a member</label>
+      <div class="form-group" id="offer-bank-group" style="display:none;"><label class="form-label">Bank statement review</label>
+        <select name="bank_statement_status" id="offer-bank" class="form-control"><option value="">Not reviewed</option><option value="pending">Sent for review</option><option value="reviewed">Reviewed</option></select></div>
+      <div id="offer-figures" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;"></div>
+      <ul id="offer-conditions" style="margin:0 0 8px 18px;font-size:.82rem;"></ul>
+      <div id="offer-reasons" style="color:var(--t2);font-size:.78rem;"></div>
+      <div style="color:var(--t2);font-size:.78rem;margin-top:8px;">
+        Attendance: {% if last_gym_visit %}last visit {{ last_gym_visit.last_visited }} ({{ last_gym_visit.days_ago }} days ago, {{ last_gym_visit.source }}){% else %}no recorded visit found — history unknown, not proof of non-attendance{% endif %}.
+      </div>
+      <div style="color:var(--t2);font-size:.74rem;margin-top:6px;">Preview only: the promise records this offer in the call notes. No discount is applied and no balance changes until the agreed conditions are met.</div>
+    </div>
+    <div class="form-group"><label class="form-label" id="notes-label">Notes</label><textarea name="notes" id="notes-input" class="form-control" rows="3" placeholder="Record what the client said"></textarea></div>
     <button class="btn btn-primary" type="submit">Save Call Result</button>
   </form>
   <script>
+  var OUTCOME_FOLLOW_UPS = {{ outcome_follow_ups|tojson }};
   function outcomeChanged() {
     var outcome = document.getElementById('outcome-select').value;
-    var callbackGroup = document.getElementById('callback-date-group');
-    var callbackInput = document.getElementById('callback-date-input');
-    var notesInput = document.getElementById('notes-input');
-    var notesLabel = document.getElementById('notes-label');
+    var followUp = OUTCOME_FOLLOW_UPS[outcome];
+    var detailGroup = document.getElementById('detail-group');
+    var detailSelect = document.getElementById('detail-select');
+    detailGroup.style.display = followUp ? 'block' : 'none';
+    detailSelect.required = !!followUp;
+    detailSelect.innerHTML = '';
+    if (followUp) {
+      document.getElementById('detail-label').textContent = followUp[0] + ' *';
+      var blank = document.createElement('option');
+      blank.value = ''; blank.textContent = 'Select…';
+      detailSelect.appendChild(blank);
+      followUp[1].forEach(function (choice) {
+        var opt = document.createElement('option');
+        opt.value = choice; opt.textContent = choice;
+        detailSelect.appendChild(opt);
+      });
+    }
+    var showOffer = outcome === 'promised_to_pay';
+    document.getElementById('offer-panel').style.display = showOffer ? 'block' : 'none';
+    if (showOffer) { renderOffer(INITIAL_OFFER); refreshOffer(); }
     var showCallback = outcome === 'asked_callback';
-    callbackGroup.style.display = showCallback ? 'block' : 'none';
-    callbackInput.required = showCallback;
-    var needsReason = outcome === 'refused' || outcome === 'disputed';
-    notesInput.required = needsReason;
-    notesLabel.textContent = needsReason ? 'Notes — reason required *' : 'Notes / promise date';
+    document.getElementById('callback-group').style.display = showCallback ? 'grid' : 'none';
+    document.getElementById('callback-date-input').required = showCallback;
+    document.getElementById('callback-time-input').required = showCallback;
+    detailChanged();
+  }
+  var INITIAL_OFFER = {{ initial_offer|tojson }};
+  var OFFER_URL = {{ url_for('collections.offer_preview', task_id=task.id)|tojson }};
+  var offerTimer = null;
+  function rand(v) { return 'R' + Number(v || 0).toLocaleString('en-ZA', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+  function renderOffer(o) {
+    var tone = {eligible: 'badge-success', conditions_outstanding: 'badge-warning', manager_review: 'badge-danger', no_discount: 'badge-gray', no_balance: 'badge-gray'}[o.decision] || 'badge-gray';
+    var badge = document.getElementById('offer-decision');
+    badge.className = 'badge ' + tone; badge.textContent = o.decision_label;
+    var figures = [
+      ['Original arrears', rand(o.original_arrears) + ' · ' + o.months_owing + ' mo'],
+      ['Discount', o.discount_percent + '% · ' + rand(o.discount_amount)],
+      ['Total to collect', rand(o.total_to_collect)],
+      ['Upfront received', rand(o.upfront_received) + (o.upfront_offered > o.upfront_received ? ' of ' + rand(o.upfront_offered) + ' offered' : '')],
+      ['Remaining', rand(o.remaining_to_collect)]
+    ];
+    document.getElementById('offer-figures').innerHTML = figures.map(function (f) {
+      return '<div><div style="font-size:.66rem;color:var(--t2);text-transform:uppercase;">' + f[0] + '</div><div style="font-weight:800;">' + f[1] + '</div></div>';
+    }).join('');
+    var list = document.getElementById('offer-conditions'); list.innerHTML = '';
+    var ownerName = {client: 'Client', receptionist: 'You', manager: 'Manager'};
+    o.checklist.forEach(function (c) {
+      var li = document.createElement('li');
+      li.style.cssText = 'list-style:none;margin:0 0 6px -18px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;';
+      var mark = document.createElement('span');
+      mark.textContent = c.met ? '✓' : (c.blocking ? '✗' : '!');
+      mark.style.cssText = 'font-weight:800;color:' + (c.met ? 'var(--ok)' : (c.blocking ? 'var(--err)' : 'var(--warn, #b45309)')) + ';';
+      li.appendChild(mark);
+      var text = document.createElement('span'); text.textContent = c.label; li.appendChild(text);
+      if (!c.met) {
+        var who = document.createElement('span'); who.className = 'badge badge-gray'; who.textContent = ownerName[c.owner] || c.owner; li.appendChild(who);
+        if (c.action) {
+          var next = document.createElement(c.url ? 'a' : 'span');
+          next.textContent = c.action + (c.url ? ' →' : '');
+          if (c.url) { next.href = c.url; next.target = '_blank'; next.rel = 'noopener'; next.style.fontWeight = '700'; }
+          else { next.style.color = 'var(--t2)'; }
+          next.style.fontSize = '.78rem';
+          li.appendChild(next);
+        }
+      }
+      list.appendChild(li);
+    });
+    document.getElementById('offer-reasons').textContent = o.reasons.join(' ');
+  }
+  function refreshOffer() {
+    clearTimeout(offerTimer);
+    offerTimer = setTimeout(function () {
+      var returning = document.getElementById('offer-returning').checked;
+      document.getElementById('offer-bank-group').style.display = returning ? 'block' : 'none';
+      var params = new URLSearchParams({
+        intention: document.getElementById('offer-intention').value,
+        upfront_offered: document.getElementById('offer-upfront').value || '0',
+        upfront_verified: document.getElementById('offer-verified').checked ? '1' : '',
+        returning_member: returning ? '1' : '',
+        bank_statement_status: document.getElementById('offer-bank').value
+      });
+      fetch(OFFER_URL + '?' + params.toString(), {credentials: 'same-origin'})
+        .then(function (r) { return r.json(); }).then(renderOffer).catch(function () {});
+    }, 250);
+  }
+  ['offer-intention', 'offer-upfront', 'offer-verified', 'offer-returning', 'offer-bank'].forEach(function (id) {
+    var el = document.getElementById(id);
+    el.addEventListener(el.type === 'number' ? 'input' : 'change', refreshOffer);
+  });
+  function detailChanged() {
+    var other = document.getElementById('detail-select').value === 'Other';
+    document.getElementById('notes-input').required = other;
+    document.getElementById('notes-label').textContent = other ? 'Notes — describe it *' : 'Notes';
   }
   </script>
   {% endif %}
