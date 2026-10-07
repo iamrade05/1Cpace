@@ -17,5 +17,8 @@
  --font-body:'Barlow','Segoe UI',sans-serif; --font-display:'Barlow Condensed',sans-serif;
  --font-mono:'IBM Plex Mono',Consolas,monospace; --radius:8px; --sw:230px;
  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px;
+ --v-teal:#0e8a8f; --v-teal-l:#e3f6f6; --v-gold:#e0a21f; --v-gold-l:#fff4d9;
+ --v-coral:#e5533d; --v-coral-l:#fdeae6; --v-violet:#6d4fd6; --v-violet-l:#efeaff;
+ --v-sky:#1d7fd1; --v-sky-l:#e4f1fd; --v-green:#14a05a; --v-green-l:#e2f6ec;
  color-scheme:light;
 }
