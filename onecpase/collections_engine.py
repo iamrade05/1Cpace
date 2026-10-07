@@ -893,11 +893,20 @@ def talk_seconds_sql(alias: str = "t") -> str:
     )
 
 
-def reached_sql(min_talk_seconds: int, alias: str = "t") -> str:
-    """SQL condition: the client was genuinely reached.
+def reached_sql(min_talk_seconds: int = 0, alias: str = "t") -> str:
+    """SQL condition: the client was reached, as recorded by the consultant.
 
-    A contact outcome alone is not enough - the call must also have run for at
-    least min_talk_seconds of real conversation.
+    Reached follows the call outcome the consultant saved. The PBX does not
+    reliably report every call, so talk time is not required here; see
+    verified_sql for the stricter PBX-backed figure.
+    """
+    return f"({alias}.successful_contact = 1)"
+
+
+def verified_sql(min_talk_seconds: int, alias: str = "t") -> str:
+    """SQL condition: a reached client whose call the PBX confirms.
+
+    The contact outcome plus at least min_talk_seconds of PBX talk time.
     """
     return f"({alias}.successful_contact = 1 AND {talk_seconds_sql(alias)} >= {int(min_talk_seconds)})"
 

@@ -86,7 +86,7 @@
         <div class="fd-stat"><span>Attempted</span><strong>{{ progress.calls }}</strong></div>
         <div class="fd-stat"><span>Talk time</span><strong>{{ talk_time(progress.talk_seconds) }}</strong></div>
       </div>
-      <p class="fd-note">A client counts as reached only after a contact outcome and at least {{ progress.min_talk_seconds }} seconds of talk time on the PBX. First-month Sales-owned cases are not counted until they transfer to Reception.</p>
+      <p class="fd-note">A client counts as reached when the consultant saves a contact outcome; {{ progress.verified }} of {{ progress.contacts }} are confirmed by the PBX ({{ progress.min_talk_seconds }}s+ talk time). First-month Sales-owned cases are not counted until they transfer to Reception.</p>
     </article>
 
     <article class="fd-panel">

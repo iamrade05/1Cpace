@@ -26,6 +26,7 @@ from .collections_engine import (
     log_collection_communication,
     next_communication,
     reached_sql,
+    verified_sql,
     reconcile_open_cases,
     return_collection_exception,
     sync_collection_case,
@@ -606,7 +607,8 @@ def call_queue():
         f"""SELECT u.id, u.full_name,
                   COUNT(t.id) AS assigned,
                   SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS calls,
-                  SUM(CASE WHEN {reached_sql(min_talk)} THEN 1 ELSE 0 END) AS contacts,
+                  SUM(CASE WHEN {reached_sql()} THEN 1 ELSE 0 END) AS contacts,
+                  SUM(CASE WHEN {verified_sql(min_talk)} THEN 1 ELSE 0 END) AS verified,
                   SUM({talk_seconds_sql()}) AS talk_seconds
            FROM users u
            LEFT JOIN collection_call_tasks t ON t.assigned_to=u.id AND t.task_date=?
@@ -1320,7 +1322,8 @@ def daily_call_progress(db, today: date | None = None) -> dict:
     row = db.execute(
         f"""SELECT COUNT(t.id) AS assigned,
                   COALESCE(SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END), 0) AS calls,
-                  COALESCE(SUM(CASE WHEN {reached_sql(min_talk)} THEN 1 ELSE 0 END), 0) AS contacts,
+                  COALESCE(SUM(CASE WHEN {reached_sql()} THEN 1 ELSE 0 END), 0) AS contacts,
+                  COALESCE(SUM(CASE WHEN {verified_sql(min_talk)} THEN 1 ELSE 0 END), 0) AS verified,
                   COALESCE(SUM({talk_seconds_sql()}), 0) AS talk_seconds
            FROM collection_call_tasks t WHERE t.task_date=?""",
         (task_date,),
@@ -1340,6 +1343,7 @@ def daily_call_progress(db, today: date | None = None) -> dict:
         "assigned": assigned,
         "calls": calls,
         "contacts": contacts,
+        "verified": row["verified"] or 0,
         "talk_seconds": row["talk_seconds"] or 0,
         "min_talk_seconds": min_talk,
         "contact_target": DAILY_CONTACT_TARGET * caller_count,

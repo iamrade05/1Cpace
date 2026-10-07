@@ -37,7 +37,7 @@
     </div>
     {% set talk = (summary.talk_seconds or 0)|int %}
     <div style="margin-top:10px;color:var(--t2);font-size:.78rem;">{{ summary.assigned or 0 }} calls assigned for {{ today_label }} · Talk time {{ talk // 60 }}m {{ talk % 60 }}s</div>
-    <div style="margin-top:4px;color:var(--t2);font-size:.72rem;">Reached = contact outcome + {{ min_talk_seconds }}s or more on the phone</div>
+    <div style="margin-top:4px;color:var(--t2);font-size:.72rem;">Reached = contact outcome saved by the consultant · {{ summary.verified or 0 }} confirmed by PBX ({{ min_talk_seconds }}s+ talk time)</div>
   </div>
   {% endfor %}
 </div>

@@ -182,7 +182,7 @@ def test_daily_call_stats_page_and_bad_date(app, client):
     assert client.get('/collections/reports?day=bad-date').status_code == 200
 
 
-def test_client_reached_needs_sixty_seconds_of_talk_time(app):
+def test_client_reached_follows_outcome_and_pbx_confirms_sixty_seconds(app):
     from onecpase.collections_workspace import daily_call_report
     with app.app_context():
         db = get_db()
@@ -201,7 +201,9 @@ def test_client_reached_needs_sixty_seconds_of_talk_time(app):
         db.commit()
         report = daily_call_report(db, day)
         caller = next(c for c in report['callers'] if c['staff_id'] == 2)
-        assert (report['calls'], report['contacts']) == (3, 1)  # only the 60s call counts
+        assert (report['calls'], report['contacts']) == (3, 3)  # reached follows the consultant's outcome
+        assert report['verified'] == 1  # only the 60s call is PBX-confirmed
+        assert caller['verified'] == 1
         assert caller['talk_seconds'] == 119
         assert caller['avg_talk_seconds'] == 40
 
