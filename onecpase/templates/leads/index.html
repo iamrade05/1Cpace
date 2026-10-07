@@ -108,6 +108,9 @@
         <article class="pipeline-card" style="border-left:3px solid {{ color }};">
           <div class="pc-main">
             <div class="pc-name">{{ prospect.full_name }}</div>
+            {% if status_key == 'joined' %}
+            <span class="badge badge-info">{{ membership_progress(prospect.lead_status, prospect.membership_application_status).label }}</span>
+            {% endif %}
             <div class="pc-meta">
               {{ prospect.phone or prospect.email or '—' }}
               · {{ prospect.salesperson_name or 'Unassigned' }}

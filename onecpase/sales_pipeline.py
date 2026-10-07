@@ -40,6 +40,63 @@ SALES_STAGE_LABELS = {
     stage: stage.replace("_", " ").title() for stage in SALES_STAGES
 }
 
+SALES_STAGE_LABELS["JOINED"] = "Activated"
+
+
+def membership_progress(lead_status: str, application_status: str | None = None) -> dict:
+    """Describe membership milestones from application evidence, not a join decision."""
+    started = application_status is not None
+    activated = application_status == "active"
+    declined = application_status == "declined"
+    agreed = lead_status == "joined" or started
+    if activated:
+        label = "Activated"
+        note = "Membership activated. Check the application for outstanding payment setup and documents."
+    elif declined:
+        label = "Application Declined"
+        note = "The application was declined; membership was not activated."
+    elif started:
+        label = "Application Started"
+        note = "Complete the application and verification before activation."
+    elif agreed:
+        label = "Agreed to Join"
+        note = "The client agreed to join. Start the membership application."
+    else:
+        label = None
+        note = "Record the client’s decision before starting a membership application."
+    return {"label": label, "note": note, "milestones": (
+        ("Agreed to Join", agreed),
+        ("Application Started", started),
+        ("Activated", activated),
+    )}
+
+
+SUCCESSFUL_SALES_CONTACT_OUTCOMES = frozenset({
+    "appointment_booked", "follow_up_required", "not_interested",
+})
+
+
+def sales_milestones(lead_status: str, events: set[tuple[str, str]]) -> dict[str, bool]:
+    """Count evidenced milestones; attendance does not imply an appointment."""
+    contact_types = {"call", "whatsapp", "email"}
+    return {
+        "contacted": lead_status == "contacted" or any(
+            kind in contact_types and outcome in SUCCESSFUL_SALES_CONTACT_OUTCOMES
+            for kind, outcome in events
+        ),
+        "appointment": lead_status == "appointment_booked" or any(
+            kind == "appointment" or (kind in contact_types and outcome == "appointment_booked")
+            for kind, outcome in events
+        ),
+        "show": lead_status in {"show", "hot_prospect_7day", "joined"}
+            or ("appointment", "showed") in events or ("appointment", "joined") in events
+            or any(kind == "visit" for kind, _ in events),
+        "consulted": lead_status == "hot_prospect_7day"
+            or any(kind == "consultation" for kind, _ in events),
+        "joined": lead_status == "joined",
+    }
+
+
 LEGACY_STAGE_MAP = {
     "captured": "CAPTURED",
     "assigned": "ASSIGNED",
@@ -186,6 +243,14 @@ def _write_transition(db, lead, new_stage: str, user_id: int | None,
         raise ValueError("Decision follow-up requires a completed consultation.")
     if validate_requirements and new_stage == "APPLICATION_INVITED" and old_stage not in {"SHOW", "CONSULTATION", "DECISION_FOLLOW_UP"}:
         raise ValueError("Application invitation requires a completed show, consultation, or decision follow-up.")
+
+    if validate_requirements and new_stage == "JOINED":
+        application = db.execute(
+            "SELECT application_status FROM membership_applications WHERE lead_id=? ORDER BY id DESC LIMIT 1",
+            (lead["id"],),
+        ).fetchone()
+        if not application or application["application_status"] != "active":
+            raise ValueError("Membership must be activated before the sales stage can be Activated.")
 
     now = _utc_now()
     timestamp_field = TIMESTAMP_FIELDS.get(new_stage)
@@ -335,6 +400,7 @@ def pipeline_context(db, lead_id: int) -> dict:
     return {
         "stage": stage,
         "stage_label": SALES_STAGE_LABELS[stage],
+        "stage_labels": SALES_STAGE_LABELS,
         "next_stages": sorted(ALLOWED_TRANSITIONS.get(stage, set())),
         "history": history,
     }

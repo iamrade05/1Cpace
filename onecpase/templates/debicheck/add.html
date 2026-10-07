@@ -44,7 +44,7 @@
       <div class="form-group"><label class="form-label">Account Number</label><input name="account_number" id="dcAccountNumber" class="form-control" maxlength="11" inputmode="numeric" required value="{{ form.get('account_number','') }}"></div>
       <div class="form-group"><label class="form-label">Branch Code</label><input name="branch_code" id="dcBranch" class="form-control" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" required value="{{ form.get('branch_code','') }}"></div>
       <div class="form-group"><label class="form-label">Instalment Amount</label><input type="number" name="instalment_amount" id="dcAmount" class="form-control" min="0.01" step="0.01" required value="{{ form.get('instalment_amount','') }}"></div>
-      <div class="form-group"><label class="form-label">Client Reference 1</label><input name="client_ref1" id="dcClientRef1" class="form-control" maxlength="25" required value="{{ form.get('client_ref1','') }}"></div>
+      <div class="form-group"><label class="form-label">Member ID — NuPay Reference</label><input name="client_ref1" id="dcClientRef1" readonly class="form-control" maxlength="25" required value="{{ form.get('client_ref1','') }}"></div>
       <div class="form-group"><label class="form-label">Client Reference 2 — Staff Number</label><input name="client_ref2" class="form-control" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" placeholder="4 digits" required value="{{ form.get('client_ref2','') }}"></div>
       <div class="form-group"><label class="form-label">Authentication Type</label><select name="auth_type" class="form-control"><option value="cell">Electronic Banking (TT1 Delayed)</option><option value="rm_realtime">RM Realtime</option><option value="rm_batch">RM Batch</option></select></div>
       <div class="form-group"><label class="form-label">Submit Date</label><input type="date" name="submit_date" class="form-control" min="{{ today }}" required value="{{ form.get('submit_date',today) }}"></div>
@@ -55,10 +55,15 @@
       <div class="form-group" id="standalonePassport" style="display:none;"><label class="form-label">Passport Number</label><input name="passport" class="form-control" value="{{ form.get('passport','') }}"></div>
       <div class="form-group" id="standaloneJuristic" style="display:none;"><label class="form-label">Juristic Account</label><input name="juristic_account" class="form-control" maxlength="15" value="{{ form.get('juristic_account','') }}"></div>
     </div>
+    {% if submission_blockers %}
+    <p>NuPay submission requires: {{ submission_blockers | join('; ') }}.</p>
+    {% if selected_member_id %}<a href="{{ url_for('members.member_detail', mid=selected_member_id) }}#docs" class="btn btn-secondary">Upload Application Documents</a>{% endif %}
+    {% endif %}
     <div class="form-actions" style="justify-content:flex-end;">
       <a href="{{ url_for('debicheck.index') }}" class="btn btn-ghost">Cancel</a>
       <button type="submit" name="submit_action" value="save" class="btn btn-secondary">Save Mandate</button>
-      <button type="submit" name="submit_action" value="push_nupay" class="btn btn-primary">Save &amp; Push to NuPay</button>
+      {% if session.get('role') == 'admin' %}<label><input type="checkbox" name="override" value="1"> Admin override of missing documents or qualification (audited)</label>{% endif %}
+      <button type="submit" name="submit_action" value="push_nupay" class="btn btn-primary">Submit &amp; Push to NuPay</button>
     </div>
   </div>
 </form>
@@ -66,7 +71,7 @@
 const memberSelect=document.getElementById('memberSelect'), payerSelect=document.getElementById('payerTypeStandalone'), idType=document.querySelector('[name="id_type"]');
 function toggleStandalonePayer(){document.getElementById('thirdPartyStandalone').style.display=payerSelect.value==='third_party'?'block':'none';}
 function toggleStandaloneIdentity(){document.getElementById('standalonePassport').style.display=idType.value==='1'?'flex':'none';document.getElementById('standaloneJuristic').style.display=idType.value==='4'?'flex':'none';}
-function prefillStandalone(){const o=memberSelect.options[memberSelect.selectedIndex];if(!o?.value)return;const set=(id,v)=>{const e=document.getElementById(id);if(e&&!e.value)e.value=v||''};set('dcAccountName',o.dataset.accountName||o.dataset.name);set('dcAmount',o.dataset.amount);set('dcAccountNumber',o.dataset.accountNumber);set('dcBranch',o.dataset.branch);set('dcClientRef1',o.dataset.clientRef);const bank=document.getElementById('dcBank');if(!bank.value)bank.value=o.dataset.bank||'';const type=document.getElementById('dcAccountType');if(o.dataset.accountType)type.value=o.dataset.accountType;}
+function prefillStandalone(){const o=memberSelect.options[memberSelect.selectedIndex];if(!o?.value)return;const set=(id,v)=>{const e=document.getElementById(id);if(e&&!e.value)e.value=v||''};set('dcAccountName',o.dataset.accountName||o.dataset.name);set('dcAmount',o.dataset.amount);set('dcAccountNumber',o.dataset.accountNumber);set('dcBranch',o.dataset.branch);document.getElementById('dcClientRef1').value=o.dataset.clientRef||'';const bank=document.getElementById('dcBank');if(!bank.value)bank.value=o.dataset.bank||'';const type=document.getElementById('dcAccountType');if(o.dataset.accountType)type.value=o.dataset.accountType;}
 memberSelect.addEventListener('change',prefillStandalone);payerSelect.addEventListener('change',toggleStandalonePayer);idType.addEventListener('change',toggleStandaloneIdentity);document.getElementById('dcBank').addEventListener('change',e=>{const code=e.target.options[e.target.selectedIndex]?.dataset.branch;if(code)document.getElementById('dcBranch').value=code});toggleStandalonePayer();toggleStandaloneIdentity();prefillStandalone();
 </script>
 {% endblock %}

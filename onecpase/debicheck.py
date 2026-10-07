@@ -40,11 +40,8 @@ def mandate_from_member(member_id: int, data: dict[str, Any]) -> dict[str, Any]:
     )
     identity = data.get("payer_id_number") if payer_type == "third_party" else data.get("id_number")
     identity_type = data.get("debicheck_id_type") or "0"
-    client_ref1 = (
-        data.get("debicheck_client_ref1")
-        or itensity_client_ref_number(data.get("itensity_ref"))
-        or f"FIT-{member_id}"
-    )
+    # The member identity stays distinct from a third-party payer identity.
+    client_ref1 = str(data.get("id_number") or "").strip()
 
     return {
         "member_id": member_id,
@@ -152,12 +149,13 @@ def insert_mandate(db, mandate: dict[str, Any], user_id: int | None) -> int:
             VALUES ({', '.join('?' for _ in fields)}, 'pending', ?)""",
         tuple(mandate[field] for field in fields) + (user_id,),
     )
+    sync_debicheck_to_application(db, cursor.lastrowid, actor_id=user_id)
     return cursor.lastrowid
 
 
 def _undecrypted_fields_error(mandate: dict[str, Any]) -> str | None:
     undecrypted = [
-        field for field in ("account_number", "branch_code", "id_number")
+        field for field in ("account_number", "branch_code", "id_number", "client_ref1")
         if str(mandate.get(field) or "").startswith("enc:")
     ]
     if not undecrypted:
@@ -222,6 +220,11 @@ def record_push_result(db, mandate_id: int, success: bool, message: str) -> None
         ("submitted" if success else "failed",
          datetime.now().isoformat(timespec="seconds"), message, mandate_id),
     )
+    if success:
+        contract = re.search(r"Contract Reference:\s*([A-Za-z0-9]+)", message, re.IGNORECASE)
+        if contract:
+            db.execute("UPDATE debicheck_mandates SET contract_reference=? WHERE id=? AND COALESCE(imported_from_nupay, 0)=0", (contract.group(1), mandate_id))
+    sync_debicheck_to_application(db, mandate_id)
 
 
 # NuPay installations can return different spellings for the same business
@@ -279,12 +282,13 @@ def sync_debicheck_to_application(db, mandate_id: int, actor_id: int | None = No
         return None
 
     status = normalise_debicheck_status(row["status"])
+    latest = db.execute("SELECT id FROM debicheck_mandates WHERE member_id=? ORDER BY id DESC LIMIT 1", (row["member_id"],)).fetchone()
+    if latest and latest["id"] != mandate_id:
+        return status
     checklist_status = {
         "approved": "approved",
         "failed": "failed",
-    }.get(status)
-    if checklist_status is None:
-        return status
+    }.get(status, "pending")
 
     aid = row["application_id"]
     previous = db.execute(
@@ -313,4 +317,4 @@ def sync_debicheck_to_application(db, mandate_id: int, actor_id: int | None = No
             # application record cannot be reconciled.
             pass
 
-    return checklist_status
+    return status if checklist_status == "pending" else checklist_status

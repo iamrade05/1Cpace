@@ -917,7 +917,18 @@ def match_mandate_row(
         row for row in rows
         if client_ref1 and _field_match(client_ref1, row.get("client_reference"))
     ]
-    if client_ref_matches:
+    is_member_id_reference = len(client_ref1) == 13 and client_ref1.isdigit()
+    if is_member_id_reference:
+        # A payer account may be shared by several members. New ID references
+        # must never fall back to that account and approve the wrong member.
+        if contract_reference:
+            candidates = [row for row in rows if str(row.get("contract_reference") or "").strip().lower() == contract_reference]
+        else:
+            candidates = client_ref_matches
+            contracts = {str(row.get("contract_reference") or "").strip().lower() for row in candidates}
+            if len(contracts) > 1:
+                return None, False  # Several mandates for this ID need a specific contract.
+    elif client_ref_matches:
         candidates = client_ref_matches
     else:
         candidates = [

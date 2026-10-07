@@ -16,7 +16,7 @@ status. Management receives exceptions rather than routine cases.
    person was reached.
 3. Unsuccessful contact follows the fixed sequence: `CALL` → `WHATSAPP` →
    `SMS` → `EMAIL`.
-4. Each collections caller has a configurable daily call target (default: 40).
+4. Each collections caller has a configurable daily call target (default: 100).
    Contact rate is tracked separately from call activity.
 5. A failed debit creates or refreshes an open collection case.
 6. At two months owing, an active DebiCheck arrangement allows access. Without
@@ -60,7 +60,7 @@ The existing Collections call queue, client profile, PTP, DebiCheck, access, and
 reporting screens remain the user-facing surfaces. Their next integration pass
 should expose the engine fields directly:
 
-- Collections dashboard: queue counts, 40-call progress, contact rate, PTP
+- Collections dashboard: queue counts, 100-call progress, contact rate, PTP
   status, access restrictions, inactive accounts, and pending exceptions.
   **Built** — the PTP/Collections dashboard now carries Awaiting Manager
   (linking to the exception queue, manager/admin only), Calls Today against the
@@ -122,3 +122,27 @@ The remaining provider-specific limitation is deliberate: WhatsApp/SMS cannot
 be sent automatically until a provider integration is configured. 1Cpase still
 controls the required channel and records the human/provider action in the
 audit trail.
+
+
+## Confirmed debit cycles and separate reminders
+
+The five groups are the 1st, 5th, 15th, 25th and month-end (30th/31st).
+Month-end members retain their contractual 30th or 31st due date; short months
+clamp to the last calendar day. Reminder windows use the actual due date, not
+an earlier Friday operational date. Dates are evaluated in Africa/Johannesburg.
+
+Outstanding active members receive a separate message-reminder task two days
+before their due date. Staff deliver through their usual WhatsApp, SMS or email
+channel and record delivery. No live messaging service is invoked by this change.
+One reminder per member and due date is preserved across repeated scheduler runs;
+settled reminders are closed and undelivered reminders expire on the due date.
+Reminders do not consume call assignments, call KPIs or five-day call rest periods.
+
+Confirmed failed charges become call-eligible the next calendar day after the
+debit date. Pending and partially paid charges cannot be labelled failed debits.
+All eligible earlier cycles remain working when another cycle receives reminders;
+older unpaid failed charges remain eligible instead of falling out at month change.
+Members in their own upcoming reminder window receive messages instead of new
+phone assignments. Other older clients continue through the existing call process.
+Caller capacity remains 100 calls per caller per day. Existing Sales ownership,
+transfer rules, settled-account cleanup and five-day call rest remain enforced.

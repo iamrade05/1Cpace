@@ -169,7 +169,7 @@ def decrypt_member(row) -> dict:
 
 # ── DebiCheck mandate field helpers ──────────────────────────────────────────
 
-_MANDATE_ENCRYPT_FIELDS = ("account_number", "branch_code", "id_number")
+_MANDATE_ENCRYPT_FIELDS = ("account_number", "branch_code", "id_number", "client_ref1")
 
 
 def encrypt_mandate(data: dict) -> dict:

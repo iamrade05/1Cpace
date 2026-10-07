@@ -312,6 +312,11 @@ def sync_from_report(
     candidates: dict[int, list[tuple[Any, dict[str, Any]]]] = {}
     for report_row in live_unrecorded:
         by_reference = _member_by_reference(report_row, by_ref)
+        # An ID in our reference field identifies the member, even when a
+        # different account holder pays. A debtor ID alone is still held.
+        reference_id = _client_reference_digits(report_row)
+        if by_reference is None and len(reference_id) == 13:
+            by_reference = by_id.get(hash_for_lookup(reference_id))
         member = by_reference or _member_by_id(report_row, by_id)
         if member is None:
             no_member += 1

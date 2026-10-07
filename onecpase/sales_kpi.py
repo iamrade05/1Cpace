@@ -47,6 +47,7 @@ def ensure_sales_kpi_schema(db, backend: str) -> None:
             ("failure_reason", "TEXT"), ("recovery_status", "TEXT"),
         ),
         "leads": (("assigned_at", timestamp), ("first_contact_at", timestamp)),
+        "collections": (("payment_purpose", "TEXT DEFAULT 'general'"),),
     }
     for table, additions in columns.items():
         if backend == "postgresql":
@@ -207,6 +208,8 @@ def build_sales_report(db, date_from: str, date_to: str,
                 (activity["activity_type"], activity["outcome"] or "")
             )
 
+    from .sales_pipeline import sales_milestones
+
     stages = {"contacted": 0, "appointment": 0, "show": 0, "joined": 0}
     scoped_leads = []
     for lead in leads:
@@ -216,33 +219,42 @@ def build_sales_report(db, date_from: str, date_to: str,
             continue
         events = activity_map.get(lead["id"], set())
         stage = lead["lead_status"]
-        flags = {
-            "contacted": any(kind in {"call", "whatsapp", "email"} for kind, _ in events)
-                or stage in {"contacted", "appointment_booked", "show", "hot_prospect_7day", "joined"},
-            "appointment": any(kind == "appointment" or (kind in {"call", "whatsapp", "email"} and outcome == "appointment_booked") for kind, outcome in events)
-                or stage in {"appointment_booked", "show", "hot_prospect_7day", "joined"},
-            "show": ("appointment", "showed") in events or any(kind == "visit" for kind, _ in events)
-                or stage in {"show", "hot_prospect_7day", "joined"},
-            "joined": stage == "joined",
-        }
+        flags = sales_milestones(stage, events)
         scoped_leads.append(lead)
-        for key, reached in flags.items():
-            stages[key] += int(reached)
+        for key in stages:
+            stages[key] += int(flags[key])
 
     scoped_lead_ids = {lead["id"] for lead in scoped_leads}
     applications = _report_rows(
         db, """SELECT ma.id, ma.lead_id, ma.application_status, ma.created_by, ma.created_at, ma.updated_at,
+                       m.first_name, m.last_name,
                        COALESCE(l.assigned_to, ma.created_by) AS owner_id
                   FROM membership_applications ma
-                  LEFT JOIN leads l ON l.id = ma.lead_id"""
+                  LEFT JOIN leads l ON l.id = ma.lead_id
+                  LEFT JOIN members m ON m.id = ma.member_id"""
     )
     scoped_apps = [app for app in applications if in_window(app["created_at"])
                    and app["lead_id"] in scoped_lead_ids
                    and (user_id is None or app["owner_id"] == user_id)]
-    active_apps = sum(app["application_status"] in {"active", "pushed"} for app in scoped_apps)
+    active_apps = sum(app["application_status"] == "active" for app in scoped_apps)
+    from .applications import compliance_completion_blockers
+    completion_events = _report_rows(db, """SELECT se.* FROM stage_events se
+        JOIN (SELECT application_id, MIN(id) AS first_id FROM stage_events
+              WHERE entity_type='compliance' AND field='overall_status' AND to_value='complete'
+              GROUP BY application_id) first_completion ON se.id=first_completion.first_id""")
+    apps_by_id = {app["id"]: app for app in applications}
+    credited_sales = []
+    for event in completion_events:
+        app = apps_by_id.get(event["application_id"])
+        if (not app or not in_window(event["occurred_at"])
+                or (user_id is not None and event["owner_id"] != user_id)
+                or compliance_completion_blockers(db, app["id"])):
+            continue
+        credited_sales.append({**app, "credited_at": event["occurred_at"], "credited_to": event["owner_id"]})
+    completed_cohort = sum(not compliance_completion_blockers(db, app["id"]) for app in scoped_apps)
     stale_cutoff = datetime.now().date() - timedelta(days=7)
     stalled = [app for app in scoped_apps
-               if app["application_status"] not in {"active", "pushed"}
+               if app["application_status"] not in {"active", "declined"}
                and (_report_date(app["updated_at"]) or datetime.now().date()) <= stale_cutoff]
     untouched = [lead for lead in scoped_leads
                  if lead["lead_status"] in {"captured", "assigned"}
@@ -255,10 +267,10 @@ def build_sales_report(db, date_from: str, date_to: str,
         row["leads"] += 1
         row["joined"] += int(lead["lead_status"] == "joined")
 
-    funnel_order = ("assigned", "contacted", "appointment", "show", "application", "activated", "joined")
+    funnel_order = ("assigned", "contacted", "appointment", "show", "joined", "application", "activated")
     funnel_counts = (
         len(scoped_leads), stages["contacted"], stages["appointment"], stages["show"],
-        len(scoped_apps), active_apps, stages["joined"],
+        stages["joined"], len(scoped_apps), active_apps,
     )
     leakage = []
     for index, stage_name in enumerate(funnel_order):
@@ -410,7 +422,8 @@ def build_sales_report(db, date_from: str, date_to: str,
         card = build_sales_report(db, date_from, date_to, consultant["id"]) if user_id is None else None
         if card is not None:
             consultant_cards.append({"user_id": consultant["id"], "username": consultant["username"],
-                                     "funnel": card["funnel"], "application_rate_pct": card["application_rate_pct"]})
+                                     "funnel": card["funnel"], "application_rate_pct": card["application_rate_pct"],
+                                     "completed_sales": card["completed_sales"]["count"]})
 
     funnel = {
         "assigned": len(scoped_leads), "contacted": stages["contacted"],
@@ -421,6 +434,7 @@ def build_sales_report(db, date_from: str, date_to: str,
     return {
         "date_from": start.isoformat(), "date_to": end.isoformat(),
         "funnel": funnel,
+        "completed_sales": {"count": len(credited_sales), "applications": credited_sales},
         "contact_rate_pct": _report_pct(funnel["contacted"], funnel["assigned"]),
         "appointment_rate_pct": _report_pct(funnel["appointments"], funnel["contacted"]),
         "show_rate_pct": _report_pct(funnel["shows"], funnel["appointments"]),
@@ -436,7 +450,8 @@ def build_sales_report(db, date_from: str, date_to: str,
         "consultants": consultant_cards,
         "application_quality": {
             "started": len(scoped_apps), "activated": active_apps,
-            "completion_rate_pct": _report_pct(active_apps, len(scoped_apps)),
+            "completed": completed_cohort,
+            "completion_rate_pct": _report_pct(completed_cohort, len(scoped_apps)),
             "stalled": len(stalled),
             "first_time_right": first_time_right,
             "first_time_right_pct": _report_pct(first_time_right, len(compliance_apps)),

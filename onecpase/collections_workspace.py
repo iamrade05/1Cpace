@@ -413,11 +413,10 @@ def daily_call_report(db, day, call_target=100, contact_target=10):
 
     A client counts as reached only with a contact outcome AND enough PBX talk time.
     """
-    from .collections_engine import reached_sql, talk_seconds_sql, verified_sql
+    from .collections_engine import reached_sql, talk_seconds_sql
 
     min_talk = _min_talk(db)
-    reached = reached_sql()
-    verified = verified_sql(min_talk)
+    reached = reached_sql(min_talk)
     talk = talk_seconds_sql()
     rows = db.execute(
         f"""SELECT u.id AS staff_id, u.full_name AS name,
@@ -425,8 +424,6 @@ def daily_call_report(db, day, call_target=100, contact_target=10):
                       substr(COALESCE(t.called_at,t.task_date),1,10)=? THEN 1 ELSE 0 END) AS calls,
                   SUM(CASE WHEN t.status='completed' AND {reached} AND
                       substr(COALESCE(t.called_at,t.task_date),1,10)=? THEN 1 ELSE 0 END) AS contacts,
-                  SUM(CASE WHEN t.status='completed' AND {verified} AND
-                      substr(COALESCE(t.called_at,t.task_date),1,10)=? THEN 1 ELSE 0 END) AS verified,
                   SUM(CASE WHEN t.status='completed' AND
                       substr(COALESCE(t.called_at,t.task_date),1,10)=? THEN {talk} ELSE 0 END) AS talk_seconds,
                   SUM(CASE WHEN t.status='pending' AND t.task_date=? THEN 1 ELSE 0 END) AS pending
@@ -435,7 +432,7 @@ def daily_call_report(db, day, call_target=100, contact_target=10):
               OR (t.status='completed' AND substr(COALESCE(t.called_at,t.task_date),1,10)=?)
               OR (t.status='pending' AND t.task_date=?)
            GROUP BY u.id,u.full_name ORDER BY calls DESC,u.full_name""",
-        (day, day, day, day, day, day, day),
+        (day, day, day, day, day, day),
     ).fetchall()
     callers = []
     for row in rows:
@@ -456,12 +453,9 @@ def daily_call_report(db, day, call_target=100, contact_target=10):
     contacts = _scalar(db, f"""SELECT COUNT(*) FROM collection_call_tasks t
         WHERE t.status='completed' AND {reached}
         AND substr(COALESCE(t.called_at,t.task_date),1,10)=?""", (day,))
-    verified_total = _scalar(db, f"""SELECT COUNT(*) FROM collection_call_tasks t
-        WHERE t.status='completed' AND {verified}
-        AND substr(COALESCE(t.called_at,t.task_date),1,10)=?""", (day,))
     pending = _scalar(db, "SELECT COUNT(*) FROM collection_call_tasks WHERE status='pending' AND task_date=?", (day,))
     return {'day': day, 'callers': callers, 'outcomes': outcomes,
-            'calls': calls, 'contacts': contacts, 'verified': verified_total, 'pending': pending,
+            'calls': calls, 'contacts': contacts, 'pending': pending,
             'talk_seconds': sum(c['talk_seconds'] for c in callers),
             'contact_rate': round(100 * contacts / calls,1) if calls else None,
             'call_target': call_target, 'contact_target': contact_target,

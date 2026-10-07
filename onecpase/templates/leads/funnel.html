@@ -10,7 +10,7 @@
 <div class="form-card" style="margin-bottom:18px;overflow-x:auto;">
   <h3 style="margin-bottom:12px;">By {{ label }}</h3>
   <div class="table-wrap"><table style="width:100%;font-size:.8rem;white-space:nowrap;" class="table">
-    <thead><tr><th>{{ label }}</th><th>Prospects</th><th>Assigned</th><th>Contacted</th><th>Appointments</th><th>Showed</th><th>Consulted</th><th>Joined</th><th>Conversion</th><th>Monthly Sales Value</th></tr></thead>
+    <thead><tr><th>{{ label }}</th><th>Prospects</th><th>Assigned</th><th>Contacted</th><th>Appointments</th><th>Showed</th><th>Consulted</th><th>Agreed to Join</th><th>Agreement Rate</th><th>Monthly Sales Value</th></tr></thead>
     <tbody>
       {% for name, row in rows %}<tr><td><strong>{{ name }}</strong></td><td>{{ row.prospects }}</td><td>{{ row.assigned }}</td><td>{{ row.contacted }}</td><td>{{ row.appointment }}</td><td>{{ row.showed }}</td><td>{{ row.consulted }}</td><td>{{ row.joined }}</td><td>{{ rate(row.joined, row.prospects) }}</td><td class="num">R{{ '%.2f'|format(row.sales_value) }}</td></tr>
       {% else %}<tr><td colspan="10">No prospect data yet.</td></tr>{% endfor %}
@@ -24,10 +24,11 @@
 <div style="display:flex;justify-content:flex-end;margin-bottom:12px;"><a href="{{ url_for('leads.leads_index') }}" class="btn btn-secondary">Back to Pipeline</a></div>
 <div class="form-card" style="margin-bottom:18px;overflow-x:auto;">
   <h3 style="margin-bottom:12px;">Overall Funnel</h3>
+  <p>Contacted counts successful conversations. Walk-ins count as attendance without implying an appointment or consultation. Agreed to Join records the client’s decision. Application progress and activation are shown on the prospect record.</p>
   <div style="display:flex;gap:8px;align-items:stretch;min-width:760px;">
     {% for key in stage_keys %}
     <div style="flex:1;background:{% if key == 'joined' %}#dcfce7{% else %}#eff6ff{% endif %};padding:14px 8px;text-align:center;border-radius:8px;">
-      <div style="font-size:.7rem;text-transform:uppercase;color:#64748b;font-weight:700;">{{ key|title }}</div>
+      <div style="font-size:.7rem;text-transform:uppercase;color:#64748b;font-weight:700;">{{ 'Agreed to Join' if key == 'joined' else key|title }}</div>
       <div style="font-size:1.6rem;font-weight:800;color:#1e3a8a;">{{ overall[key] }}</div>
       <div style="font-size:.7rem;color:#64748b;">{{ rate(overall[key], overall.prospects) }} of prospects</div>
     </div>

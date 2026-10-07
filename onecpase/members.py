@@ -663,9 +663,16 @@ def members_add():
                 ).fetchone()
                 mandate["application_id"] = app_row["id"] if app_row else None
                 mandate["owner_id"] = session.get("user_id")
-                mandate_id = insert_mandate(db, mandate, session.get("user_id"))
+                from .encryption import encrypt_mandate
+                mandate_id = insert_mandate(db, encrypt_mandate(mandate), session.get("user_id"))
                 member_activity(db, mid, f"DebiCheck mandate #{mandate_id} created")
                 db.commit()
+                from .applications import nupay_submission_blockers, authorize_nupay_override
+                blockers = nupay_submission_blockers(db, mid)
+                if blockers and not authorize_nupay_override(db, mid, blockers):
+                    flash("Member and mandate saved. NuPay submission blocked: " + "; ".join(blockers), "warning")
+                    return redirect(url_for("members.member_detail", mid=mid))
+                db.commit()  # Persist an explicit admin exception before external submission.
                 try:
                     pushed, message = push_mandate_to_nupay(mandate)
                 except Exception as exc:
@@ -744,15 +751,18 @@ def member_detail(mid: int):
             "SELECT * FROM compliance_checklists WHERE application_id = ?", (application["id"],)
         ).fetchone()
         latest_analysis = db.execute(
-            "SELECT * FROM statement_analyses WHERE application_id = ? ORDER BY created_at DESC LIMIT 1",
+            "SELECT * FROM statement_analyses WHERE application_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
             (application["id"],),
         ).fetchone()
+        from .applications import _itensity_hard_blockers
+        evidence_blockers = _itensity_hard_blockers(db, application["id"], mid)
         itensity_ready = (
             _is_ready_to_push(itensity_checklist, latest_analysis)
+            and not evidence_blockers
             and application["push_status"] not in ("pushed", "pushing")
             if itensity_checklist else False
         )
-        itensity_missing = _missing_requirements(itensity_checklist, latest_analysis) if itensity_checklist else []
+        itensity_missing = list(dict.fromkeys(_missing_requirements(itensity_checklist, latest_analysis) + evidence_blockers))
 
     notes = db.execute(
         """SELECT n.*, u.full_name AS author

@@ -726,6 +726,13 @@ def _engine_table_statements(backend):
             FOREIGN KEY (member_id) REFERENCES members(id), FOREIGN KEY (collection_id) REFERENCES collections(id),
             FOREIGN KEY (assigned_to) REFERENCES users(id)
         )""",
+        f"""CREATE TABLE IF NOT EXISTS collection_reminders (
+            id {id_type}, member_id INTEGER NOT NULL, due_date TEXT NOT NULL, reminder_date TEXT NOT NULL,
+            cycle_group TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', channel TEXT,
+            delivered_at TEXT, delivered_by INTEGER, created_at {timestamp},
+            UNIQUE(member_id, due_date),
+            FOREIGN KEY(member_id) REFERENCES members(id), FOREIGN KEY(delivered_by) REFERENCES users(id)
+        )""",
         f"""CREATE TABLE IF NOT EXISTS collection_communications (
             id {id_type}, case_id INTEGER, member_id INTEGER NOT NULL, task_id INTEGER,
             channel TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', outcome TEXT, notes TEXT,
@@ -805,6 +812,7 @@ def _engine_table_statements(backend):
         "CREATE INDEX IF NOT EXISTS idx_collection_stage_case ON collection_stage_history(case_id, changed_at)",
         "CREATE INDEX IF NOT EXISTS idx_collections_cases_member_status ON collections_cases(member_id, status)",
         "CREATE INDEX IF NOT EXISTS idx_collection_assignment_case ON collection_assignment_history(case_id, transferred_at)",
+        "CREATE INDEX IF NOT EXISTS idx_collection_reminders_due ON collection_reminders(status, reminder_date, due_date)",
         "CREATE INDEX IF NOT EXISTS idx_collection_communications_member ON collection_communications(member_id, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_collection_exceptions_status ON collection_exceptions(status, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_access_decisions_member ON access_decisions(member_id, evaluated_at)",
@@ -893,20 +901,11 @@ def talk_seconds_sql(alias: str = "t") -> str:
     )
 
 
-def reached_sql(min_talk_seconds: int = 0, alias: str = "t") -> str:
-    """SQL condition: the client was reached, as recorded by the consultant.
+def reached_sql(min_talk_seconds: int, alias: str = "t") -> str:
+    """SQL condition: the client was genuinely reached.
 
-    Reached follows the call outcome the consultant saved. The PBX does not
-    reliably report every call, so talk time is not required here; see
-    verified_sql for the stricter PBX-backed figure.
-    """
-    return f"({alias}.successful_contact = 1)"
-
-
-def verified_sql(min_talk_seconds: int, alias: str = "t") -> str:
-    """SQL condition: a reached client whose call the PBX confirms.
-
-    The contact outcome plus at least min_talk_seconds of PBX talk time.
+    A contact outcome alone is not enough - the call must also have run for at
+    least min_talk_seconds of real conversation.
     """
     return f"({alias}.successful_contact = 1 AND {talk_seconds_sql(alias)} >= {int(min_talk_seconds)})"
 
@@ -1206,7 +1205,7 @@ def refresh_case_workflow(db, case_id, *, today=None, changed_by=None, source="s
 
 
 def find_duplicate_collection(db, member_id, collection_date, outstanding_balance, amount_paid,
-                              method, status, notes):
+                              method, status, notes, payment_purpose="general"):
     """An identical payment/charge record already on file. Imports skip these by
     the same key, so a double-clicked form cannot add what an import would not."""
     try:
@@ -1217,8 +1216,8 @@ def find_duplicate_collection(db, member_id, collection_date, outstanding_balanc
         """SELECT id FROM collections
            WHERE member_id=? AND collection_date=? AND ROUND(COALESCE(outstanding_balance,0),2)=?
              AND ROUND(COALESCE(amount_paid,0),2)=? AND COALESCE(method,'')=? AND status=?
-             AND COALESCE(notes,'')=? LIMIT 1""",
-        (member_id, collection_date, due, paid, method or "", status, notes or ""),
+             AND COALESCE(notes,'')=? AND COALESCE(payment_purpose,'general')=? LIMIT 1""",
+        (member_id, collection_date, due, paid, method or "", status, notes or "", payment_purpose),
     ).fetchone()
 
 

@@ -104,15 +104,15 @@ def _backup_before_write(root: Path, db_path: str, label: str) -> Path:
 
 def _job_ptp_automations(app) -> None:
     from .ptp import _run_collections_automations
-    from .collections import _ensure_daily_call_tasks
+    from .collections import _collections_today, _ensure_daily_call_tasks
 
-    today = date.today().isoformat()
+    today = _collections_today().isoformat()
     for tenant in _active_tenants(app):
         conn = sqlite3.connect(tenant["db_path"])
         conn.row_factory = sqlite3.Row
         try:
             counts = _run_collections_automations(conn, today)
-            cycle = _ensure_daily_call_tasks(conn, date.today())
+            cycle = _ensure_daily_call_tasks(conn, _collections_today())
             logger.info(
                 "[scheduler] PTP/collections automations for %s: %s; call-cycle=%s",
                 tenant["name"], counts, cycle,
@@ -135,9 +135,9 @@ def _job_collections_workflow(app) -> None:
     and today's call workload are maintained in the background.
     """
     from .ptp import _run_collections_automations
-    from .collections import _ensure_daily_call_tasks
+    from .collections import _collections_today, _ensure_daily_call_tasks
 
-    today = date.today()
+    today = _collections_today()
     for tenant in _active_tenants(app):
         conn = sqlite3.connect(tenant["db_path"])
         conn.row_factory = sqlite3.Row

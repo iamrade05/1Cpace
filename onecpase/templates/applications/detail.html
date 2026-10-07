@@ -34,16 +34,16 @@
           style="display:inline; margin-left:10px;">
       <button type="submit" class="btn btn-primary"
               style="background:#059669; border-color:#059669; font-size:0.8rem;">
-         Push Application
+         Push to Itensity
       </button>
     </form>
-    {% elif is_manager and checklist and app.push_status not in ('pushed', 'pushing') %}
+    {% elif is_admin and checklist and app.push_status not in ('pushed', 'pushing') %}
     <form method="POST" action="{{ url_for('applications.push_application', aid=app.id) }}"
           id="overridePushForm" style="display:inline; margin-left:10px;">
       <input type="hidden" name="override" value="1">
       <button type="button" onclick="confirmOverridePush()" class="btn btn-primary"
               style="background:#dc2626; border-color:#dc2626; font-size:0.8rem;">
-         Override &amp; Push (Manager)
+         Override &amp; Push to Itensity (Admin)
       </button>
     </form>
     <script>
@@ -51,11 +51,40 @@
       const missing = {{ missing_items | tojson }};
       const msg = 'This application is NOT fully verified. Missing:\n\n- '
                   + missing.join('\n- ')
-                  + '\n\nPush to Itensity anyway? This will be logged as a manager override.';
+                  + '\n\nPush to Itensity anyway? This will be logged as an admin override.';
       showInlineConfirmation(document.getElementById('overridePushForm'), msg);
     }
     </script>
     {% endif %}
+  </div>
+</div>
+
+{% if app.member_id and app.application_status != 'active' and has_perm('new_debicheck') %}
+<div class="card">
+  <div class="card-body">
+    <h2>Submit Application to NuPay</h2>
+    <p>Upload the ID copy and bank statement, then analyse the statement before submitting. DebiCheck approval is required before pushing to Itensity.</p>
+    {% if nupay_blockers %}
+    <p>{{ nupay_blockers | join('; ') }}.</p>
+    {% endif %}
+    {% if latest_mandate %}
+    <a class="btn btn-primary" href="{{ url_for('debicheck.detail', mandate_id=latest_mandate.id) }}">{% if checklist.debit_check_status == 'approved' %}View Approved DebiCheck{% else %}Submit &amp; Push to NuPay{% endif %}</a>
+    {% else %}
+    <a class="btn btn-primary" href="{{ url_for('debicheck.add', member_id=app.member_id) }}">Complete Mandate &amp; Submit to NuPay</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-body">
+    <h2>Compliance and Consultant Sales Credit</h2>
+    {% if compliance_blockers %}
+    <p><strong>Incomplete — no consultant sales credit.</strong> {{ compliance_blockers | join('; ') }}.</p>
+    {% else %}
+    <p><strong>Complete — eligible for consultant sales credit.</strong></p>
+    {% endif %}
+    <p>Activation alone does not count as a completed sale. The signed contract and fully paid registration fee are required.</p>
   </div>
 </div>
 
@@ -127,11 +156,11 @@
         {% endfor %}
       </div>
 
-      <!-- Parallel tasks: don't block the Itensity push, still needed to finish the membership -->
+      <!-- DebiCheck and ID block activation; the registration fee remains a follow-up. -->
       {% if followups %}
       <div style="margin-top:14px; padding-top:14px; border-top:1px solid #f3f4f6;">
         <div style="font-size:0.75rem; font-weight:700; color:#6b7280; text-transform:uppercase;
-                    letter-spacing:0.5px; margin-bottom:8px;">Also Needed to Complete Membership</div>
+                    letter-spacing:0.5px; margin-bottom:8px;">Membership Completion</div>
         {% for item in followups %}
         <div style="font-size:0.8rem; margin-bottom:4px;
                     color:{% if item.done %}#059669{% else %}#9ca3af{% endif %};">
@@ -139,7 +168,7 @@
         </div>
         {% endfor %}
         {% if checklist.pos_status != 'paid' and app.member_id and has_perm('new_collection') %}
-        <a href="{{ url_for('collections.collections_add', member_id=app.member_id) }}"
+        <a href="{{ url_for('collections.collections_add', member_id=app.member_id, payment_purpose='registration_fee') }}"
            class="btn btn-ghost btn-sm" style="margin-top:6px; font-size:0.76rem;">Record Registration Fee Payment</a>
         {% endif %}
       </div>

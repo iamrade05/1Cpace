@@ -123,7 +123,7 @@
           <form method="post" action="{{ url_for('applications.push_application', aid=application.id) }}">
             <button class="btn btn-secondary btn-sm">Push to Itensity</button>
           </form>
-        {% elif is_manager and application.push_status not in ('pushed', 'pushing') %}
+        {% elif session.get('role') == 'admin' and application.push_status not in ('pushed', 'pushing') %}
           <form method="post" action="{{ url_for('applications.push_application', aid=application.id) }}"
                 id="itensityOverrideForm">
             <input type="hidden" name="override" value="1">

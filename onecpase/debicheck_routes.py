@@ -12,7 +12,6 @@ from .debicheck import (
     IMPORTED_MANDATE_MESSAGE,
     check_mandate_status_on_nupay,
     insert_mandate,
-    itensity_client_ref_number,
     mandate_from_member,
     push_mandate_to_nupay,
     push_mandate_to_nupay_manual_review,
@@ -42,12 +41,13 @@ def index():
             m.first_name LIKE ? OR m.last_name LIKE ?
             OR (m.first_name || ' ' || m.last_name) LIKE ?
             OR d.client_ref1 LIKE ? OR d.client_ref2 LIKE ?
-            OR d.nupay_response LIKE ?
+            OR d.nupay_response LIKE ? OR m.id_number_hash = ? OR m.id_number = ? OR d.client_ref1 LIKE 'enc:%'
         )"""
         # nupay_response is where the contract reference actually lives
         # (e.g. "DCPRD00015MQZ6") — it isn't its own column, so a search for
         # a contract ref would silently find nothing without this.
-        params += [like, like, like, like, like, like]
+        from .encryption import hash_for_lookup
+        params += [like, like, like, like, like, like, hash_for_lookup(q), q]
     sql += " ORDER BY d.created_at DESC, d.id DESC"
     rows = get_db().execute(sql, params).fetchall()
     # Decrypt PII fields on each row for display
@@ -56,6 +56,11 @@ def index():
         rd = decrypt_mandate(row)
         from .encryption import decrypt
         rd["id_number"] = decrypt(rd.get("id_number"))
+        if q:
+            values = [rd.get(field) for field in ("first_name", "last_name", "client_ref1", "client_ref2", "nupay_response", "id_number")]
+            values.append(f"{rd.get('first_name', '')} {rd.get('last_name', '')}")
+            if not any(q.casefold() in str(value or "").casefold() for value in values):
+                continue
         decrypted.append(rd)
     counts = {row["status"]: row["count"] for row in get_db().execute(
         "SELECT status, COUNT(*) AS count FROM debicheck_mandates GROUP BY status"
@@ -184,7 +189,7 @@ def add():
     ).fetchall()
     members = [decrypt_member(m) for m in raw_members]
     for m in members:
-        m["client_ref_suggestion"] = itensity_client_ref_number(m.get("itensity_ref"))
+        m["client_ref_suggestion"] = str(m.get("id_number") or "").strip()
     selected_member_id = request.form.get("member_id") or request.args.get("member_id", "")
 
     if request.method == "POST":
@@ -217,6 +222,7 @@ def add():
         "debicheck/add.html", members=members, banks=BANKS,
         selected_member_id=str(selected_member_id), today=date.today().isoformat(),
         form=request.form,
+        submission_blockers=_submission_blockers(db, int(selected_member_id)) if str(selected_member_id).isdigit() else [],
     )
 
 
@@ -256,7 +262,7 @@ def edit(mandate_id):
             "account_type": form.get("account_type", "").strip(),
             "account_number": form.get("account_number", "").strip(),
             "branch_code": form.get("branch_code", "").strip(),
-            "client_ref1": form.get("client_ref1", "").strip(),
+            "client_ref1": decrypt_mandate(row)["client_ref1"],
             "client_ref2": form.get("client_ref2", "").strip(),
             "frequency": form.get("frequency", "3").strip(),
             "no_installments": form.get("no_installments", "99").strip(),
@@ -305,26 +311,39 @@ def edit(mandate_id):
     return render_template("debicheck/edit.html", mandate=mandate, banks=BANKS, today=date.today().isoformat())
 
 
-def _member_itensity_ref(db, member_id: int) -> str:
-    row = db.execute("SELECT itensity_ref FROM members WHERE id=?", (member_id,)).fetchone()
-    return str(row["itensity_ref"] or "").strip() if row else ""
+def _submission_blockers(db, member_id):
+    from .applications import nupay_submission_blockers
+    return nupay_submission_blockers(db, member_id)
+
+
+def _admin_override(db, member_id, blockers):
+    from .applications import authorize_nupay_override
+    return authorize_nupay_override(db, member_id, blockers)
+
+
+def _prepare_reference(db, mandate_id, mandate, member_id):
+    row = db.execute("SELECT status, nupay_response FROM debicheck_mandates WHERE id=?", (mandate_id,)).fetchone()
+    if row and row["status"] == "pending" and not row["nupay_response"]:
+        member = db.execute("SELECT * FROM members WHERE id=?", (member_id,)).fetchone()
+        reference = str(decrypt_member(member).get("id_number") or "").strip()
+        if not reference:
+            return ["Member ID is required for the NuPay reference"]
+        mandate["client_ref1"] = reference
+        db.execute("UPDATE debicheck_mandates SET client_ref1=? WHERE id=?", (encrypt_mandate({"client_ref1": reference})["client_ref1"], mandate_id))
+    return []
 
 
 def _push(db, mandate_id, mandate: dict, member_id: int):
-    """Push a plaintext mandate dict to NuPay.
-
-    Requires a real Itensity client reference first: NuPay's client_ref1 is
-    derived from it (see mandate_from_member), and pushing with the
-    placeholder FIT-<member_id> fallback would submit a mandate NuPay and
-    Itensity can never reconcile against each other.
-    """
-    if not _member_itensity_ref(db, member_id):
-        flash(
-            "This member hasn't been pushed to Itensity yet. Push to Itensity "
-            "first so NuPay has a real client reference to use.",
-            "error",
-        )
+    """Submit only after the application documents and affordability qualify."""
+    blockers = _submission_blockers(db, member_id)
+    if blockers and not _admin_override(db, member_id, blockers):
+        flash("NuPay submission blocked: " + "; ".join(blockers), "error")
         return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
+    errors = _prepare_reference(db, mandate_id, mandate, member_id)
+    if errors:
+        flash("; ".join(errors), "error")
+        return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
+    db.commit()  # Persist the reference and any audited exception before external submission.
     try:
         success, message = push_mandate_to_nupay(mandate)
     except Exception as exc:
@@ -356,13 +375,6 @@ def push(mandate_id):
     if row["imported_from_nupay"]:
         flash(IMPORTED_MANDATE_MESSAGE, "error")
         return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
-    if not _member_itensity_ref(db, row["member_id"]):
-        flash(
-            "This member hasn't been pushed to Itensity yet. Push to Itensity "
-            "first so NuPay has a real client reference to use.",
-            "error",
-        )
-        return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
     mandate = decrypt_mandate(row)
     errors = validate_stored_mandate(mandate)
     if errors:
@@ -373,17 +385,25 @@ def push(mandate_id):
 
 
 def _background_manual_review_push(
-    app, db_path: str, mandate_id: int, mandate: dict, member_id: int
+    app, db_path: str, mandate_id: int, mandate: dict, member_id: int,
+    overridden: bool = False, user_id: int | None = None,
 ) -> None:
     """Runs the visible-browser, human-paced NuPay push off the request
     thread — it blocks until the person finishes in the window (or closes
     it), which can take minutes. Opens its own sqlite connection since the
     request's is gone by the time this returns."""
     conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     try:
         with app.app_context():
             try:
-                success, message = push_mandate_to_nupay_manual_review(mandate)
+                blockers = _submission_blockers(conn, member_id)
+                actor = conn.execute("SELECT role, active FROM users WHERE id=?", (user_id,)).fetchone()
+                admin_override = overridden and actor and actor["role"] == "admin" and actor["active"]
+                if blockers and not admin_override:
+                    success, message = False, "; ".join(blockers)
+                else:
+                    success, message = push_mandate_to_nupay_manual_review(mandate)
             except Exception as exc:
                 success, message = False, f"NuPay integration error: {exc}"
             record_push_result(conn, mandate_id, success, message)
@@ -424,12 +444,10 @@ def review_on_nupay(mandate_id):
     if row["status"] == "reviewing":
         flash("This mandate already has a NuPay review window open. Finish or close it first.", "warning")
         return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
-    if not _member_itensity_ref(db, row["member_id"]):
-        flash(
-            "This member hasn't been pushed to Itensity yet. Push to Itensity "
-            "first so NuPay has a real client reference to use.",
-            "error",
-        )
+    blockers = _submission_blockers(db, row["member_id"])
+    overridden = _admin_override(db, row["member_id"], blockers)
+    if blockers and not overridden:
+        flash("NuPay submission blocked: " + "; ".join(blockers), "error")
         return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
 
     mandate = decrypt_mandate(row)
@@ -439,6 +457,10 @@ def review_on_nupay(mandate_id):
             flash(error, "error")
         return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
 
+    errors = _prepare_reference(db, mandate_id, mandate, row["member_id"])
+    if errors:
+        flash("; ".join(errors), "error")
+        return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
     db.execute("UPDATE debicheck_mandates SET status='reviewing' WHERE id=?", (mandate_id,))
     member_activity(
         db, row["member_id"],
@@ -451,7 +473,7 @@ def review_on_nupay(mandate_id):
     app_obj = current_app._get_current_object()
     threading.Thread(
         target=_background_manual_review_push,
-        args=(app_obj, db_path, mandate_id, mandate, row["member_id"]),
+        args=(app_obj, db_path, mandate_id, mandate, row["member_id"], overridden, session.get("user_id")),
         daemon=True,
     ).start()
 

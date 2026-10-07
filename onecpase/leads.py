@@ -71,7 +71,7 @@ LEAD_STATUSES = [
     ("appointment_booked", "Appointment Booked"),
     ("show", "Show"),
     ("hot_prospect_7day", "Decision Follow-Up – 5 Working Days"),
-    ("joined", "Joined"),
+    ("joined", "Agreed to Join"),
     ("recycle", "Recycle"),
     ("do_not_contact", "Do Not Contact"),
     ("duplicate", "Duplicate"),
@@ -109,7 +109,7 @@ KANBAN_COLUMNS = [
     ("appointment_booked", "Appointment"),
     ("show", "Show"),
     ("hot_prospect_7day", "Decision Follow-Up – 5 Working Days"),
-    ("joined", "Joined"),
+    ("joined", "Membership Progress"),
 ]
 
 # Structured "why did this prospect get recycled" taxonomy — kept separate
@@ -187,13 +187,13 @@ ACTIVITY_OUTCOMES = {
         ("cancelled", "Cancelled"),
         ("no_show", "No-show"),
         ("showed", "Showed"),
-        ("joined", "Joined"),
+        ("joined", "Agreed to Join"),
         ("not_interested", "Not interested"),
     ],
     "visit": [
         ("arrived", "Walk-in arrived"),
         ("completed", "Visit completed"),
-        ("joined", "Joined"),
+        ("joined", "Agreed to Join"),
         ("not_interested", "Not interested"),
     ],
     "consultation": [
@@ -201,7 +201,7 @@ ACTIVITY_OUTCOMES = {
         ("decision_required", "Needs time to decide"),
         ("not_interested", "Not interested"),
     ],
-    "decision": [("started", "Decision period started"), ("joined", "Joined"), ("declined", "Declined")],
+    "decision": [("started", "Decision period started"), ("joined", "Agreed to Join"), ("declined", "Declined")],
     "note": [("recorded", "Recorded")],
 }
 
@@ -547,10 +547,16 @@ def leads_index():
     restrict_to_own = bool(session.get("is_sales_consultant"))
     own_id = session.get("user_id")
 
+    from .sales_pipeline import membership_progress
+
     leads_by_status = {}
     for status_key, _ in KANBAN_COLUMNS:
-        sql = """SELECT l.*, u.full_name AS salesperson_name
+        sql = """SELECT l.*, u.full_name AS salesperson_name,
+                      ma.application_status AS membership_application_status
                FROM leads l LEFT JOIN users u ON l.assigned_to = u.id
+               LEFT JOIN membership_applications ma ON ma.id = (
+                   SELECT MAX(a.id) FROM membership_applications a WHERE a.lead_id=l.id
+               )
                WHERE l.lead_status = ?"""
         params = [status_key]
         if restrict_to_own:
@@ -622,6 +628,7 @@ def leads_index():
         available_consultants=available_consultants,
         leads_by_status=leads_by_status,
         kanban_columns=KANBAN_COLUMNS,
+        membership_progress=membership_progress,
         status_colors=STATUS_COLORS,
         expiring_soon=expiring_soon,
         total=total,
@@ -795,7 +802,7 @@ def lead_detail(lid: int):
     consultants = db.execute(
         "SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name"
     ).fetchall()
-    from .sales_pipeline import pipeline_context
+    from .sales_pipeline import pipeline_context, membership_progress
     sales_pipeline = pipeline_context(db, lid)
     journey_step = _journey_step(db, lead)
 
@@ -811,6 +818,9 @@ def lead_detail(lid: int):
         lead=lead,
         application=application,
         journey_step=journey_step,
+        membership_progress=membership_progress(
+            lead["lead_status"], application["application_status"] if application else None
+        ),
         activities=activities,
         statuses=LEAD_STATUSES,
         status_colors=STATUS_COLORS,
@@ -1290,19 +1300,17 @@ def funnel_report():
     for row in activity_rows:
         activity_map[row["lead_id"]].add((row["activity_type"], row["outcome"] or ""))
 
+    from .sales_pipeline import sales_milestones
+
     def milestones(prospect):
-        events = activity_map[prospect["id"]]
-        stage = prospect["lead_status"]
+        evidence = sales_milestones(prospect["lead_status"], activity_map[prospect["id"]])
         return {
             "assigned": bool(prospect["assigned_to"]),
-            "contacted": any(kind in CONTACT_ACTIVITY_TYPES for kind, _ in events) or stage in {"contacted", "appointment_booked", "show", "hot_prospect_7day", "joined"},
-            "appointment": any(
-                kind == "appointment" or (kind in CONTACT_ACTIVITY_TYPES and result == "appointment_booked")
-                for kind, result in events
-            ) or stage in {"appointment_booked", "show", "hot_prospect_7day", "joined"},
-            "showed": ("appointment", "showed") in events or any(kind == "visit" for kind, _ in events) or stage in {"show", "hot_prospect_7day", "joined"},
-            "consulted": any(kind == "consultation" for kind, _ in events) or stage in {"hot_prospect_7day", "joined"},
-            "joined": stage == "joined",
+            "contacted": evidence["contacted"],
+            "appointment": evidence["appointment"],
+            "showed": evidence["show"],
+            "consulted": evidence["consulted"],
+            "joined": evidence["joined"],
         }
 
     stage_keys = ("assigned", "contacted", "appointment", "showed", "consulted", "joined")

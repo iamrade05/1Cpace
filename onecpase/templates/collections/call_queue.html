@@ -10,15 +10,36 @@
 <div class="form-card" style="margin-bottom:16px;border-left:4px solid var(--red);">
   <div style="display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:center;">
     <div>
-      <div style="color:var(--red);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;">{{ 'Outstanding Balance Reminders' if cycle.phase == 'reminder' else 'Failed Debit Collections' }}</div>
+      <div style="color:var(--red);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;">{{ 'Pre-debit Message Reminders' if cycle.phase == 'reminder' else ('Debit Results Pending' if cycle.phase == 'awaiting_results' else 'Failed Debit Collections') }}</div>
       <h3 style="margin:5px 0;">Debit cycle {{ cycle.scheduled.strftime('%d %B %Y') }}</h3>
-      <div style="color:var(--t2);">Operational start: <strong>{{ cycle.operational.strftime('%d %B %Y') }}</strong>{% if cycle.scheduled != cycle.operational %} — moved to Friday because the debit date is on a weekend{% endif %}</div>
+      <div style="color:var(--t2);">Failed-debit calls start: <strong>{{ cycle.calls_from.strftime('%d %B %Y') }}</strong> — the day after the debit date</div>
       {% if cycle.phase == 'reminder' %}<div style="color:var(--t2);margin-top:6px;font-size:.82rem;">Message: You have an outstanding balance. Please make sure there are enough funds for the coming debit.</div>{% endif %}
     </div>
-    <div style="color:var(--t2);font-size:.82rem;max-width:420px;line-height:1.5;">Only clients with a current outstanding balance appear. Failed Debit means both a failed debit record and money still owing. Fully paid clients are removed automatically.</div>
+    <div style="color:var(--t2);font-size:.82rem;max-width:420px;line-height:1.5;">Only confirmed failed debits with money still owing enter the failed-debit call queue. Older clients continue receiving calls during other cycles’ reminder windows. Message reminders do not count as calls.</div>
   </div>
 </div>
 {% endif %}
+
+<section class="card">
+  <div class="card-body">
+    <h2>Pre-debit Message Reminders</h2>
+    <p>Reminders are due two days before each member’s debit date. The five cycle groups are the 1st, 5th, 15th, 25th and month-end (30th/31st). A month-end member keeps their own due date; short months use the last day.</p>
+    <p>Send the reminder through your usual WhatsApp, SMS or email channel, then record delivery here. These reminders do not use the 100-call allocation.</p>
+    {% if reminders %}
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Member</th><th>Contact</th><th>Debit Due</th><th>Reminder</th></tr></thead>
+      <tbody>{% for reminder in reminders %}<tr>
+        <td><a href="{{ url_for('members.member_detail', mid=reminder.member_id) }}">{{ reminder.first_name }} {{ reminder.last_name }}</a></td>
+        <td>{{ reminder.contact or 'No contact number' }}</td><td>{{ reminder.due_date }}</td>
+        <td><form method="post" action="{{ url_for('collections.record_reminder_delivery', reminder_id=reminder.id) }}">
+          <label>Delivered through <select name="channel" required><option value="">Choose channel</option><option value="WHATSAPP">WhatsApp</option><option value="SMS">SMS</option><option value="EMAIL">Email</option></select></label>
+          <button class="btn btn-secondary btn-sm">Record Delivered Reminder</button>
+        </form></td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p>No unpaid members need a pre-debit reminder today.</p>{% endif %}
+  </div>
+</section>
 
 {% if not callers %}
 <div class="alert alert-warning"><strong>No Collections callers configured.</strong> Enable “Collections caller” in User Management.</div>
@@ -37,7 +58,7 @@
     </div>
     {% set talk = (summary.talk_seconds or 0)|int %}
     <div style="margin-top:10px;color:var(--t2);font-size:.78rem;">{{ summary.assigned or 0 }} calls assigned for {{ today_label }} · Talk time {{ talk // 60 }}m {{ talk % 60 }}s</div>
-    <div style="margin-top:4px;color:var(--t2);font-size:.72rem;">Reached = contact outcome saved by the consultant · {{ summary.verified or 0 }} confirmed by PBX ({{ min_talk_seconds }}s+ talk time)</div>
+    <div style="margin-top:4px;color:var(--t2);font-size:.72rem;">Reached = contact outcome + {{ min_talk_seconds }}s or more on the phone</div>
   </div>
   {% endfor %}
 </div>
@@ -51,7 +72,7 @@
       <span style="color:var(--t2);margin-left:8px;">{{ tasks|length }} shown</span>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:.76rem;">
-      <span class="badge badge-info">Reminders {{ queue_counts.get('reminder',0) }}</span>
+      <span class="badge badge-info">Message reminders {{ reminders|length }}</span>
       <span class="badge badge-danger">Failed debit {{ queue_counts.get('failed_debit',0) }}</span>
       <span class="badge badge-gray">Older owing {{ queue_counts.get('old_owing',0) }}</span>
       {% if caller_filter %}<a href="{{ url_for('collections.call_queue') }}" class="btn btn-ghost btn-sm">Show both callers</a>{% endif %}

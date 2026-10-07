@@ -61,3 +61,79 @@ This keeps the canonical sales path aligned with the application workflow:
 ## v5 Itensity handoff hardening
 
 The Itensity handoff now atomically claims a push worker, requires a valid Itensity member reference before activation, and prevents duplicate pushes. The local application activation and canonical `JOINED` sales transition are committed together; a sales-stage reconciliation failure rolls the local activation back.
+
+
+## Membership milestones
+
+The Sales CRM now distinguishes **Agreed to Join**, **Application Started**, and
+**Activated**. Agreeing to join records the client's decision; starting an
+application creates the application/member record; activation requires an
+application with status `active`. Pending documents, verification, ready-to-push,
+and legacy `pushed` applications are not displayed as activated. Declined
+applications are labelled separately.
+
+Prospect details show all three milestones, and the Membership Progress section
+of the CRM board displays each prospect's current milestone. Sales reports label
+the existing agreement counts as Agreed to Join, before applications and activation.
+Stored legacy `joined` and canonical `JOINED` keys are retained for compatibility:
+legacy `joined` means agreement, while canonical `JOINED` is displayed as Activated.
+A controlled transition to `JOINED` requires an active linked application, including
+manual manager transitions. This change does not alter payment/document activation
+requirements or the existing report counting rules.
+
+
+## Evidence-based sales funnel counts
+
+Both the CRM funnel and Sales dashboard use shared milestone rules. Successful
+remote contact requires an appointment-booked, follow-up-required, or not-interested
+outcome (or an explicit legacy Contacted stage). No answer, voicemail, dropped calls,
+invalid numbers, unreachable numbers, and no response do not count as conversations.
+Call attempts remain recorded and contribute to Calls Made.
+
+Attendance does not imply an appointment or consultation: walk-ins only count toward
+those milestones when the corresponding activity is recorded. Appointment activity
+or a current Appointment Booked stage proves the appointment milestone. Consultation
+activity or a current Decision Follow-Up stage proves consultation. The reports count
+prospects per milestone, not the number of retries.
+
+Activation counts require application status `active`; legacy `pushed` does not prove
+activation and can now appear as a stalled application. Declined applications are
+excluded from the stalled list. Existing lead-cohort, application-date and ownership
+filters are retained. Reports may flag variances because walk-ins can reach attendance
+without passing through a remote-contact or appointment stage.
+
+
+## ID-based NuPay submission and compliance sales credit
+
+New mandates use the member ID as NuPay Client Reference 1; a third-party payer's
+ID remains in the payer identity field. New references are encrypted at rest.
+Historical submitted references remain unchanged for reconciliation. NuPay
+submission requires uploaded ID and bank-statement documents and the latest
+statement analysis to qualify under the existing two-month income or 30% balance
+rule. Failed qualification directs the consultant to inform the client or escalate.
+
+Draft saving precedes document upload and analysis. The final Submit & Push to
+NuPay action checks evidence on the server, including automatic and manual-review
+submission paths. A successful submission is pending authorisation. Only confirmed
+approval of the latest mandate unlocks Itensity activation. A member ID reference
+never falls back to a shared payer bank account; multiple contracts for the same
+ID require a specific contract reference. Confirmed submission responses preserve
+that contract reference when NuPay supplies it.
+
+Only an explicit admin override bypasses submission requirements; each exception
+is audited. Managers can review escalations but cannot bypass submission gates.
+An admin override permits the external submission, but does not manufacture
+DebiCheck approval, document evidence, fee payment, or consultant sales credit.
+
+Itensity activation and compliance completion are separate. A confirmed signed
+contract (uploaded, captured member signature, or verified remote approval) and a fully paid registration fee are required after activation before
+compliance becomes complete. Registration-fee payments are explicitly classified;
+general payments, failed or partial payments, and unpaid checklist claims cannot
+unlock credit. Where a joining fee is recorded, full payment must cover that fee.
+
+Monthly credited sales use the first compliance-completion event and its consultant
+owner, independent of the month the lead or application was created. Each
+application earns credit once; incomplete compliance earns none. Operational
+activation figures remain separately labelled. Later payment/document changes do
+not undo an actual Itensity activation, but they remove eligibility while compliance
+is incomplete. No existing sales are retroactively given invented completion dates.

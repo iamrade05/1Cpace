@@ -9,10 +9,7 @@ from .integrations import push_member_to_itensity, update_member_in_itensity
 
 applications_bp = Blueprint("applications", __name__, url_prefix="/applications")
 
-# Same convention as queries.py's MANAGER_ROLES — admin counts as manager-or-
-# above. Overriding an incomplete application straight to Itensity is a
-# compliance call, not a data-entry one, so it's gated to this set rather
-# than any authenticated staff member.
+# Managers may review escalations; only admins may bypass submission gates.
 MANAGER_ROLES = {"admin", "manager"}
 
 APPLICATION_STATUSES = [
@@ -156,6 +153,9 @@ def sync_application_status(db, aid: int, actor_id: int | None = None) -> str:
         (aid,),
     ).fetchone()
     status = _derive_status(checklist, analysis) if checklist else "awaiting_docs"
+    # Later payment or document changes do not undo an actual Itensity activation.
+    if previous and previous[0] == "active":
+        status = "active"
     db.execute(
         """UPDATE membership_applications
            SET application_status = ?, updated_at = datetime('now') WHERE id = ?""",
@@ -166,6 +166,7 @@ def sync_application_status(db, aid: int, actor_id: int | None = None) -> str:
         db, aid, previous[0] if previous else None, status, actor_id=actor_id,
     )
     _sync_sales_stage_for_application(db, aid, status, actor_id=actor_id)
+    _sync_compliance_completion(db, aid, actor_id=actor_id)
     return status
 
 
@@ -174,16 +175,10 @@ def _is_statement_qualified(analysis) -> bool:
 
 
 def _is_ready_to_push(cl, analysis=None) -> bool:
-    """Gate for the Itensity push button.
-
-    DebiCheck, the ID copy, and the registration fee are deliberately NOT
-    required here — they happen in parallel with, or after, the Itensity
-    push (DebiCheck in particular needs the Itensity client reference the
-    push itself returns, so requiring it first was unreachable). They are
-    still tracked — see _outstanding_followups — just not blocking.
-    """
+    """Require documents, qualified affordability and approved DebiCheck."""
     return (
-        cl["contract_status"] == "signed"
+        cl["debit_check_status"] == "approved"
+        and cl["id_copy_status"] in ("uploaded", "verified")
         and cl["bank_statement_status"] == "analysed"
         and _is_statement_qualified(analysis)
         and (cl["guardian_required"] != "required" or cl["guardian_status"] == "approved")
@@ -196,8 +191,10 @@ def _missing_requirements(cl, analysis=None) -> list[str]:
     if cl is None:
         return ["Compliance checklist not started"]
     missing = []
-    if cl["contract_status"] != "signed":
-        missing.append("Contract not signed")
+    if cl["debit_check_status"] != "approved":
+        missing.append("DebiCheck approval not confirmed")
+    if cl["id_copy_status"] not in ("uploaded", "verified"):
+        missing.append("ID copy not uploaded")
     if cl["bank_statement_status"] != "analysed":
         missing.append("Bank statement not analysed")
     elif not _is_statement_qualified(analysis):
@@ -209,14 +206,112 @@ def _missing_requirements(cl, analysis=None) -> list[str]:
     return missing
 
 
+def nupay_submission_blockers(db, member_id: int) -> list[str]:
+    """Document and affordability gates shared by every NuPay entry point."""
+    application = db.execute(
+        "SELECT id FROM membership_applications WHERE member_id=? ORDER BY id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone()
+    if not application:
+        return ["Application documents and bank-statement analysis required"]
+    cl = db.execute("SELECT * FROM compliance_checklists WHERE application_id=?", (application["id"],)).fetchone()
+    analysis = db.execute(
+        "SELECT * FROM statement_analyses WHERE application_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
+        (application["id"],),
+    ).fetchone()
+    if not cl:
+        return ["Compliance checklist not started"]
+    missing = []
+    documents = {row["document_type"] for row in db.execute(
+        "SELECT document_type FROM member_documents WHERE member_id=?", (member_id,),
+    ).fetchall()}
+    if cl["id_copy_status"] not in ("uploaded", "verified") or "SA ID Copy" not in documents:
+        missing.append("ID copy not uploaded")
+    if "Bank Statement" not in documents or cl["bank_statement_status"] != "analysed" or not _is_statement_qualified(analysis):
+        missing.append("A qualifying bank-statement analysis is required; inform the client or escalate to a manager")
+    return missing
+
+
+def authorize_nupay_override(db, member_id: int, blockers: list[str]) -> bool:
+    """Record the explicit admin exception before allowing a NuPay submission."""
+    if not blockers or session.get("role") != "admin" or request.form.get("override") != "1":
+        return False
+    application = db.execute("SELECT id FROM membership_applications WHERE member_id=? ORDER BY id DESC LIMIT 1", (member_id,)).fetchone()
+    audit_log(db, "nupay_admin_override", application_id=application["id"] if application else None,
+              new_value="Missing requirements: " + "; ".join(blockers))
+    return True
+
+
+def _itensity_hard_blockers(db, aid, member_id):
+    """Evidence gates; only an explicit, audited admin override may bypass them."""
+    missing = nupay_submission_blockers(db, member_id)
+    cl = db.execute("SELECT debit_check_status FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
+    mandate = db.execute("SELECT status FROM debicheck_mandates WHERE member_id=? ORDER BY id DESC LIMIT 1", (member_id,)).fetchone()
+    from .debicheck import normalise_debicheck_status
+    if not cl or cl["debit_check_status"] != "approved" or not mandate or normalise_debicheck_status(mandate["status"]) != "approved":
+        missing.append("DebiCheck approval not confirmed for the latest mandate")
+    return missing
+
+
+def registration_fee_paid(db, member_id: int) -> bool:
+    member = db.execute("SELECT joining_fee FROM members WHERE id=?", (member_id,)).fetchone()
+    paid = db.execute(
+        "SELECT COALESCE(SUM(amount_paid), 0) FROM collections WHERE member_id=? AND payment_purpose='registration_fee' AND status='paid' AND amount_paid > 0",
+        (member_id,),
+    ).fetchone()[0]
+    return bool(paid > 0 and float(paid) >= float(member["joining_fee"] or 0)) if member else False
+
+
+def compliance_completion_blockers(db, aid: int) -> list[str]:
+    application = db.execute("SELECT * FROM membership_applications WHERE id=?", (aid,)).fetchone()
+    if not application or not application["member_id"]:
+        return ["Member profile missing"]
+    missing = _itensity_hard_blockers(db, aid, application["member_id"])
+    if application["application_status"] != "active" or application["push_status"] != "pushed":
+        missing.append("Itensity activation not complete")
+    cl = db.execute("SELECT * FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
+    contract = db.execute("SELECT 1 FROM member_documents WHERE member_id=? AND document_type='Signed Contract' LIMIT 1", (application["member_id"],)).fetchone()
+    if not contract:
+        contract = db.execute("SELECT 1 FROM contract_signatures WHERE member_id=? AND signer_role='member' LIMIT 1", (application["member_id"],)).fetchone()
+    if not contract:
+        contract = db.execute("SELECT 1 FROM contract_share_tokens WHERE member_id=? AND status='approved' AND verified_at IS NOT NULL AND responded_at IS NOT NULL LIMIT 1", (application["member_id"],)).fetchone()
+    if not cl or cl["contract_status"] != "signed" or not contract:
+        missing.append("Contract signing not confirmed")
+    if not cl or cl["pos_status"] != "paid" or not registration_fee_paid(db, application["member_id"]):
+        missing.append("Registration fee not fully paid")
+    if cl and cl["guardian_required"] == "required" and cl["guardian_status"] != "approved":
+        missing.append("Guardian consent not approved")
+    if cl and cl["manager_approval_status"] not in ("not_required", "approved"):
+        missing.append("Manager approval pending")
+    return missing
+
+
+def _sync_compliance_completion(db, aid: int, actor_id=None) -> None:
+    cl = db.execute("SELECT overall_status FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
+    if not cl:
+        return
+    complete = not compliance_completion_blockers(db, aid)
+    overall = "complete" if complete else "incomplete"
+    if cl["overall_status"] == overall:
+        return
+    db.execute("UPDATE compliance_checklists SET overall_status=? WHERE application_id=?", (overall, aid))
+    from .sales_kpi import _application_context
+    lead_id, member_id, owner_id = _application_context(db, aid)
+    # Keep the credit milestone in the source transaction, including activation.
+    db.execute(
+        """INSERT INTO stage_events (entity_type, entity_id, lead_id, application_id, member_id,
+           field, from_value, to_value, owner_id, actor_id, occurred_at)
+           VALUES ('compliance', ?, ?, ?, ?, 'overall_status', ?, ?, ?, ?, datetime('now'))""",
+        (aid, lead_id, aid, member_id, cl["overall_status"], overall, owner_id, actor_id),
+    )
+
+
 def _outstanding_followups(cl) -> list[dict]:
-    """DebiCheck, ID, and the registration fee — required for a complete
-    membership, but not for the Itensity push itself (see _is_ready_to_push).
-    Purely informational: the application page shows these as parallel
-    tasks rather than a blocking checklist."""
+    """Completion summary; DebiCheck and ID also block the Itensity push."""
     if cl is None:
         return []
     return [
+        {"label": "Contract signed", "done": cl["contract_status"] == "signed"},
         {"label": "DebiCheck mandate approved", "done": cl["debit_check_status"] == "approved"},
         {"label": "ID copy uploaded", "done": cl["id_copy_status"] in ("uploaded", "verified")},
         {"label": "Registration fee paid", "done": cl["pos_status"] == "paid"},
@@ -345,7 +440,7 @@ def application_detail(aid: int):
     analysis = db.execute(
         """SELECT sa.*, u.full_name AS analyst_name FROM statement_analyses sa
            LEFT JOIN users u ON sa.created_by = u.id
-           WHERE sa.application_id = ? ORDER BY sa.created_at DESC LIMIT 1""",
+           WHERE sa.application_id = ? ORDER BY sa.created_at DESC, sa.id DESC LIMIT 1""",
         (aid,),
     ).fetchone()
 
@@ -366,6 +461,7 @@ def application_detail(aid: int):
 
     ready = (
         _is_ready_to_push(checklist, analysis)
+        and not _itensity_hard_blockers(db, aid, app["member_id"])
         and app["push_status"] not in ("pushed", "pushing")
         if checklist else False
     )
@@ -397,8 +493,12 @@ def application_detail(aid: int):
         missing_items=_missing_requirements(checklist, analysis) if checklist else [],
         followups=_outstanding_followups(checklist),
         documents=documents,
+        compliance_blockers=compliance_completion_blockers(db, aid),
         doc_types=["Signed Contract", "Bank Statement", "SA ID Copy"],
         is_manager=session.get("role") in MANAGER_ROLES,
+        is_admin=session.get("role") == "admin",
+        nupay_blockers=nupay_submission_blockers(db, app["member_id"]) if app["member_id"] else ["Create a member profile first"],
+        latest_mandate=db.execute("SELECT id, status FROM debicheck_mandates WHERE member_id=? ORDER BY id DESC LIMIT 1", (app["member_id"],)).fetchone(),
         contract_statuses=CONTRACT_STATUSES,
         debit_statuses=DEBIT_STATUSES,
         bank_statuses=BANK_STATUSES,
@@ -509,7 +609,7 @@ def update_checklist(aid: int):
         "SELECT * FROM statement_analyses WHERE application_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
         (aid,),
     ).fetchone()
-    new_status = _derive_status(cl, analysis)
+    new_status = sync_application_status(db, aid, actor_id=session.get("user_id"))
     db.execute(
         "UPDATE membership_applications SET application_status=?, updated_at=datetime('now') WHERE id=?",
         (new_status, aid),
@@ -549,7 +649,7 @@ def submit_analysis(aid: int):
     freq = request.form.get("income_frequency", "irregular")
     summary = request.form.get("analysis_summary", "").strip()
 
-    # Risk is system-derived. A manual override is a controlled manager/admin
+    # Risk is system-derived. A manual override is a controlled admin
     # decision and is never accepted silently from ordinary staff.
     if income_detected == "no" or returned > 0 or neg_days > 5:
         auto_risk = "high"
@@ -560,10 +660,10 @@ def submit_analysis(aid: int):
     requested_risk = (request.form.get("risk_rating") or "").strip().lower()
     if requested_risk and requested_risk not in RISK_RATINGS:
         requested_risk = ""
-    risk_rating = requested_risk if (requested_risk and session.get("role") in MANAGER_ROLES) else auto_risk
-    if requested_risk and requested_risk != auto_risk and session.get("role") not in MANAGER_ROLES:
+    risk_rating = requested_risk if (requested_risk and session.get("role") == "admin") else auto_risk
+    if requested_risk and requested_risk != auto_risk and session.get("role") != "admin":
         audit_log(db, "risk_override_blocked", application_id=aid, new_value=f"requested={requested_risk};auto={auto_risk}")
-        flash("Risk rating is system-controlled. A manager or admin must approve an override.", "warning")
+        flash("Risk rating is system-controlled. An admin must approve an override.", "warning")
 
     db.execute(
         """INSERT INTO statement_analyses
@@ -575,7 +675,7 @@ def submit_analysis(aid: int):
         (aid, income_detected, est_income, m1, m2, m3, avg_bal,
          returned, neg_days, freq, risk_rating, summary, session.get("user_id")),
     )
-    if requested_risk and requested_risk != auto_risk and session.get("role") in MANAGER_ROLES:
+    if requested_risk and requested_risk != auto_risk and session.get("role") == "admin":
         audit_log(db, "risk_override_approved", application_id=aid, new_value=f"auto={auto_risk};override={requested_risk}")
 
     # Mark bank statement as analysed
@@ -610,7 +710,7 @@ def submit_analysis(aid: int):
         "SELECT * FROM statement_analyses WHERE application_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
         (aid,),
     ).fetchone()
-    derived_status = _derive_status(cl, latest_analysis)
+    derived_status = sync_application_status(db, aid, actor_id=session.get("user_id"))
     db.execute(
         "UPDATE membership_applications SET application_status=?, updated_at=datetime('now') WHERE id=?",
         (derived_status, aid),
@@ -669,6 +769,14 @@ def _background_itensity_push(
                 conn.commit()
                 return
 
+            blockers = _itensity_hard_blockers(conn, aid, member_id)
+            actor = conn.execute("SELECT role, active FROM users WHERE id=?", (user_id,)).fetchone()
+            admin_override = overridden and actor and actor["role"] == "admin" and actor["active"]
+            if blockers and not admin_override:
+                conn.execute("UPDATE membership_applications SET push_status='push_failed', updated_at=datetime('now') WHERE id=?", (aid,))
+                member_activity(conn, member_id, "Itensity push blocked: " + "; ".join(blockers), user_id=user_id)
+                conn.commit()
+                return
             member_data = decrypt_member(member)
             if itensity_ref_existing:
                 success, error_msg = update_member_in_itensity(itensity_ref_existing, member_data)
@@ -721,6 +829,7 @@ def _background_itensity_push(
             # local activation back rather than creating an Active Member whose
             # sales record still says APPLICATION_SUBMITTED.
             _sync_sales_stage_for_application(conn, aid, "active", actor_id=user_id, strict=True)
+            _sync_compliance_completion(conn, aid, actor_id=user_id)
             conn.commit()
     except Exception:
         app.logger.exception("Background Itensity push crashed for application %s", aid)
@@ -759,13 +868,15 @@ def push_application(aid: int):
     ).fetchone()
 
     analysis = db.execute(
-        "SELECT * FROM statement_analyses WHERE application_id=? ORDER BY created_at DESC LIMIT 1",
+        "SELECT * FROM statement_analyses WHERE application_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
         (aid,),
     ).fetchone()
 
-    missing = _missing_requirements(cl, analysis)
-    is_manager = session.get("role") in MANAGER_ROLES
-    overridden = bool(missing) and is_manager and request.form.get("override") == "1"
+    missing = list(dict.fromkeys(
+        _missing_requirements(cl, analysis)
+        + _itensity_hard_blockers(db, aid, application["member_id"])
+    ))
+    overridden = bool(missing) and session.get("role") == "admin" and request.form.get("override") == "1"
 
     if missing and not overridden:
         flash(f"Application is missing: {', '.join(missing)}.", "error")
@@ -792,6 +903,9 @@ def push_application(aid: int):
         db.rollback()
         flash("Another Itensity push has already started for this application.", "warning")
         return redirect(url_for("applications.application_detail", aid=aid))
+    if overridden:
+        audit_log(db, "itensity_admin_override_requested", application_id=aid,
+                  new_value="Missing requirements: " + "; ".join(missing), user_id=user_id)
     db.commit()
 
     threading.Thread(
@@ -868,7 +982,7 @@ def approve_application(aid: int):
         "SELECT * FROM statement_analyses WHERE application_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
         (aid,),
     ).fetchone()
-    derived_status = _derive_status(cl, analysis)
+    derived_status = sync_application_status(db, aid, actor_id=session.get("user_id"))
     db.execute(
         "UPDATE membership_applications SET application_status=?, updated_at=datetime('now') WHERE id=?",
         (derived_status, aid),

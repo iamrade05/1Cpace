@@ -6,10 +6,20 @@
 <header class="page-header"><div><h1>Prospect: {{ lead.full_name }}</h1></div></header>
 {% set color = status_colors.get(lead.lead_status, '#6b7280') %}
 <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-  <span style="background:{{ color }};color:#fff;padding:6px 14px;border-radius:20px;font-size:.78rem;font-weight:800;text-transform:uppercase;">{{ status_labels.get(lead.lead_status, lead.lead_status)|replace('_',' ') }}</span>
+  <span style="background:{{ color }};color:#fff;padding:6px 14px;border-radius:20px;font-size:.78rem;font-weight:800;text-transform:uppercase;">{{ membership_progress.label or status_labels.get(lead.lead_status, lead.lead_status)|replace('_',' ') }}</span>
   {% if lead.do_not_contact %}<span class="badge badge-danger">Marketing blocked</span>{% endif %}
   {% if lead.converted_member_id %}<a href="{{ url_for('members.member_detail', mid=lead.converted_member_id) }}" class="btn btn-ghost btn-sm">Member #{{ lead.converted_member_id }}</a>{% endif %}
 </div>
+
+<section class="form-card membership-progress" aria-label="Membership progress">
+  <h2>Membership Progress</h2>
+  <ol>
+    {% for label, reached in membership_progress.milestones %}
+    <li><strong>{{ label }}</strong> — {{ 'Complete' if reached else 'Pending' }}</li>
+    {% endfor %}
+  </ol>
+  <p>{{ membership_progress.note }}</p>
+</section>
 
 <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;">
   <section style="flex:2;min-width:290px;">
@@ -67,18 +77,18 @@
 
       {% elif journey_step in ('walk_in', 'membership_decision') %}
       <h3 style="font-size:.9rem;color:var(--ok);text-transform:uppercase;margin-bottom:6px;">{{ 'Walk-In Details' if journey_step == 'walk_in' else 'Client Attendance Result' }}</h3>
-      <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">Attendance is confirmed. Record whether the client joined or was not interested.</p>
-      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="visit"><input type="hidden" name="outcome" value="joined"><button type="submit" class="btn btn-primary" style="background:var(--ok)!important;width:100%;">Client Joined → Membership</button></form>
+      <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">Attendance is confirmed. Record whether the client agrees to join or is not interested.</p>
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="visit"><input type="hidden" name="outcome" value="joined"><button type="submit" class="btn btn-primary" style="background:var(--ok)!important;width:100%;">Agreed to Join → Start Application</button></form>
       <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}"><input type="hidden" name="activity_type" value="visit"><input type="hidden" name="outcome" value="not_interested"><div class="form-group"><label class="form-label">Why is the client not interested? *</label><input name="reason" class="form-control" required></div><button type="submit" class="btn btn-ghost" style="color:var(--err)!important;">Not Interested</button></form>
 
       {% elif journey_step == 'membership' %}
-      <h3 style="font-size:.9rem;color:var(--ok);text-transform:uppercase;margin-bottom:8px;">Membership Started</h3>
+      <h3 style="font-size:.9rem;color:var(--ok);text-transform:uppercase;margin-bottom:8px;">Application Started</h3>
       <a href="{{ url_for('applications.application_detail', aid=application.id) }}" class="btn btn-primary">Open Membership Application #{{ application.id }}</a>
 
       {% elif journey_step == 'convert_pending' %}
-      <h3 style="font-size:.9rem;color:var(--warn);text-transform:uppercase;margin-bottom:6px;">Membership Not Yet Started</h3>
-      <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">The client joined, but the membership application was never completed. Finish the conversion to create the member record.</p>
-      <a href="{{ url_for('leads.convert_lead', lid=lead.id) }}" class="btn btn-primary" style="background:var(--ok)!important;">Complete Membership Application</a>
+      <h3 style="font-size:.9rem;color:var(--warn);text-transform:uppercase;margin-bottom:6px;">Application Not Yet Started</h3>
+      <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">The client agreed to join, but no membership application exists yet. Start the application to create the member record.</p>
+      <a href="{{ url_for('leads.convert_lead', lid=lead.id) }}" class="btn btn-primary" style="background:var(--ok)!important;">Start Membership Application</a>
       {% else %}
       <h3 style="font-size:.9rem;color:var(--t2);text-transform:uppercase;margin-bottom:8px;">Sales Journey Complete</h3>
       <p style="color:var(--t2);font-size:.8rem;">No further sales activity is required on this prospect.</p>
@@ -107,16 +117,16 @@
 
     <div class="form-card" style="margin-bottom:16px;border-left:4px solid #43d3e5;">
       <h3 style="font-size:.82rem;color:#087f99;text-transform:uppercase;margin-bottom:8px;">Controlled Sales Stage</h3>
-      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px;"><strong>{{ sales_pipeline.stage_label }}</strong><span style="font-size:.72rem;color:#6b7280;">{{ sales_pipeline.stage }}</span></div>
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px;"><strong>{{ sales_pipeline.stage_label }}</strong></div>
       {% if sales_pipeline.next_stages and session.get('role') in ('admin', 'manager') %}
       <form method="POST" action="{{ url_for('sales_pipeline.transition_stage', lead_id=lead.id) }}">
-        <div class="form-group"><label class="form-label">Move to next controlled stage</label><select name="new_stage" class="form-control">{% for stage in sales_pipeline.next_stages %}<option value="{{ stage }}">{{ stage|replace('_',' ')|title }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label class="form-label">Move to next controlled stage</label><select name="new_stage" class="form-control">{% for stage in sales_pipeline.next_stages %}<option value="{{ stage }}">{{ sales_pipeline.stage_labels[stage] }}</option>{% endfor %}</select></div>
         <div class="form-group"><label class="form-label">Reason / notes</label><textarea name="notes" class="form-control" rows="2" placeholder="Why is this stage changing?"></textarea></div>
         <button class="btn btn-secondary btn-sm" type="submit">Record controlled transition</button>
       </form>
       {% elif not sales_pipeline.next_stages %}<div style="font-size:.78rem;color:#6b7280;">This is a terminal stage.</div>
       {% else %}<div style="font-size:.78rem;color:#6b7280;">Only a manager can move this stage manually.</div>{% endif %}
-      {% if sales_pipeline.history %}<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:.78rem;font-weight:700;">Stage audit history</summary><div style="margin-top:9px;max-height:190px;overflow:auto;">{% for event in sales_pipeline.history %}<div style="padding:7px 0;border-bottom:1px solid #edf2f7;font-size:.75rem;"><strong>{{ event.from_stage or 'Start' }}</strong> → <strong>{{ event.to_stage }}</strong><br><span style="color:#6b7280;">{{ event.changed_at }}{% if event.reason %} · {{ event.reason }}{% endif %}</span></div>{% endfor %}</div></details>{% endif %}
+      {% if sales_pipeline.history %}<details style="margin-top:12px;"><summary style="cursor:pointer;font-size:.78rem;font-weight:700;">Stage audit history</summary><div style="margin-top:9px;max-height:190px;overflow:auto;">{% for event in sales_pipeline.history %}<div style="padding:7px 0;border-bottom:1px solid #edf2f7;font-size:.75rem;"><strong>{{ sales_pipeline.stage_labels.get(event.from_stage, event.from_stage or 'Start') }}</strong> → <strong>{{ sales_pipeline.stage_labels.get(event.to_stage, event.to_stage) }}</strong><br><span style="color:#6b7280;">{{ event.changed_at }}{% if event.reason %} · {{ event.reason }}{% endif %}</span></div>{% endfor %}</div></details>{% endif %}
     </div>
 
     {% if lead.lead_status in active_statuses and lead.lead_status != 'show' %}
@@ -163,7 +173,7 @@
       <h3 style="font-size:.85rem;color:#e94560;text-transform:uppercase;margin-bottom:14px;">Chronological Sales Timeline</h3>
       {% for activity in activities %}
       <article style="border-left:3px solid {% if activity.status == 'scheduled' %}#f59e0b{% elif activity.outcome in ('declined','not_interested','no_show') %}#ef4444{% else %}#3b82f6{% endif %};padding:2px 0 12px 12px;margin-bottom:12px;border-bottom:1px solid #f1f5f9;">
-        <div style="display:flex;justify-content:space-between;gap:10px;"><strong style="font-size:.83rem;">{{ activity.activity_type|replace('_',' ')|title }}{% if activity.outcome %} · {{ activity.outcome|replace('_',' ')|title }}{% endif %}</strong><span class="badge {% if activity.status == 'scheduled' %}badge-warning{% else %}badge-gray{% endif %}">{{ activity.status }}</span></div>
+        <div style="display:flex;justify-content:space-between;gap:10px;"><strong style="font-size:.83rem;">{{ activity.activity_type|replace('_',' ')|title }}{% if activity.outcome %} · {{ 'Application Started' if activity.activity_type == 'conversion' and activity.outcome == 'joined' else 'Agreed to Join' if activity.outcome == 'joined' else activity.outcome|replace('_',' ')|title }}{% endif %}</strong><span class="badge {% if activity.status == 'scheduled' %}badge-warning{% else %}badge-gray{% endif %}">{{ activity.status }}</span></div>
         {% if activity.notes %}<div style="font-size:.8rem;color:#4b5563;margin-top:4px;">{{ activity.notes }}</div>{% endif %}
         {% if activity.reason %}<div style="font-size:.78rem;color:#7c2d12;margin-top:3px;"><strong>Reason:</strong> {{ activity.reason }}</div>{% endif %}
         {% if activity.scheduled_for %}<div style="font-size:.76rem;color:#92400e;margin-top:3px;"><strong>Scheduled:</strong> {{ activity.scheduled_for }}</div>{% endif %}

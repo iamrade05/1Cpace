@@ -521,8 +521,8 @@ def sales_dashboard():
     funnel = [(label, report["funnel"][key]) for label, key in (
         ("Assigned", "assigned"), ("Contacted", "contacted"),
         ("Appointments", "appointments"), ("Shows", "shows"),
-        ("Applications", "applications"), ("Activated", "activated"),
-        ("Joined", "joined"),
+        ("Agreed to Join", "joined"),
+        ("Application Started", "applications"), ("Activated", "activated"),
     )]
     return render_template(
         "sales_dashboard.html", funnel=funnel, report=report,

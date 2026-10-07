@@ -3,6 +3,7 @@ import re
 import sqlite3
 import threading
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from flask import (Blueprint, current_app, flash, g, jsonify, redirect, render_template,
                    request, session, url_for)
@@ -26,7 +27,6 @@ from .collections_engine import (
     log_collection_communication,
     next_communication,
     reached_sql,
-    verified_sql,
     reconcile_open_cases,
     return_collection_exception,
     sync_collection_case,
@@ -84,55 +84,55 @@ def _scheduled_and_operational_cycle(year: int, month: int, day: int) -> tuple[d
     return scheduled, scheduled
 
 
+COLLECTION_DEBIT_DAYS = (1, 5, 15, 25, 30, 31)
+
+
+def _collections_today() -> date:
+    return datetime.now(ZoneInfo("Africa/Johannesburg")).date()
+
+
 def _configured_debit_days(db) -> list[int]:
-    days = []
-    for row in db.execute(
-        """SELECT DISTINCT debit_order_date FROM members
-           WHERE debit_order_date IS NOT NULL AND debit_order_date != ''"""
-    ).fetchall():
-        try:
-            day = int(row["debit_order_date"])
-        except (TypeError, ValueError):
-            continue
-        if 1 <= day <= 31:
-            days.append(day)
-    return sorted(set(days))
+    """Five business groups; 30 and 31 share the month-end group."""
+    return list(COLLECTION_DEBIT_DAYS)
 
 
-def _active_debit_cycle(db, today: date) -> dict | None:
-    """Select a reminder cycle first; otherwise the most recent started cycle."""
-    reminder_offset = get_collection_rule_int(db, "reminder_offset_days", 2)
+def _debit_cycles(db, today: date) -> list[dict]:
     cycles = []
     for month_offset in (-1, 0, 1):
         month_index = today.year * 12 + today.month - 1 + month_offset
         year, zero_month = divmod(month_index, 12)
-        month = zero_month + 1
         for debit_day in _configured_debit_days(db):
-            scheduled, operational = _scheduled_and_operational_cycle(year, month, debit_day)
-            cycles.append((scheduled, operational, debit_day))
+            scheduled, operational = _scheduled_and_operational_cycle(year, zero_month + 1, debit_day)
+            cycles.append({"scheduled": scheduled, "operational": operational,
+                           "debit_day": debit_day,
+                           "group": "month_end" if debit_day in (30, 31) else str(debit_day),
+                           "calls_from": scheduled + timedelta(days=1)})
+    return cycles
 
-    reminders = [
-        cycle for cycle in cycles
-        if cycle[1] - timedelta(days=reminder_offset) <= today < cycle[1]
-    ]
+
+def _reminder_cycles(db, today: date) -> list[dict]:
+    offset = get_collection_rule_int(db, "reminder_offset_days", 2)
+    return [{**cycle, "phase": "reminder"} for cycle in _debit_cycles(db, today)
+            if cycle["scheduled"] - timedelta(days=offset) <= today < cycle["scheduled"]]
+
+
+def _collection_cycles(db, today: date) -> list[dict]:
+    """Keep every eligible debit group working while another group gets reminders."""
+    cycles = _debit_cycles(db, today)
+    return [{**max((cycle for cycle in cycles if cycle["debit_day"] == day
+                    and cycle["calls_from"] <= today), key=lambda cycle: cycle["scheduled"]),
+             "phase": "collection", "as_of": today.isoformat()} for day in _configured_debit_days(db)]
+
+
+def _active_debit_cycle(db, today: date) -> dict | None:
+    """Display the next reminder cycle, a due cycle, or the latest collection cycle."""
+    reminders = _reminder_cycles(db, today)
     if reminders:
-        scheduled, operational, debit_day = min(reminders, key=lambda cycle: cycle[1])
-        return {
-            "scheduled": scheduled,
-            "operational": operational,
-            "debit_day": debit_day,
-            "phase": "reminder",
-        }
-    started = [cycle for cycle in cycles if cycle[1] <= today]
-    if not started:
-        return None
-    scheduled, operational, debit_day = max(started, key=lambda cycle: cycle[1])
-    return {
-        "scheduled": scheduled,
-        "operational": operational,
-        "debit_day": debit_day,
-        "phase": "collection",
-    }
+        return min(reminders, key=lambda cycle: (cycle["scheduled"], cycle["debit_day"]))
+    due = [cycle for cycle in _debit_cycles(db, today) if cycle["scheduled"] == today]
+    if due:
+        return {**due[0], "phase": "awaiting_results"}
+    return max(_collection_cycles(db, today), key=lambda cycle: cycle["scheduled"])
 
 
 def _collections_callers(db):
@@ -145,61 +145,28 @@ def _collections_callers(db):
 
 
 def _cycle_candidates(db, cycle: dict) -> list[dict]:
-    """Reminder and failed-debit candidates. Balance here is the reconciled
-    figure (payments matched to charges, see onecpase/ptp.py:bulk_member_arrears)
-    — inclusion only requires a genuine positive balance, not more than one
-    installment, since a normal single missed/upcoming payment IS the whole
-    point of these two queues."""
+    """Confirmed failures with a positive reconciled balance for this cycle."""
     from .ptp import bulk_member_arrears
 
     cycle_date = cycle["scheduled"].isoformat()
     debit_day = str(cycle["debit_day"])
-    success_types = ("reminder",) if cycle["phase"] == "reminder" else ("reminder", "current_cycle")
-    placeholders = ",".join("?" for _ in success_types)
-    rows = db.execute(
-        f"""SELECT DISTINCT m.id AS member_id, m.first_name, m.last_name, m.contact
-            FROM members m JOIN collections c ON c.member_id=m.id
-            WHERE m.member_status='Active' AND CAST(m.debit_order_date AS TEXT)=?
-              AND c.status IN ('failed','pending','partial')
-              AND COALESCE(c.outstanding_balance,0)>COALESCE(c.amount_paid,0)
-              AND NOT EXISTS (
-                  SELECT 1 FROM collection_call_tasks t
-                  WHERE t.member_id=m.id AND t.cycle_date=?
-                    AND t.successful_contact=1 AND t.queue_type IN ({placeholders})
-              )""",
-        (debit_day, cycle_date, *success_types),
-    ).fetchall()
-    arrears_by_member = bulk_member_arrears(db, (row["member_id"] for row in rows))
-
     candidates = []
-    if cycle["phase"] == "reminder":
-        for row in rows:
-            balance = arrears_by_member.get(row["member_id"], {}).get("total_arrears", 0)
-            if balance <= 0:
-                continue
-            candidates.append({
-                "member_id": row["member_id"], "collection_id": None,
-                "queue_type": "reminder", "priority": 1,
-                "balance": balance,
-                "name": f"{row['first_name']} {row['last_name']}",
-            })
-        candidates.sort(key=lambda c: (-c["balance"], c["name"]))
-
     if cycle["phase"] == "collection":
         failed_rows = db.execute(
             """SELECT m.id AS member_id, MAX(c.id) AS collection_id, m.first_name, m.last_name
                FROM members m JOIN collections c ON c.member_id=m.id
                WHERE CAST(m.debit_order_date AS TEXT)=?
-                 AND c.status IN ('failed','pending','partial')
+                 AND c.status='failed'
                  AND COALESCE(c.outstanding_balance,0)>COALESCE(c.amount_paid,0)
-                 AND substr(c.collection_date,1,7)=substr(?,1,7)
+                 AND substr(c.collection_date,1,7)<=substr(?,1,7)
+                 AND c.collection_date<=?
                  AND NOT EXISTS (
                     SELECT 1 FROM collection_call_tasks t
                     WHERE t.member_id=m.id AND t.cycle_date=?
                       AND t.queue_type='failed_debit' AND t.successful_contact=1
                  )
                GROUP BY m.id, m.first_name, m.last_name""",
-            (debit_day, cycle_date, cycle_date),
+            (debit_day, cycle_date, cycle.get("as_of", cycle_date), cycle_date),
         ).fetchall()
         failed_arrears = bulk_member_arrears(db, (row["member_id"] for row in failed_rows))
         failed = []
@@ -218,6 +185,39 @@ def _cycle_candidates(db, cycle: dict) -> list[dict]:
         candidates = [c for c in candidates if c["member_id"] not in failed_ids]
         candidates = failed + candidates
     return candidates
+
+
+def _ensure_debit_reminders(db, today: date) -> set[int]:
+    """Queue message reminders separately, once per member and actual due date."""
+    from .ptp import bulk_member_arrears
+    upcoming_members = set()
+    for cycle in _reminder_cycles(db, today):
+        rows = db.execute(
+            "SELECT id FROM members WHERE member_status='Active' AND CAST(debit_order_date AS TEXT)=?",
+            (str(cycle["debit_day"]),),
+        ).fetchall()
+        ids = [row["id"] for row in rows]
+        balances = bulk_member_arrears(db, ids)
+        for member_id in ids:
+            if balances.get(member_id, {}).get("total_arrears", 0) <= 0:
+                continue
+            upcoming_members.add(member_id)
+            db.execute(
+                """INSERT OR IGNORE INTO collection_reminders
+                   (member_id, due_date, reminder_date, cycle_group)
+                   VALUES (?, ?, ?, ?)""",
+                (member_id, cycle["scheduled"].isoformat(),
+                 (cycle["scheduled"] - timedelta(days=get_collection_rule_int(db, "reminder_offset_days", 2))).isoformat(),
+                 cycle["group"]),
+            )
+    pending = db.execute("SELECT id, member_id, due_date FROM collection_reminders WHERE status='pending'").fetchall()
+    balances = bulk_member_arrears(db, [row["member_id"] for row in pending])
+    for row in pending:
+        if balances.get(row["member_id"], {}).get("total_arrears", 0) <= 0:
+            db.execute("UPDATE collection_reminders SET status='settled' WHERE id=?", (row["id"],))
+        elif row["due_date"] <= today.isoformat():
+            db.execute("UPDATE collection_reminders SET status='expired' WHERE id=?", (row["id"],))
+    return upcoming_members
 
 
 def _old_owing_candidates(db, excluded: set[int], today: date) -> list[dict]:
@@ -274,7 +274,7 @@ def _recently_called_member_ids(db, today: date) -> set[int]:
     return {
         row["member_id"] for row in db.execute(
             """SELECT DISTINCT member_id FROM collection_call_tasks
-               WHERE status='completed' AND substr(COALESCE(called_at, task_date), 1, 10) >= ?""",
+               WHERE status='completed' AND queue_type!='reminder' AND substr(COALESCE(called_at, task_date), 1, 10) >= ?""",
             (since,),
         ).fetchall()
     }
@@ -288,7 +288,7 @@ def _order_never_contacted_first(db, candidates: list[dict]) -> list[dict]:
     """
     rows = db.execute(
         """SELECT member_id, MAX(COALESCE(successful_contact, 0)) AS reached
-           FROM collection_call_tasks WHERE status='completed' GROUP BY member_id"""
+           FROM collection_call_tasks WHERE status='completed' AND queue_type!='reminder' GROUP BY member_id"""
     ).fetchall()
     history = {row["member_id"]: row["reached"] for row in rows}
 
@@ -301,13 +301,23 @@ def _order_never_contacted_first(db, candidates: list[dict]) -> list[dict]:
 
 
 def _ensure_daily_call_tasks(db, today: date | None = None) -> dict | None:
-    today = today or date.today()
+    today = today or _collections_today()
     callers = _collections_callers(db)
     daily_call_target = get_collection_rule_int(db, "daily_call_target", DAILY_CALL_TARGET)
     cycle = _active_debit_cycle(db, today)
+    reminder_members = _ensure_debit_reminders(db, today)
+    # Retire unworked legacy reminder calls; completed history remains auditable.
+    db.execute("DELETE FROM collection_call_tasks WHERE task_date=? AND queue_type='reminder' AND status='pending'", (today.isoformat(),))
     if not callers:
+        db.commit()
         return cycle
     task_date = today.isoformat()
+    # Never keep an unworked task labelled failed after its source is no longer failed.
+    db.execute("""DELETE FROM collection_call_tasks WHERE task_date=? AND status='pending'
+        AND queue_type='failed_debit' AND (cycle_date>=? OR NOT EXISTS (
+            SELECT 1 FROM collections c WHERE c.id=collection_call_tasks.collection_id
+            AND c.status='failed' AND COALESCE(c.outstanding_balance,0)>COALESCE(c.amount_paid,0)))""",
+        (task_date, task_date))
     # Payment data can change after tasks are generated (including payments
     # that only reconcile once matched against a charge — see
     # bulk_member_arrears). Remove only unworked tasks whose account is now
@@ -330,9 +340,11 @@ def _ensure_daily_call_tasks(db, today: date | None = None) -> dict | None:
                 AND member_id IN ({','.join('?' for _ in settled_ids)})""",
             (task_date, *settled_ids),
         )
+    if reminder_members:
+        db.execute(f"DELETE FROM collection_call_tasks WHERE task_date=? AND status='pending' AND member_id IN ({','.join('?' for _ in reminder_members)})", (task_date, *reminder_members))
     counts = {
         caller["id"]: db.execute(
-            "SELECT COUNT(*) FROM collection_call_tasks WHERE task_date=? AND assigned_to=?",
+            "SELECT COUNT(*) FROM collection_call_tasks WHERE task_date=? AND assigned_to=? AND queue_type!='reminder'",
             (task_date, caller["id"]),
         ).fetchone()[0]
         for caller in callers
@@ -343,10 +355,13 @@ def _ensure_daily_call_tasks(db, today: date | None = None) -> dict | None:
         ).fetchall()
     }
     # Called within the last CALL_REST_DAYS days (any outcome) - not eligible again yet.
-    existing |= _recently_called_member_ids(db, today)
-    current = []
-    if cycle:
-        current = [candidate for candidate in _cycle_candidates(db, cycle) if candidate["member_id"] not in existing]
+    existing |= _recently_called_member_ids(db, today) | reminder_members
+    current_by_member = {}
+    for eligible_cycle in _collection_cycles(db, today):
+        for candidate in _cycle_candidates(db, eligible_cycle):
+            if candidate["member_id"] not in existing:
+                current_by_member[candidate["member_id"]] = {**candidate, "cycle_date": eligible_cycle["scheduled"].isoformat()}
+    current = list(current_by_member.values())
     # First-month failed debits stay with the signing consultant until they
     # reach the transfer threshold, so they never count in Reception's workload.
     transfer_due_sales_cases(db, arrears_by_member=None)
@@ -373,7 +388,7 @@ def _ensure_daily_call_tasks(db, today: date | None = None) -> dict | None:
                VALUES (?, ?, ?, ?, ?, ?, ?, 'CALL')""",
             (
                 task_date, candidate["member_id"], candidate["collection_id"],
-                candidate["queue_type"], cycle["scheduled"].isoformat() if cycle else None,
+                candidate["queue_type"], candidate.get("cycle_date"),
                 candidate["priority"], caller["id"],
             ),
         )
@@ -387,12 +402,8 @@ def _sync_application_payment(db, member_id: int) -> None:
     from .applications import ensure_member_application, sync_application_status
 
     aid = ensure_member_application(db, member_id)
-    has_paid_payment = db.execute(
-        """SELECT 1 FROM collections
-           WHERE member_id = ? AND status = 'paid' AND amount_paid > 0
-           LIMIT 1""",
-        (member_id,),
-    ).fetchone()
+    from .applications import registration_fee_paid
+    has_paid_payment = registration_fee_paid(db, member_id)
     db.execute(
         """UPDATE compliance_checklists
            SET pos_status = ?, updated_at = datetime('now')
@@ -526,7 +537,7 @@ def reports():
     try:
         report_day = date.fromisoformat(request.args.get("day", "")).isoformat()
     except ValueError:
-        report_day = date.today().isoformat()
+        report_day = _collections_today().isoformat()
     return render_template(
         "collections/reports.html",
         month=month,
@@ -580,7 +591,7 @@ def call_queue():
         except ValueError:
             caller_filter = None
 
-    task_date = date.today().isoformat()
+    task_date = _collections_today().isoformat()
     daily_call_target = get_collection_rule_int(db, "daily_call_target", DAILY_CALL_TARGET)
     query = """SELECT t.*, m.member_ref, m.first_name, m.last_name, m.contact,
                       m.debit_order_date, m.member_status,
@@ -595,7 +606,7 @@ def call_queue():
                FROM collection_call_tasks t
                JOIN members m ON m.id=t.member_id
                JOIN users u ON u.id=t.assigned_to
-               WHERE t.task_date=?"""
+               WHERE t.task_date=? AND t.queue_type!='reminder'"""
     params = [task_date]
     if caller_filter:
         query += " AND t.assigned_to=?"
@@ -607,11 +618,10 @@ def call_queue():
         f"""SELECT u.id, u.full_name,
                   COUNT(t.id) AS assigned,
                   SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS calls,
-                  SUM(CASE WHEN {reached_sql()} THEN 1 ELSE 0 END) AS contacts,
-                  SUM(CASE WHEN {verified_sql(min_talk)} THEN 1 ELSE 0 END) AS verified,
+                  SUM(CASE WHEN {reached_sql(min_talk)} THEN 1 ELSE 0 END) AS contacts,
                   SUM({talk_seconds_sql()}) AS talk_seconds
            FROM users u
-           LEFT JOIN collection_call_tasks t ON t.assigned_to=u.id AND t.task_date=?
+           LEFT JOIN collection_call_tasks t ON t.assigned_to=u.id AND t.task_date=? AND t.queue_type!='reminder'
            WHERE u.active=1 AND COALESCE(u.is_collections_caller,0)=1
            GROUP BY u.id, u.full_name ORDER BY u.full_name""",
         (task_date,),
@@ -620,7 +630,7 @@ def call_queue():
         row["queue_type"]: row["count"]
         for row in db.execute(
             """SELECT queue_type, COUNT(*) AS count FROM collection_call_tasks
-               WHERE task_date=? GROUP BY queue_type""", (task_date,)
+               WHERE task_date=? AND queue_type!='reminder' GROUP BY queue_type""", (task_date,)
         ).fetchall()
     }
     return render_template(
@@ -631,12 +641,40 @@ def call_queue():
         summaries=summary_rows,
         queue_counts=queue_counts,
         cycle=cycle,
+        reminders=db.execute("""SELECT r.*, m.first_name, m.last_name, m.contact FROM collection_reminders r
+            JOIN members m ON m.id=r.member_id WHERE r.status='pending' AND r.reminder_date<=? AND r.due_date>?
+            ORDER BY r.due_date, m.last_name, m.first_name""", (task_date, task_date)).fetchall(),
         call_outcomes=CALL_OUTCOMES,
         daily_call_target=daily_call_target,
         daily_contact_target=DAILY_CONTACT_TARGET,
         min_talk_seconds=min_talk,
-        today_label=date.today().strftime("%d %B %Y"),
+        today_label=_collections_today().strftime("%d %B %Y"),
     )
+
+
+@collections_bp.post("/reminders/<int:reminder_id>/delivered")
+@permission_required("collections_call_queue")
+def record_reminder_delivery(reminder_id):
+    db = get_db()
+    reminder = db.execute("SELECT * FROM collection_reminders WHERE id=?", (reminder_id,)).fetchone()
+    channel = request.form.get("channel", "").upper()
+    today = _collections_today().isoformat()
+    if not reminder or reminder["status"] != "pending" or not (reminder["reminder_date"] <= today < reminder["due_date"]):
+        flash("This reminder is no longer pending or its delivery window has closed.", "warning")
+    elif channel not in {"WHATSAPP", "SMS", "EMAIL"}:
+        flash("Select the message channel used to deliver the reminder.", "error")
+    else:
+        changed = db.execute(
+            """UPDATE collection_reminders SET status='delivered', channel=?, delivered_at=datetime('now'), delivered_by=?
+               WHERE id=? AND status='pending'""", (channel, session.get("user_id"), reminder_id),
+        ).rowcount
+        if changed:
+            log_collection_communication(db, reminder["member_id"], channel, status="sent", outcome="pre_debit_reminder",
+                notes=f"Pre-debit reminder for {reminder['due_date']}", created_by=session.get("user_id"))
+            member_activity(db, reminder["member_id"], f"Pre-debit reminder delivered by {channel}; due {reminder['due_date']}")
+        db.commit()
+        flash("Reminder delivery recorded separately from call activity.", "success")
+    return redirect(url_for("collections.call_queue"))
 
 
 def _offer_from_request(db, member_id: int, form) -> dict:
@@ -738,6 +776,9 @@ def call_profile(task_id: int):
     ).fetchone()
     if not task:
         flash("Collection call task not found.", "warning")
+        return redirect(url_for("collections.call_queue"))
+    if task["queue_type"] == "reminder":
+        flash("Pre-debit reminders are messages, not collection calls. Use the reminder list.", "warning")
         return redirect(url_for("collections.call_queue"))
     current_user = db.execute(
         "SELECT is_collections_caller FROM users WHERE id=?", (session.get("user_id"),)
@@ -928,7 +969,7 @@ def record_call_result(task_id: int):
     if outcome == "asked_callback":
         callback_date = request.form.get("callback_date", "").strip()
         callback_time = request.form.get("callback_time", "").strip()
-        if not callback_date or callback_date <= date.today().isoformat():
+        if not callback_date or callback_date <= _collections_today().isoformat():
             flash("Pick a future date for the callback.", "error")
             return redirect(url_for("collections.call_profile", task_id=task_id))
         if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", callback_time):
@@ -1177,7 +1218,8 @@ def collections_add():
             )
 
         if find_duplicate_collection(db, int(member_id), collection_date, outstanding_balance,
-                                     amount_paid, method, status, notes):
+                                     amount_paid, method, status, notes,
+                                     "registration_fee" if request.form.get("payment_purpose") == "registration_fee" else "general"):
             flash("An identical collection record is already on file for this member.", "warning")
             return redirect(url_for("collections.collections_index"))
 
@@ -1185,10 +1227,11 @@ def collections_add():
             cursor = db.execute(
                 """INSERT INTO collections
                    (member_id, outstanding_balance, discount_pct, amount_paid,
-                    collection_date, method, status, notes, created_by)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    collection_date, method, status, notes, created_by, payment_purpose)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (int(member_id), float(outstanding_balance or 0), float(discount_pct or 0),
-                 float(amount_paid or 0), collection_date, method, status, notes, session.get("user_id")),
+                 float(amount_paid or 0), collection_date, method, status, notes, session.get("user_id"),
+                 "registration_fee" if request.form.get("payment_purpose") == "registration_fee" else "general"),
             )
             if status == "failed":
                 sync_collection_case(
@@ -1258,9 +1301,10 @@ def collections_edit(cid: int):
         try:
             db.execute(
                 """UPDATE collections
-                   SET amount_paid = ?, status = ?, method = ?, notes = ?, collection_date = ?
+                   SET amount_paid = ?, status = ?, method = ?, notes = ?, collection_date = ?, payment_purpose = ?
                    WHERE id = ?""",
-                (float(amount_paid or 0), status, method, notes, collection_date, cid),
+                (float(amount_paid or 0), status, method, notes, collection_date,
+                 "registration_fee" if request.form.get("payment_purpose", col["payment_purpose"]) == "registration_fee" else "general", cid),
             )
             if status == "failed":
                 sync_collection_case(
@@ -1316,16 +1360,15 @@ def daily_call_progress(db, today: date | None = None) -> dict:
     task, a contact is a task flagged successful_contact — so the dashboard and
     the queue can never quote different numbers for the same day.
     """
-    task_date = (today or date.today()).isoformat()
+    task_date = (today or _collections_today()).isoformat()
     target_per_caller = get_collection_rule_int(db, "daily_call_target", DAILY_CALL_TARGET)
     min_talk = get_collection_rule_int(db, "contact_talk_seconds", DEFAULT_CONTACT_TALK_SECONDS)
     row = db.execute(
         f"""SELECT COUNT(t.id) AS assigned,
                   COALESCE(SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END), 0) AS calls,
-                  COALESCE(SUM(CASE WHEN {reached_sql()} THEN 1 ELSE 0 END), 0) AS contacts,
-                  COALESCE(SUM(CASE WHEN {verified_sql(min_talk)} THEN 1 ELSE 0 END), 0) AS verified,
+                  COALESCE(SUM(CASE WHEN {reached_sql(min_talk)} THEN 1 ELSE 0 END), 0) AS contacts,
                   COALESCE(SUM({talk_seconds_sql()}), 0) AS talk_seconds
-           FROM collection_call_tasks t WHERE t.task_date=?""",
+           FROM collection_call_tasks t WHERE t.task_date=? AND t.queue_type!='reminder'""",
         (task_date,),
     ).fetchone()
     caller_count = len(_collections_callers(db))
@@ -1334,7 +1377,7 @@ def daily_call_progress(db, today: date | None = None) -> dict:
     contacts = row["contacts"] or 0
     daily_target = target_per_caller * caller_count
     # calculate_daily_call_kpi (collections_engine.py) is the shared KPI
-    # calculation - pass the real team-wide target, not its own 40 default,
+    # calculation - pass the real team-wide target, the configured target,
     # and round its 2dp figures down to the 1dp this dashboard has always
     # shown so the fix doesn't silently change the displayed precision.
     kpi = calculate_daily_call_kpi(calls, target=daily_target, contacts=contacts, calls_attempted=calls)
@@ -1343,7 +1386,6 @@ def daily_call_progress(db, today: date | None = None) -> dict:
         "assigned": assigned,
         "calls": calls,
         "contacts": contacts,
-        "verified": row["verified"] or 0,
         "talk_seconds": row["talk_seconds"] or 0,
         "min_talk_seconds": min_talk,
         "contact_target": DAILY_CONTACT_TARGET * caller_count,
@@ -1356,7 +1398,7 @@ def daily_call_progress(db, today: date | None = None) -> dict:
             item["queue_type"]: item["count"]
             for item in db.execute(
                 """SELECT queue_type, COUNT(*) AS count FROM collection_call_tasks
-                   WHERE task_date=? GROUP BY queue_type""",
+                   WHERE task_date=? AND queue_type!='reminder' GROUP BY queue_type""",
                 (task_date,),
             ).fetchall()
         },

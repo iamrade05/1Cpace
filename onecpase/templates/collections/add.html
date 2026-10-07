@@ -19,6 +19,15 @@
       </select>
     </div>
 
+    <div class="form-group">
+      <label for="payment_purpose">Payment Purpose</label>
+      <select id="payment_purpose" name="payment_purpose">
+        {% set purpose = request.form.get('payment_purpose', request.args.get('payment_purpose', 'general')) %}
+        <option value="general" {% if purpose == 'general' %}selected{% endif %}>General payment</option>
+        <option value="registration_fee" {% if purpose == 'registration_fee' %}selected{% endif %}>Registration fee</option>
+      </select>
+    </div>
+
     <div class="form-row">
       <div class="form-group">
         <label for="outstanding_balance">Outstanding Balance (R)</label>

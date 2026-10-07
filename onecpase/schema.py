@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS members (
 
 CREATE TABLE IF NOT EXISTS collections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    payment_purpose TEXT DEFAULT 'general',
     member_id INTEGER NOT NULL,
     outstanding_balance REAL DEFAULT 0,
     discount_pct REAL DEFAULT 0,
@@ -1249,6 +1250,7 @@ CREATE TABLE IF NOT EXISTS members (
 
 CREATE TABLE IF NOT EXISTS collections (
     id SERIAL PRIMARY KEY,
+    payment_purpose TEXT DEFAULT 'general',
     member_id INTEGER NOT NULL,
     outstanding_balance DOUBLE PRECISION DEFAULT 0,
     discount_pct DOUBLE PRECISION DEFAULT 0,

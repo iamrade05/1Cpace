@@ -337,9 +337,9 @@
                    value="{{ d.get('debicheck_submit_date',today) }}">
           </div>
           <div class="form-group">
-            <label class="form-label">Client Reference 1</label>
-            <input type="text" name="debicheck_client_ref1" class="form-control" maxlength="25"
-                   placeholder="Generated if blank" value="{{ d.get('debicheck_client_ref1','') }}">
+            <label class="form-label">Member ID — NuPay Reference</label>
+            <input type="text" name="debicheck_client_ref1" class="form-control" maxlength="25" readonly
+                   placeholder="Uses the member ID" value="{{ d.get('id_number','') }}">
           </div>
           <div class="form-group">
             <label class="form-label">Client Reference 2 — Staff Number</label>
@@ -387,10 +387,10 @@
         </div>
         <div class="u-c7c0c8fe">
           <div>
-            <strong class="u-97739687">Save member and request debit authorization</strong>
-            <span class="u-b39b6135">The mandate is saved before NuPay is contacted, so failures remain retryable.</span>
+            <strong class="u-97739687">Save the application draft and mandate</strong>
+            <span class="u-b39b6135">Next, upload the ID copy and bank statement. A qualifying statement analysis is required before submitting to NuPay.</span>
           </div>
-          <button type="submit" name="submit_action" value="push_nupay" class="btn btn-primary" id="pushNupayBtn">Push to NuPay</button>
+          <button type="submit" name="submit_action" value="push_nupay" class="btn btn-primary" id="pushNupayBtn">Save Draft &amp; Continue to Documents</button>
         </div>
       </div>
 

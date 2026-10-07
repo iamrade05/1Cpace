@@ -1,0 +1,23 @@
+1Cpace Sales + Collections release
+Validated locally: 839 tests passed. Not deployed.
+
+Extract the ZIP to D:\Dev. It creates D:\Dev\1Cpace-release.
+Use this release folder rather than your older checkout.
+Your existing checkout remains untouched. No secrets, databases, or uploads are included.
+
+PowerShell:
+Set-Location "D:\Dev\1Cpace-release"
+python deploy_beta.py --check-only
+python deploy_beta.py
+
+The script defaults to your user profile's .ssh\1cpace_absolute_ed25519 key.
+For another key, add --key "C:\full\path\to\your-key" to both commands.
+The server's host key must already be verified and trusted in known_hosts.
+If a check fails, stop and share the error; never share your private key.
+Type DEPLOY only after the check succeeds.
+
+Target: beta.1cpace.co.za, service onecpase, directory /opt/onecpase.
+The script backs up application and data, preserves the server .env,
+installs dependencies, restarts the service, and checks health.
+This script does not deploy to the production 1cpace.co.za application.
+Reminders currently require staff sending and delivery recording.

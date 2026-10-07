@@ -20,9 +20,11 @@
       <span class="btn btn-ghost" style="cursor:default;">⏳ Waiting for you to finish in the NuPay browser window</span>
     {% elif has_perm('new_debicheck') and mandate.status != 'active' and not mandate.imported_from_nupay %}
       <form method="post" action="{{ url_for('debicheck.review_on_nupay', mandate_id=mandate.id) }}">
+        {% if session.get('role') == 'admin' %}<label><input type="checkbox" name="override" value="1"> Admin override (audited)</label>{% endif %}
         <button class="btn btn-primary">Review &amp; Submit on NuPay</button>
       </form>
       <form method="post" action="{{ url_for('debicheck.push',mandate_id=mandate.id) }}">
+        {% if session.get('role') == 'admin' %}<label><input type="checkbox" name="override" value="1"> Admin override (audited)</label>{% endif %}
         <button class="btn btn-secondary">{% if mandate.status in ('submitted','pending','failed','rejected','cancelled') %}Resend Automatically{% else %}Push Automatically{% endif %}</button>
       </form>
     {% endif %}

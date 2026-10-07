@@ -8,7 +8,7 @@
     <div>
       <div class="sales-eyebrow">Revenue command view</div>
       <h1>Sales performance</h1>
-      <p>Track the complete journey from assigned lead to activated membership, with every stage measured against the same lead cohort.</p>
+      <p>Track lead activity, activation and completed sales. Consultant sales credit requires completed compliance.</p>
     </div>
     <div class="sales-period"><strong>{{ report.date_from }}</strong> to <strong>{{ report.date_to }}</strong></div>
   </header>
@@ -20,6 +20,16 @@
     <button class="btn btn-primary" type="submit">Update view</button>
   </form>
 
+  <section class="sales-section sales-card">
+    <h2>Monthly Credited Sales: {{ report.completed_sales.count }}</h2>
+    <p class="card-note">Credit belongs to the consultant when compliance first becomes complete, regardless of when the application started. Activated applications with unpaid registration fees or unsigned contracts earn no sales credit.</p>
+    {% if report.completed_sales.applications %}
+    <div class="table-wrap"><table class="table"><tr><th>Member</th><th>Completed</th><th>Application</th></tr>
+    {% for sale in report.completed_sales.applications %}<tr><td>{{ sale.first_name }} {{ sale.last_name }}</td><td>{{ sale.credited_at }}</td><td><a href="{{ url_for('applications.application_detail', aid=sale.id) }}">View Application</a></td></tr>{% endfor %}
+    </table></div>
+    {% else %}<div class="sales-empty">No completed sales credited in this period.</div>{% endif %}
+  </section>
+
   <section class="sales-section">
     <div class="sales-section-heading"><h2>Executive snapshot</h2><span>Selected period performance</span></div>
     <div class="sales-kpis">
@@ -28,12 +38,13 @@
       <div class="sales-kpi"><span class="hint">CONVERSION</span><span class="value">{{ report.appointment_rate_pct if report.appointment_rate_pct is not none else '—' }}{% if report.appointment_rate_pct is not none %}%{% endif %}</span><span class="label">Contact to appointment</span></div>
       <div class="sales-kpi"><span class="hint">QUALITY</span><span class="value">{{ report.show_rate_pct if report.show_rate_pct is not none else '—' }}{% if report.show_rate_pct is not none %}%{% endif %}</span><span class="label">Appointment show rate</span></div>
       <div class="sales-kpi"><span class="hint">ACTIVATION</span><span class="value">{{ report.application_rate_pct if report.application_rate_pct is not none else '—' }}{% if report.application_rate_pct is not none %}%{% endif %}</span><span class="label">Application activation</span></div>
-      <div class="sales-kpi"><span class="hint">OUTCOME</span><span class="value">{{ report.join_rate_pct if report.join_rate_pct is not none else '—' }}{% if report.join_rate_pct is not none %}%{% endif %}</span><span class="label">Show to joined</span></div>
+      <div class="sales-kpi"><span class="hint">OUTCOME</span><span class="value">{{ report.join_rate_pct if report.join_rate_pct is not none else '—' }}{% if report.join_rate_pct is not none %}%{% endif %}</span><span class="label">Show to agreement</span></div>
     </div>
   </section>
 
   <section class="sales-section">
     <div class="sales-section-heading"><h2>Sales funnel</h2><span>Counts stay within the selected lead cohort</span></div>
+    <p class="card-note">Contacted counts successful conversations. Walk-ins count as attendance without implying an appointment. Activated counts Itensity activation. Monthly credited sales require complete compliance, a signed contract and a fully paid registration fee.</p>
     {% if report.funnel_variances %}<div class="sales-card" style="margin-bottom:12px;padding:12px 15px;border-color:rgba(242,166,111,.35);color:var(--sales-orange);font-size:.78rem"><strong>Data check:</strong> a later-stage count exceeds the prior stage in this period. Review the underlying lead/application records before using the rate as a target.</div>{% endif %}
     <div class="sales-funnel">
       {% for label, value in funnel %}<div class="sales-stage" style="--stage-color:{% if loop.index == 1 %}#43d3e5{% elif loop.index == 2 %}#55c9d8{% elif loop.index == 3 %}#6cbed1{% elif loop.index == 4 %}#83b4c9{% elif loop.index == 5 %}#f2b36f{% elif loop.index == 6 %}#f28d68{% else %}#57d39b{% endif %}"><span class="stage-number">0{{ loop.index }}</span><strong>{{ value }}</strong><span>{{ label }}</span></div>{% endfor %}
@@ -51,13 +62,13 @@
   </section>
 
   <section class="sales-section sales-columns">
-    <div class="sales-card"><h3>Funnel leakage</h3><p class="card-note">Drop-off between consecutive stages; variances are flagged instead of shown as negative leakage.</p><div class="table-wrap"><table class="table"><tr><th>Stage</th><th>Reached</th><th>Movement</th><th>Rate</th></tr>{% for row in report.funnel_leakage %}<tr><td class="strong-cell">{{ row.stage|replace('_',' ')|title }}</td><td>{{ row.reached }}</td><td>{% if row.drop is not none %}{{ row.drop }}{% elif row.variance is not none %}<span class="sales-badge warn">+{{ row.variance }} variance</span>{% else %}—{% endif %}</td><td>{% if row.drop_pct is not none %}{{ row.drop_pct }}%{% elif row.variance is not none %}<span class="sales-badge warn">Review</span>{% else %}—{% endif %}</td></tr>{% endfor %}</table></div></div>
+    <div class="sales-card"><h3>Funnel leakage</h3><p class="card-note">Drop-off between consecutive stages; variances are flagged instead of shown as negative leakage.</p><div class="table-wrap"><table class="table"><tr><th>Stage</th><th>Reached</th><th>Movement</th><th>Rate</th></tr>{% for row in report.funnel_leakage %}<tr><td class="strong-cell">{{ 'Agreed to Join' if row.stage == 'joined' else row.stage|replace('_',' ')|title }}</td><td>{{ row.reached }}</td><td>{% if row.drop is not none %}{{ row.drop }}{% elif row.variance is not none %}<span class="sales-badge warn">+{{ row.variance }} variance</span>{% else %}—{% endif %}</td><td>{% if row.drop_pct is not none %}{{ row.drop_pct }}%{% elif row.variance is not none %}<span class="sales-badge warn">Review</span>{% else %}—{% endif %}</td></tr>{% endfor %}</table></div></div>
     <div class="sales-card"><h3>Process quality</h3><p class="card-note">Controls that protect conversion quality.</p><div class="table-wrap"><table class="sales-summary-table table"><tr><td>Backward funnel movements</td><td>{{ report.backwards_moves|length }}</td></tr><tr><td>Applications in 30-day cohort</td><td>{{ report.quality_30_day.cohort }}</td></tr><tr><td>30-day active and collecting</td><td>{{ report.quality_30_day.good }}</td></tr><tr><td>Capture-error failures</td><td>{{ report.mandate_discipline.capture_errors }}</td></tr><tr><td>Quality rate</td><td>{{ report.quality_30_day.rate_pct if report.quality_30_day.rate_pct is not none else '—' }}{% if report.quality_30_day.rate_pct is not none %}%{% endif %}</td></tr></table></div></div>
   </section>
 
   <section class="sales-section sales-columns">
-    <div class="sales-card"><h3>Lead source performance</h3><p class="card-note">Which channels produce joined members.</p>{% if report.source_mix %}<div class="table-wrap"><table class="table"><tr><th>Source</th><th>Leads</th><th>Joined</th><th>Join rate</th></tr>{% for row in report.source_mix %}<tr><td class="strong-cell">{{ row.source }}</td><td>{{ row.leads }}</td><td>{{ row.joined }}</td><td><span class="sales-badge">{{ ((row.joined * 100 / row.leads)|round(1)) if row.leads else '—' }}%</span></td></tr>{% endfor %}</table></div>{% else %}<div class="sales-empty">No source data in this window.</div>{% endif %}</div>
-    {% if report.consultants %}<div class="sales-card"><h3>Consultant comparison</h3><p class="card-note">Owner-based performance for the same period.</p><div class="table-wrap"><table class="table"><tr><th>Consultant</th><th>Assigned</th><th>Joined</th><th>Activation</th></tr>{% for person in report.consultants %}<tr><td class="strong-cell">{{ person.username }}</td><td>{{ person.funnel.assigned }}</td><td>{{ person.funnel.joined }}</td><td><span class="sales-badge">{{ person.application_rate_pct if person.application_rate_pct is not none else '—' }}{% if person.application_rate_pct is not none %}%{% endif %}</span></td></tr>{% endfor %}</table></div></div>{% endif %}
+    <div class="sales-card"><h3>Lead source performance</h3><p class="card-note">Which channels produce agreements to join.</p>{% if report.source_mix %}<div class="table-wrap"><table class="table"><tr><th>Source</th><th>Leads</th><th>Agreed to Join</th><th>Agreement rate</th></tr>{% for row in report.source_mix %}<tr><td class="strong-cell">{{ row.source }}</td><td>{{ row.leads }}</td><td>{{ row.joined }}</td><td><span class="sales-badge">{{ ((row.joined * 100 / row.leads)|round(1)) if row.leads else '—' }}%</span></td></tr>{% endfor %}</table></div>{% else %}<div class="sales-empty">No source data in this window.</div>{% endif %}</div>
+    {% if report.consultants %}<div class="sales-card"><h3>Consultant comparison</h3><p class="card-note">Owner-based performance for the same period.</p><div class="table-wrap"><table class="table"><tr><th>Consultant</th><th>Assigned</th><th>Credited Sales</th><th>Activation</th></tr>{% for person in report.consultants %}<tr><td class="strong-cell">{{ person.username }}</td><td>{{ person.funnel.assigned }}</td><td>{{ person.completed_sales }}</td><td><span class="sales-badge">{{ person.application_rate_pct if person.application_rate_pct is not none else '—' }}{% if person.application_rate_pct is not none %}%{% endif %}</span></td></tr>{% endfor %}</table></div></div>{% endif %}
   </section>
 
   <section class="sales-section sales-columns">
