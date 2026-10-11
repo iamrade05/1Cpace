@@ -282,9 +282,12 @@ def sync_source_members(db, source_members: list[dict[str, Any]], tenant_name: s
 
         local_id = local["id"]
         before_values = _comparable_local(db, local_id)
+        # Keep reviewed cancellations until staff explicitly reinstate a member.
+        if before_values[5] == "Cancelled":
+            payload["member_status"] = "Cancelled"
         after_values = (
             src["first_name"], src["last_name"], src["id_number"], src["contact"],
-            src["join_date"], src["member_status"], src["package"], src["package"],
+            src["join_date"], payload["member_status"], src["package"], src["package"],
             src["monthly_installment"], src["unique_ref"], "Elev8 dbo.Members",
         )
         # A package a manager agreed with the member (a different agreement, or a

@@ -320,6 +320,13 @@ def import_members(db: sqlite3.Connection, members: list[dict[str, Any]]) -> Cou
             continue
 
         existing = by_id or by_ref
+        if existing:
+            local_status = db.execute(
+                "SELECT member_status FROM members WHERE id = ?", (existing[0],)
+            ).fetchone()[0]
+            # A reviewed cancellation must survive the nightly roster refresh.
+            if local_status == "Cancelled":
+                values["member_status"] = "Cancelled"
         columns = list(values)
         if existing:
             assignments = ", ".join(f"{column} = ?" for column in columns)

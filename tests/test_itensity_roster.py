@@ -211,3 +211,38 @@ def test_reimport_of_a_placeholder_id_member_does_not_duplicate(app):
         db.commit()
         rows = db.execute("SELECT itensity_ref FROM members").fetchall()
         assert [row["itensity_ref"] for row in rows] == ["9"]
+
+
+@pytest.mark.parametrize("source_status", ["Active", "Inactive", "Blocked"])
+def test_reviewed_cancellation_survives_roster_refresh(app, source_status):
+    with app.app_context():
+        db = get_db()
+        values = roster_member_values(record(1, detail=True))
+        values.pop("_synthetic_id")
+        import_members(db, [values])
+        db.execute("UPDATE members SET member_status='Cancelled' WHERE itensity_ref='1'")
+        refreshed = roster_member_values(record(1, status=source_status, detail=True))
+        refreshed.pop("_synthetic_id")
+        refreshed["contact"] = "0730000000"
+        import_members(db, [refreshed])
+        row = db.execute("SELECT member_status, contact FROM members WHERE itensity_ref='1'").fetchone()
+        assert row["member_status"] == "Cancelled"
+        assert row["contact"] == "0730000000"
+
+
+@pytest.mark.parametrize("source_status", ["Active", "Inactive"])
+def test_reviewed_cancellation_survives_elev8_refresh(app, source_status):
+    from onecpase.elev8_sync import sync_source_members
+    with app.app_context():
+        db = get_db()
+        values = roster_member_values(record(1, detail=True))
+        values.pop("_synthetic_id")
+        import_members(db, [values])
+        db.execute("UPDATE members SET member_status='Cancelled' WHERE itensity_ref='1'")
+        source = [{"unique_ref":"1", "id_number":"8402075628081", "first_name":"Ada", "last_name":"Lovelace",
+                   "contact":"0730000000", "join_date":"2025-03-03", "member_status":source_status,
+                   "package":"Premium", "monthly_installment":345.58}]
+        sync_source_members(db, source, "test")
+        row = db.execute("SELECT member_status, contact FROM members WHERE itensity_ref='1'").fetchone()
+        assert row["member_status"] == "Cancelled"
+        assert row["contact"] == "0730000000"
