@@ -110,6 +110,13 @@ def coverage():
     )
 
 
+@debicheck_bp.post("/members/<int:member_id>/documents")
+@permission_required("new_debicheck")
+def upload_documents(member_id):
+    from .members import _upload_member_doc
+    return _upload_member_doc(member_id, inline=True)
+
+
 @debicheck_bp.route("/sync", methods=["GET", "POST"])
 @permission_required("debicheck_mandates")
 def sync_with_nupay():
@@ -222,6 +229,8 @@ def add():
         "debicheck/add.html", members=members, banks=BANKS,
         selected_member_id=str(selected_member_id), today=date.today().isoformat(),
         form=request.form,
+        submission_checklist=_checklist(db, int(selected_member_id)) if str(selected_member_id).isdigit() else [],
+        statement_months_ready=_months_ready(db, int(selected_member_id)) if str(selected_member_id).isdigit() else False,
         submission_blockers=_submission_blockers(db, int(selected_member_id)) if str(selected_member_id).isdigit() else [],
     )
 
@@ -238,7 +247,11 @@ def detail(mandate_id):
         flash("DebiCheck mandate not found.", "warning")
         return redirect(url_for("debicheck.index"))
     mandate = decrypt_mandate(row)
-    return render_template("debicheck/detail.html", mandate=mandate)
+    return render_template("debicheck/detail.html", mandate=mandate,
+                           submission_checklist=_checklist(get_db(), row["member_id"]),
+                           statement_months_ready=_months_ready(get_db(), row["member_id"]),
+                           statement_blockers=_submission_blockers(get_db(), row["member_id"]))
+
 
 
 @debicheck_bp.route("/<int:mandate_id>/edit", methods=["GET", "POST"])
@@ -316,9 +329,11 @@ def _submission_blockers(db, member_id):
     return nupay_submission_blockers(db, member_id)
 
 
+
 def _admin_override(db, member_id, blockers):
     from .applications import authorize_nupay_override
     return authorize_nupay_override(db, member_id, blockers)
+
 
 
 def _prepare_reference(db, mandate_id, mandate, member_id):
@@ -535,3 +550,23 @@ def check_status(mandate_id):
 
     flash(message, "success" if found else "warning")
     return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
+
+
+def _checklist(db, member_id):
+    from .applications import nupay_submission_checklist
+    return nupay_submission_checklist(db, member_id)
+
+
+
+def _months_ready(db, member_id):
+    from .applications import statement_months_analysed
+    return statement_months_analysed(db, member_id)
+
+
+
+@debicheck_bp.get("/requirements/<int:member_id>")
+@permission_required("new_debicheck")
+def requirements(member_id):
+    db = get_db()
+    return jsonify(html=render_template("debicheck/_checklist.html", submission_checklist=_checklist(db, member_id)),
+                   ready=not _submission_blockers(db, member_id), months_ready=_months_ready(db, member_id))

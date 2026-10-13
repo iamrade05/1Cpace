@@ -82,6 +82,112 @@ def _is_password_error(exc: BaseException) -> bool:
     return False
 
 
+_ROW_RE = re.compile(
+    r'^(\d{1,2})\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(?:(\d{2,4})(?![\d.,])\s+)?',
+    re.IGNORECASE,
+)
+_BAL_CRDR_RE = re.compile(r'(\d{1,3}(?:,\d{3})*\.\d{2})\s*(Cr|Dr)\b', re.IGNORECASE)
+_PERIOD_END_RE = re.compile(r'Statement\s+(?:Period|Date)[^\n]*?(\d{1,2})\s+([A-Za-z]+)\s+(20\d{2})')
+
+
+def _statement_end(text: str):
+    """(year, month) the statement ends, for rows that carry no year."""
+    found = _PERIOD_END_RE.findall(text)
+    if not found:
+        return None
+    _, mon, year = found[-1]
+    month = _MONTH_MAP.get(mon[:3].lower())
+    return (int(year), month) if month else None
+
+
+def _parse_tx_row(line: str, end):
+    """(year, month, day, running_balance) for a dated transaction row, else None.
+
+    Handles rows with or without a year. FNB marks the balance with Cr/Dr and
+    may add bank charges after it, so the last Cr/Dr amount is the balance.
+    """
+    m = _ROW_RE.match(line)
+    if not m:
+        return None
+    day, mon, yr = int(m.group(1)), _MONTH_MAP[m.group(2)[:3].lower()], m.group(3)
+    if yr:
+        year = int(yr) + (2000 if len(yr) == 2 else 0)
+    elif end:
+        year = end[0] - (1 if mon > end[1] else 0)
+    else:
+        return None
+    marked = _BAL_CRDR_RE.findall(line)
+    if marked:
+        amount, side = marked[-1]
+        balance = float(amount.replace(',', ''))
+        balance = -balance if side.lower() == 'dr' else balance
+    else:
+        amts = _parse_amounts(line[m.end():])
+        if not amts:
+            return None
+        balance = amts[-1]
+    return (year, mon, day, balance)
+
+def analyse_cashflow(rows: list[tuple]) -> dict:
+    """Work out income pattern, affordability and a debit day from dated rows.
+
+    rows: (year, month, day, running_balance) in statement order. Each row is a
+    credit or debit by the change in running balance from the row before it.
+    """
+    out = {
+        'months': 0, 'enough_months': False, 'income_pattern': 'unknown',
+        'income_day': None, 'avg_money_in': 0.0, 'avg_money_out': 0.0,
+        'avg_surplus': 0.0, 'suggested_debit_day': None, 'note': '',
+    }
+    if len(rows) < 2:
+        out['note'] = 'Not enough transactions to analyse. Upload at least 2 months of statements.'
+        return out
+    per_month: dict[tuple, dict] = {}
+    credits: list[tuple] = []
+    for prev, cur in zip(rows, rows[1:]):
+        delta = round(cur[3] - prev[3], 2)
+        key = (cur[0], cur[1])
+        m = per_month.setdefault(key, {'in': 0.0, 'out': 0.0})
+        if delta > 0:
+            m['in'] += delta
+            credits.append((key, cur[2], delta))
+        elif delta < 0:
+            m['out'] += -delta
+    keys = sorted(per_month)
+    out['months'] = len(keys)
+    out['enough_months'] = len(keys) >= 2
+    if not keys:
+        return out
+    out['avg_money_in'] = round(sum(per_month[k]['in'] for k in keys) / len(keys), 2)
+    out['avg_money_out'] = round(sum(per_month[k]['out'] for k in keys) / len(keys), 2)
+    out['avg_surplus'] = round(out['avg_money_in'] - out['avg_money_out'], 2)
+
+    # Constant income: a large credit in several months, on about the same day.
+    big = [c for c in credits if c[2] >= 500]
+    best_month_credit = {}
+    for key, day, amt in big:
+        if amt > best_month_credit.get(key, (0, 0))[1]:
+            best_month_credit[key] = (day, amt)
+    days = [d for d, _ in best_month_credit.values()]
+    if len(days) >= 2 and max(days) - min(days) <= 3:
+        out['income_pattern'] = 'constant'
+        out['income_day'] = round(sum(days) / len(days))
+        out['suggested_debit_day'] = min(out['income_day'] + 1, 28)
+        out['note'] = f"Income arrives around day {out['income_day']} each month."
+    else:
+        out['income_pattern'] = 'lump_sum' if len(days) >= 1 else 'irregular'
+        # Pick the day of the month where the balance is highest on average.
+        by_day: dict[int, list[float]] = {}
+        for _, _, day, bal in rows:
+            if day <= 28:
+                by_day.setdefault(day, []).append(bal)
+        if by_day:
+            out['suggested_debit_day'] = max(by_day, key=lambda d: sum(by_day[d]) / len(by_day[d]))
+        out['note'] = ('Income is not regular. Debit day is based on money in versus money spent.')
+    if not out['enough_months']:
+        out['note'] = 'Only 1 month of statement. At least 2 months are needed. ' + out['note']
+    return out
+
 def analyse_pdf(pdf_path: str, monthly_installment: float = 0.0, pdf_password: str | None = None) -> dict:
     """
     Analyse a PDF bank statement.
@@ -155,12 +261,14 @@ def analyse_pdf(pdf_path: str, monthly_installment: float = 0.0, pdf_password: s
 
     # ── 2. Line scan ──────────────────────────────────────────────────────────
     lines = [ln.strip() for ln in text.splitlines()]
+    stmt_end = _statement_end(text)
 
     salary_amounts:  list[float] = []  # confirmed salary credits
     income_amounts:  list[float] = []  # other income credits
     balance_amounts: list[float] = []  # running balance column values
     monthly_balances: dict[int, list[float]] = {}
     risk_lines_seen: set[int]    = set()
+    tx_rows: list[tuple] = []
     months_seen:     set[int]    = set()
 
     # State machine: after seeing "Salary" label, look ahead for the deposit amount
@@ -218,14 +326,11 @@ def analyse_pdf(pdf_path: str, monthly_installment: float = 0.0, pdf_password: s
         # Standard Bank: the final amount on a DATED transaction row is the
         # running balance. Requiring the date prevents page headers, account
         # numbers and legal/footer text from becoming fake balances.
-        is_tx_line = bool(_TRANSACTION_RE.match(ln))
-        if is_tx_line and amts[-1] < _MAX_SANE_BALANCE:
-            balance_amounts.append(amts[-1])
-            month_match = _MONTH_RE.search(ln)
-            if month_match:
-                month = _MONTH_MAP[month_match.group(1).lower()]
-                monthly_balances.setdefault(month, []).append(amts[-1])
-
+        row = _parse_tx_row(ln, stmt_end)
+        if row and abs(row[3]) < _MAX_SANE_BALANCE:
+            balance_amounts.append(row[3])
+            monthly_balances.setdefault(row[1], []).append(row[3])
+            tx_rows.append(row)
     # ── 3. Balance stats ──────────────────────────────────────────────────────
     sane_balances = [b for b in balance_amounts if b < _MAX_SANE_BALANCE]
     if sane_balances:
@@ -249,6 +354,8 @@ def analyse_pdf(pdf_path: str, monthly_installment: float = 0.0, pdf_password: s
         bucketed = [round(a / 500) * 500 for a in income_amounts]
         result['estimated_income'] = float(Counter(bucketed).most_common(1)[0][0])
 
+    result['cashflow'] = analyse_cashflow(tx_rows)
+    result['tx_rows'] = tx_rows
     result['returned_debits'] = len(risk_lines_seen)
     result['months_seen']     = len(months_seen)
     result['monthly_balances'] = {

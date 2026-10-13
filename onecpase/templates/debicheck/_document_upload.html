@@ -1,0 +1,23 @@
+<section class="form-card inline-document-upload" data-member-id="{{ upload_member_id or '' }}" {% if upload_member_selector %}data-member-selector="{{ upload_member_selector }}"{% endif %} {% if upload_reload %}data-reload="true"{% endif %} data-upload-url="{{ upload_url or url_for('debicheck.upload_documents', member_id=0) }}" style="margin-top:20px;">
+  <h2 class="section-heading">Upload Documents</h2>
+  <p class="text-muted">Upload for the selected member here. Bank statements are analysed automatically.</p>
+  <div class="form-grid-2">
+    <label class="form-group">Document Type
+      <select class="form-control inline-document-type" aria-label="Document type">
+        {% for kind in ['SA ID Copy','Bank Statement','Proof of Address','Signed Contract','Debit Mandate',"Medical / Doctor's Clearance",'PAR-Q Form','Other'] %}
+        <option value="{{ kind }}" {% if kind=='Bank Statement' %}selected{% endif %}>{{ kind }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="form-group">File (max 15 MB per upload)
+      <input type="file" class="form-control inline-document-files" accept=".pdf" multiple>
+    </label>
+    <label class="form-group inline-document-password">PDF password, if needed
+      <input type="password" class="form-control inline-pdf-password" autocomplete="off">
+    </label>
+  </div>
+  <small class="inline-document-help">Bank statements: PDF only. Select files covering at least 2 months. Income, cash flow and a suggested debit day are analysed automatically.</small>
+  <div style="margin-top:12px;"><button type="button" class="btn btn-secondary inline-document-submit">Upload and analyse</button></div>
+  <p class="inline-document-result" role="status" aria-live="polite"></p>
+</section>
+<script src="{{ url_for('static', filename='js/document-upload.js') }}" defer></script>

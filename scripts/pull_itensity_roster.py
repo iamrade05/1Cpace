@@ -129,6 +129,12 @@ def pull_roster(headless: bool = True) -> dict[str, Any]:
                 for name, path in DETAIL_ENDPOINTS.items()
             }
 
+            try:
+                from itensity_banking import enrich_unverified_banking
+            except ImportError:
+                from scripts.itensity_banking import enrich_unverified_banking
+            banking_enrichment = enrich_unverified_banking(page, BASE, roster, details["banking"])
+
             reporting = capture_reporting_api(page)
         finally:
             browser.close()
@@ -141,6 +147,7 @@ def pull_roster(headless: bool = True) -> dict[str, Any]:
             "roster": len(roster),
             **{name: len(index) for name, index in details.items()},
         },
+        "banking_enrichment": banking_enrichment,
         "rows": merge_roster(roster, details),
     }
 
@@ -161,6 +168,7 @@ def main() -> None:
 
     print("Itensity chips:", payload["snapshot"]["chips"] or "(not found)")
     print("Rows pulled:", payload["sources"])
+    print("Unverified banking lookup:", payload["banking_enrichment"])
     members = sum(1 for row in payload["rows"] if str(row["roster"].get("role")) == "Member")
     print(f"People: {len(payload['rows'])}  (members: {members})")
     print(f"Saved: {args.out}")

@@ -285,6 +285,10 @@ def _job_itensity_member_import(app) -> None:
     out_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
     chips = payload["snapshot"]["chips"]
     snapshot = dict(chips) if chips else None
+    banking = payload.get("banking_enrichment", {})
+    logger.info("[scheduler] Unverified-member banking lookup: %s", banking)
+    if banking.get("failed") or banking.get("missing") or banking.get("needs_review"):
+        logger.warning("[scheduler] Some unverified members still need banking details: %s", banking)
 
     # The gate runs here too, or the nightly job would quietly import whatever
     # short roster the portal happened to return.

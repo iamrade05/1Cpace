@@ -948,99 +948,7 @@ def member_add_note(mid: int):
 @members_bp.route("/members/<int:mid>/documents", methods=["POST"])
 @permission_required("all_members")
 def member_upload_doc(mid: int):
-    file = request.files.get("document")
-    doc_type = request.form.get("document_type", "Other")
-    if not file or not file.filename:
-        flash("No file selected.", "error")
-        return redirect(_doc_return_to(mid))
-    if not _allowed(file.filename):
-        flash("File type not allowed. Use PDF, JPG, PNG, DOC, DOCX, XLS, XLSX.", "error")
-        return redirect(_doc_return_to(mid))
-
-    upload_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "members" / str(mid)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    safe_name = secure_filename(file.filename)
-    stored_name = f"{int(time.time())}_{safe_name}"
-    dest = upload_dir / stored_name
-    file.save(str(dest))
-    file_size = dest.stat().st_size
-
-    db = get_db()
-    db.execute(
-        """INSERT INTO member_documents
-           (member_id, document_type, original_name, stored_name, file_size, uploaded_by)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (mid, doc_type, file.filename, stored_name, file_size, session.get("user_id")),
-    )
-    analysis_result = None
-    if doc_type == "Bank Statement" and dest.suffix.lower() == ".pdf":
-        import json
-        from .statement_parser import analyse_pdf
-        member = db.execute(
-            "SELECT monthly_installment FROM members WHERE id = ?", (mid,)
-        ).fetchone()
-        analysis_result = analyse_pdf(
-            str(dest),
-            monthly_installment=float(member["monthly_installment"] or 0) if member else 0.0,
-        )
-        db.execute(
-            "UPDATE member_documents SET analysis_json = ? WHERE member_id = ? AND stored_name = ?",
-            (json.dumps(analysis_result), mid, stored_name),
-        )
-    from .applications import ensure_member_application, sync_application_status
-    aid = ensure_member_application(db, mid)
-    checklist_updates = {
-        "Bank Statement": ("bank_statement_status", "uploaded"),
-        "Signed Contract": ("contract_status", "signed"),
-        "SA ID Copy": ("id_copy_status", "uploaded"),
-    }
-    if doc_type in checklist_updates:
-        field, status = checklist_updates[doc_type]
-        if doc_type == "Bank Statement" and analysis_result and analysis_result.get("error"):
-            status = "uploaded"
-        elif doc_type == "Bank Statement" and analysis_result:
-            status = "analysed"
-        db.execute(
-            f"UPDATE compliance_checklists SET {field} = ?, updated_at = datetime('now') WHERE application_id = ?",
-            (status, aid),
-        )
-        if doc_type == "Bank Statement" and analysis_result and not analysis_result.get("error"):
-            db.execute(
-                """INSERT INTO statement_analyses
-                   (application_id, income_detected, estimated_monthly_income,
-                    max_balance_m1, max_balance_m2, max_balance_m3, average_balance,
-                    returned_debits_count, negative_balance_days, income_frequency,
-                    income_months, verification_qualified, risk_rating, analysis_summary, created_by)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    aid,
-                    "yes" if analysis_result.get("income_detected") else "no",
-                    analysis_result.get("estimated_income", 0),
-                    analysis_result.get("monthly_balances", {}).get("1", 0),
-                    analysis_result.get("monthly_balances", {}).get("2", 0),
-                    analysis_result.get("monthly_balances", {}).get("3", 0),
-                    analysis_result.get("avg_balance", 0),
-                    analysis_result.get("returned_debits", 0),
-                    0,
-                    "monthly" if analysis_result.get("income_months", 0) else "irregular",
-                    analysis_result.get("income_months", 0),
-                    int(bool(analysis_result.get("verification_qualified"))),
-                    analysis_result.get("rating", "unknown"),
-                    analysis_result.get("summary", ""),
-                    session.get("user_id"),
-                ),
-            )
-        sync_application_status(db, aid)
-    member_activity(db, mid, f"Uploaded {doc_type}: {file.filename}")
-    db.commit()
-    if analysis_result and analysis_result.get("error"):
-        flash(f"'{file.filename}' uploaded, but automatic analysis failed: {analysis_result['error']}", "warning")
-    elif analysis_result:
-        flash(f"'{file.filename}' uploaded and analyzed automatically.", "success")
-    else:
-        flash(f"'{file.filename}' uploaded successfully.", "success")
-    return redirect(_doc_return_to(mid))
+    return _upload_member_doc(mid)
 
 
 @members_bp.route("/members/<int:mid>/documents/<int:doc_id>/download")
@@ -1289,3 +1197,60 @@ def member_edit(mid: int):
         banks=BANKS,
         consultants=consultants,
     )
+
+
+def _upload_member_doc(mid: int, inline=False):
+    """Shared document storage and analysis for member and DebiCheck screens."""
+    from flask import jsonify
+    from .applications import ensure_member_application, sync_application_status
+    from .statement_uploads import upload_statements
+    from uuid import uuid4
+    db = get_db()
+    if not db.execute("SELECT 1 FROM members WHERE id=?", (mid,)).fetchone():
+        abort(404)
+    def finish(message, category="success", status=200, analysis=None):
+        if inline:
+            return jsonify(message=message, category=category, analysis=analysis), status
+        flash(message, category)
+        return redirect(_doc_return_to(mid))
+    doc_type = request.form.get("document_type", "Other")
+    if doc_type not in DOC_TYPES:
+        return finish("Select a valid document type.", "error", 400)
+    files = [f for f in request.files.getlist("document") if f and f.filename]
+    if doc_type == "Bank Statement":
+        try:
+            result = upload_statements(db, mid, files)
+        except ValueError as exc:
+            return finish(str(exc), "error", 400)
+        db.commit()
+        cash = result["cashflow"]
+        if result.get("error"):
+            return finish(f"Statements uploaded, but automatic analysis failed: {result['error']}", "warning", analysis=result)
+        message = (f"Bank statements uploaded and analysed. {cash.get('note', '')} "
+                   f"Average money in R{cash['avg_money_in']:,.2f}; money out R{cash['avg_money_out']:,.2f}; "
+                   f"surplus R{cash['avg_surplus']:,.2f}. Suggested debit day: {cash['suggested_debit_day'] or 'unavailable'}.")
+        return finish(message, "success" if cash['enough_months'] else "warning", analysis=result)
+    if not files:
+        return finish("No file selected.", "error", 400)
+    if not all(_allowed(f.filename) for f in files):
+        return finish("File type not allowed. Use PDF, JPG, PNG, DOC, DOCX, XLS, XLSX.", "error", 400)
+    upload_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "members" / str(mid)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    for file in files:
+        stored_name = f"{uuid4().hex}_{secure_filename(file.filename)}"
+        dest = upload_dir / stored_name
+        file.save(str(dest))
+        db.execute("""INSERT INTO member_documents
+            (member_id, document_type, original_name, stored_name, file_size, uploaded_by)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (mid, doc_type, file.filename, stored_name, dest.stat().st_size, session.get("user_id")))
+        member_activity(db, mid, f"Uploaded {doc_type}: {file.filename}")
+    aid = ensure_member_application(db, mid)
+    checklist_updates = {"Signed Contract": ("contract_status", "signed"),
+                         "SA ID Copy": ("id_copy_status", "uploaded")}
+    if doc_type in checklist_updates:
+        field, status = checklist_updates[doc_type]
+        db.execute(f"UPDATE compliance_checklists SET {field}=?, updated_at=datetime('now') WHERE application_id=?", (status, aid))
+        sync_application_status(db, aid)
+    db.commit()
+    return finish(f"{len(files)} document(s) uploaded successfully.")

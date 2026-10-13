@@ -1520,3 +1520,52 @@ def exception_decide(exception_id: int):
     db.commit()
     flash(f"Exception {decision}.", "success")
     return redirect(url_for("collections.exception_queue"))
+
+
+@collections_bp.post("/call-queue/<int:task_id>/documents")
+@permission_required("collections_call_queue")
+def upload_documents(task_id: int):
+    from .members import _upload_member_doc
+    task = get_db().execute(
+        "SELECT member_id, assigned_to FROM collection_call_tasks WHERE id=?", (task_id,)
+    ).fetchone()
+    if not task:
+        return jsonify(error="Call task not found"), 404
+    if session.get("role") != "admin" and task["assigned_to"] != session.get("user_id"):
+        return jsonify(error="This client is assigned to another caller"), 403
+    return _upload_member_doc(task["member_id"], inline=True)
+
+
+@collections_bp.post("/call-queue/<int:task_id>/bank-statement")
+@permission_required("collections_call_queue")
+def upload_bank_statement(task_id: int):
+    """Save a bank statement and analyse it straight away for income and a debit day."""
+    from .statement_uploads import upload_statements
+
+    db = get_db()
+    task = db.execute(
+        "SELECT member_id, assigned_to FROM collection_call_tasks WHERE id=?", (task_id,)
+    ).fetchone()
+    if not task:
+        return jsonify(error="Call task not found"), 404
+    if session.get("role") != "admin" and task["assigned_to"] != session.get("user_id"):
+        return jsonify(error="This client is assigned to another caller"), 403
+    try:
+        analysis = upload_statements(db, task["member_id"], request.files.getlist("document"))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    db.commit()
+    cash = analysis.get("cashflow") or {}
+    return jsonify(
+        error=analysis.get("error"),
+        months=cash.get("months", 0),
+        enough_months=bool(cash.get("enough_months")),
+        income_pattern=cash.get("income_pattern"),
+        income_day=cash.get("income_day"),
+        avg_money_in=cash.get("avg_money_in", 0),
+        avg_money_out=cash.get("avg_money_out", 0),
+        avg_surplus=cash.get("avg_surplus", 0),
+        suggested_debit_day=cash.get("suggested_debit_day"),
+        note=cash.get("note", ""),
+        summary=analysis.get("summary", ""),
+    )

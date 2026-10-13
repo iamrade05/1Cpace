@@ -25,7 +25,7 @@ from openpyxl import load_workbook
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from onecpase.encryption import encrypt_member, hash_for_lookup  # noqa: E402
+from onecpase.encryption import decrypt_member, encrypt_member, hash_for_lookup  # noqa: E402
 
 try:  # run as a script (scripts/ on sys.path) or imported as scripts.<module>
     from itensity_reconcile import RosterMismatch, reconcile
@@ -167,9 +167,9 @@ def pick_email(record: dict[str, Any]) -> str:
 def roster_member_values(record: dict[str, Any]) -> dict[str, Any]:
     """One member's fields, drawn from whichever reports described them.
 
-    Only the confirmed ~1,869 appear in the detail reports; the rest are known
-    from the roster alone, so banking and personal fields stay blank rather
-    than being guessed at. The roster's own account number is masked
+    The bulk detail reports only cover confirmed members. Unverified banking
+    is enriched from the individual banking page when available; absent fields
+    stay blank rather than being guessed at. The roster's own account number is masked
     ("147****099") and is never used.
     """
     roster = record.get("roster") or {}
@@ -216,8 +216,10 @@ def roster_member_values(record: dict[str, Any]) -> dict[str, Any]:
         "payment_type": text(roster.get("Payment")),
         "debit_order_date": na_blank(banking.get("debitdate")),
         "bank": na_blank(banking.get("bank")),
+        "account_type": na_blank(banking.get("account_type")),
         "account_name": na_blank(banking.get("accname")),
-        "account_number": na_blank(banking.get("accno")),
+        "account_number": (na_blank(banking.get("accno"))
+                           if na_blank(banking.get("accno")).isdigit() else ""),
         "branch_code": na_blank(banking.get("branch")),
         "payer_name": na_blank(banking.get("accname")),
         "itensity_ref": ref,
@@ -321,6 +323,18 @@ def import_members(db: sqlite3.Connection, members: list[dict[str, Any]]) -> Cou
 
         existing = by_id or by_ref
         if existing:
+            local = decrypt_member(db.execute(
+                "SELECT * FROM members WHERE id = ?", (existing[0],)
+            ).fetchone())
+            # Thin/unverified reports must not erase banking captured locally.
+            # Masked account numbers are display-only, never mandate data.
+            for field in ("bank", "account_name", "account_number", "branch_code",
+                          "account_type", "payer_name", "debit_order_date"):
+                incoming = na_blank(member.get(field))
+                if (member.get("member_status") == "Unverified" and
+                        na_blank(local.get(field))) or not incoming or (field == "account_number" and
+                                    not incoming.isdigit()):
+                    values.pop(field, None)
             local_status = db.execute(
                 "SELECT member_status FROM members WHERE id = ?", (existing[0],)
             ).fetchone()[0]

@@ -2,23 +2,14 @@ from html import escape
 
 
 def collection_care_message(first_name: str, gym_name: str) -> str:
-    """Human, Ubuntu-centred collections copy shared by WhatsApp and email."""
+    """Collections follow-up shared by WhatsApp and email."""
     member_name = (first_name or "there").strip()
     organisation = (gym_name or "your gym").strip()
     return f"""Hi {member_name},
 
-This is {organisation}. We noticed that we have not seen you at the gym lately, and we wanted to check in. We hope you are doing well. You are part of our gym community, and we genuinely care about your wellbeing.
+This is {organisation}. We'd like to help you get back to training. Please reply to this message or contact our team so we can discuss your account and a suitable payment arrangement, and explain the next steps for returning to the gym.
 
-If you are still interested in working out with us, you have two options:
-
-1. Restart your membership application and begin again; or
-2. Continue with your current Premium membership at the same monthly premium while we help you work through the outstanding arrears.
-
-You do not have to figure this out alone. Simply speak to us, and we will listen and find the best way forward together.
-
-Please reply to this message or contact our team when you are ready.
-
-Ubuntu — we move forward together.
+We look forward to hearing from you.
 {organisation}"""
 
 
@@ -42,32 +33,13 @@ def collection_care_email_html(first_name: str, gym_name: str) -> str:
         <div style="padding:30px;color:#374151;line-height:1.65;">
           <p style="font-size:1rem;margin:0 0 14px;">Hi <strong>{member_name}</strong>,</p>
           <p style="font-size:.92rem;margin:0 0 16px;">
-            We noticed that we have not seen you at the gym lately, and we wanted to check in.
-            We hope you are doing well. You are part of our gym community, and we genuinely
-            care about your wellbeing.
-          </p>
-          <p style="font-size:.92rem;margin:0 0 12px;">
-            If you are still interested in working out with us, you have two options:
-          </p>
-          <div style="background:#f4f7f9;border-left:4px solid #b0842d;border-radius:8px;
-                      padding:14px 16px;margin-bottom:10px;font-size:.9rem;">
-            <strong>1. A fresh start</strong><br>
-            Restart your membership application and begin again.
-          </div>
-          <div style="background:#f4f7f9;border-left:4px solid #0b7285;border-radius:8px;
-                      padding:14px 16px;margin-bottom:18px;font-size:.9rem;">
-            <strong>2. Continue your membership</strong><br>
-            Continue with your current Premium membership at the same monthly premium while
-            we help you work through the outstanding arrears.
-          </div>
-          <p style="font-size:.92rem;margin:0 0 14px;">
-            You do not have to figure this out alone. Simply speak to us, and we will listen
-            and find the best way forward together.
+            This is {organisation}. We'd like to help you get back to training.
+            Please reply to this email or contact our team so we can discuss your account
+            and a suitable payment arrangement, and explain the next steps for returning to the gym.
           </p>
           <p style="font-size:.92rem;margin:0 0 20px;">
-            Please reply to this email or contact our team when you are ready.
+            We look forward to hearing from you.
           </p>
-          <p style="color:#002e45;font-weight:700;margin:0;">Ubuntu — we move forward together.</p>
           <p style="color:#6b7280;font-size:.84rem;margin:5px 0 0;">{organisation}</p>
         </div>
       </div>

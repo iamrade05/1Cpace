@@ -66,7 +66,7 @@
 <section class="form-card" style="margin-bottom:16px;">
   <h3>Collection SMS Options</h3>
   <p style="color:var(--t2);">Copy a message into your SMS service, then record it below when SMS is the required contact method.</p>
-  {% for message in ['Please contact your gym to discuss your outstanding balance.', 'We miss you at the gym. Please call our team to discuss your outstanding balance and your options to restart membership.'] %}
+  {% for message in ['Please contact your gym to discuss your outstanding balance.', 'We\'d like to help you get back to training. Please contact our team to discuss your account, a suitable payment arrangement and the next steps for returning to the gym.'] %}
   <div style="margin:12px 0;">
     <label class="form-label">{{ message|length }} characters</label>
     <textarea id="collection-sms-{{ loop.index }}" class="form-control" rows="3" readonly>{{ message }}</textarea>
@@ -278,4 +278,8 @@ async function startCollectionPbxCall(phone, taskId) {
   } catch (e) { showUiMessage('The call could not start. Please try again or ask an admin to check the phone connection.', 'error'); }
 }
 </script>
+
+{% set upload_member_id = task.member_id %}
+{% set upload_url = url_for('collections.upload_documents', task_id=task.id) %}
+{% include 'debicheck/_document_upload.html' %}
 {% endblock %}

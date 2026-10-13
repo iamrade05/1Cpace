@@ -1,0 +1,7 @@
+<div class="form-card" aria-live="polite">
+  <h2 class="section-heading">NuPay submission checklist</h2>
+  {% if submission_checklist %}
+  <ul>{% for item in submission_checklist %}<li><strong>{{ 'Complete' if item.complete else 'Outstanding' }}</strong> ? {{ item.label }}</li>{% endfor %}</ul>
+  {% else %}<p>Select a member to see their requirements.</p>{% endif %}
+  <p>At least two statement months must be analysed before submission. Saving a draft is allowed. Client approval is confirmed after submission.</p>
+</div>

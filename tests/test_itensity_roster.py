@@ -201,6 +201,42 @@ def test_reimport_updates_the_same_member(app):
         assert db.execute("SELECT COUNT(*) FROM members").fetchone()[0] == 1
 
 
+def test_unverified_refresh_preserves_saved_banking(app):
+    from onecpase.encryption import decrypt_member
+    with app.app_context():
+        db = get_db()
+        original = roster_member_values(record(1, detail=True))
+        original.pop("_synthetic_id")
+        import_members(db, [original])
+        thin = roster_member_values(record(1, status="Unverified"))
+        thin.pop("_synthetic_id")
+        thin["account_number"] = "147****099"
+        import_members(db, [thin])
+        member = decrypt_member(db.execute("SELECT * FROM members WHERE itensity_ref='1'").fetchone())
+        assert member["member_status"] == "Unverified"
+        for field in ("bank", "account_name", "account_number", "branch_code"):
+            assert member[field] == original[field]
+
+
+def test_unverified_banking_fills_gaps_without_replacing_saved_account(app):
+    from onecpase.encryption import decrypt_member
+    with app.app_context():
+        db = get_db()
+        thin = roster_member_values(record(1, status="Unverified"))
+        thin.pop("_synthetic_id")
+        import_members(db, [thin])
+        source = roster_member_values(record(1, status="Unverified", detail=True))
+        source.pop("_synthetic_id")
+        source["account_type"] = "Savings"
+        import_members(db, [source])
+        source["account_number"] = "9999999999"
+        import_members(db, [source])
+        member = decrypt_member(db.execute("SELECT * FROM members WHERE itensity_ref='1'").fetchone())
+        assert member["account_number"] == "1479690099"
+        assert member["account_type"] == "Savings"
+        assert member["member_status"] == "Unverified"
+
+
 def test_reimport_of_a_placeholder_id_member_does_not_duplicate(app):
     with app.app_context():
         db = get_db()

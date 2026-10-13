@@ -207,39 +207,27 @@ def _missing_requirements(cl, analysis=None) -> list[str]:
 
 
 def nupay_submission_blockers(db, member_id: int) -> list[str]:
-    """Document and affordability gates shared by every NuPay entry point."""
-    application = db.execute(
-        "SELECT id FROM membership_applications WHERE member_id=? ORDER BY id DESC LIMIT 1",
-        (member_id,),
-    ).fetchone()
-    if not application:
-        return ["Application documents and bank-statement analysis required"]
-    cl = db.execute("SELECT * FROM compliance_checklists WHERE application_id=?", (application["id"],)).fetchone()
-    analysis = db.execute(
-        "SELECT * FROM statement_analyses WHERE application_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
-        (application["id"],),
-    ).fetchone()
-    if not cl:
-        return ["Compliance checklist not started"]
-    missing = []
-    documents = {row["document_type"] for row in db.execute(
-        "SELECT document_type FROM member_documents WHERE member_id=?", (member_id,),
-    ).fetchall()}
-    if cl["id_copy_status"] not in ("uploaded", "verified") or "SA ID Copy" not in documents:
-        missing.append("ID copy not uploaded")
-    if "Bank Statement" not in documents or cl["bank_statement_status"] != "analysed" or not _is_statement_qualified(analysis):
+    """Bank-statement evidence gates shared by every NuPay submission entry point."""
+    missing = bank_statement_activation_blockers(db, member_id)
+    if not statement_months_analysed(db, member_id):
+        missing.append(STATEMENT_MONTHS_BLOCKER)
+    if not bank_statement_qualified(db, member_id):
         missing.append("A qualifying bank-statement analysis is required; inform the client or escalate to a manager")
     return missing
 
 
+
 def authorize_nupay_override(db, member_id: int, blockers: list[str]) -> bool:
     """Record the explicit admin exception before allowing a NuPay submission."""
+    if STATEMENT_MONTHS_BLOCKER in blockers:
+        return False
     if not blockers or session.get("role") != "admin" or request.form.get("override") != "1":
         return False
     application = db.execute("SELECT id FROM membership_applications WHERE member_id=? ORDER BY id DESC LIMIT 1", (member_id,)).fetchone()
     audit_log(db, "nupay_admin_override", application_id=application["id"] if application else None,
               new_value="Missing requirements: " + "; ".join(blockers))
     return True
+
 
 
 def _itensity_hard_blockers(db, aid, member_id):
@@ -1039,3 +1027,67 @@ def decline_application(aid: int):
     db.commit()
     flash("Application declined.", "info")
     return redirect(url_for("applications.approvals_queue"))
+
+STATEMENT_MONTHS_BLOCKER = "At least two statement months must be automatically analysed before NuPay submission."
+
+
+def statement_months_analysed(db, member_id):
+    import json
+    document = db.execute(
+        "SELECT analysis_json FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone()
+    try:
+        result = json.loads(document['analysis_json'] or 'null') if document else None
+        cash = result.get('cashflow') if isinstance(result, dict) else None
+        if not isinstance(cash, dict) or result.get('error') or result.get('batch_error'):
+            return False
+        months = cash.get('months')
+        return isinstance(months, (int, float)) and not isinstance(months, bool) and months >= 2 and cash.get('enough_months') is True
+    except (TypeError, ValueError):
+        return False
+
+
+
+def bank_statement_qualified(db, member_id):
+    import json
+    document = db.execute(
+        "SELECT analysis_json FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone()
+    try:
+        result = json.loads(document['analysis_json'] or 'null') if document else None
+        return bool(isinstance(result, dict) and not result.get('error') and not result.get('batch_error') and result.get('verification_qualified') is True)
+    except (TypeError, ValueError):
+        return False
+
+
+
+def nupay_submission_checklist(db, member_id):
+    document = db.execute("SELECT id FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1", (member_id,)).fetchone()
+    return [
+        {'label': 'Bank statement uploaded', 'complete': bool(document)},
+        {'label': 'Latest bank statement automatically analysed', 'complete': not bank_statement_activation_blockers(db, member_id)},
+        {'label': 'At least two statement months analysed', 'complete': statement_months_analysed(db, member_id)},
+        {'label': 'Qualifying affordability analysis', 'complete': bank_statement_qualified(db, member_id)},
+    ]
+
+
+
+def bank_statement_activation_blockers(db, member_id):
+    """Statement evidence required unless an admin explicitly overrides."""
+    import json
+    document = db.execute(
+        "SELECT analysis_json FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone()
+    if not document:
+        return ['Upload a bank statement before activating DebitCheck.']
+    try:
+        result = json.loads(document['analysis_json'] or 'null')
+    except (TypeError, ValueError):
+        result = None
+    if (not isinstance(result, dict) or result.get('error') or result.get('batch_error')
+            or 'estimated_income' not in result or 'rating' not in result):
+        return ['The latest bank statement must complete automatic analysis before activating DebitCheck.']
+    return []

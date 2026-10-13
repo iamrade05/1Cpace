@@ -3,7 +3,19 @@
 {% block page_title %}New DebiCheck{% endblock %}
 {% block content %}
 <header class="page-header"><div><h1>New DebiCheck</h1></div></header>
+{% if orders %}
+<div class="form-card">
+  <strong>Debit orders needed for this arrangement</strong>
+  <ol>{% for o in orders %}<li>{{ o.label }} — R{{ o.amount }}{% if loop.first %} <em>(this form)</em>{% endif %}</li>{% endfor %}</ol>
+  {% if orders|length > 1 %}<p class="text-muted">Save this one, then add the next from New DebiCheck.</p>{% endif %}
+</div>
+{% endif %}
 <form method="post" id="debicheckForm">
+  {% if orders %}
+  <input type="hidden" name="from_ptp" value="{{ request.values.get('from_ptp','') }}">
+  <input type="hidden" name="purpose" value="{{ orders[0].label }}">
+  <input type="hidden" name="orders" value="{{ request.values.get('orders','') }}">
+  {% endif %}
   <div class="form-card" style="max-width:1000px;margin:auto;">
     <h2 class="section-heading">Member &amp; Payer</h2>
     <div class="form-grid-2">
@@ -40,7 +52,7 @@
     <div class="form-grid-2">
       <div class="form-group"><label class="form-label">Account Holder Name</label><input name="account_name" id="dcAccountName" class="form-control" maxlength="30" required value="{{ form.get('account_name','') }}"></div>
       <div class="form-group"><label class="form-label">Bank</label><select name="bank" id="dcBank" class="form-control" required><option value="">— Select bank —</option>{% for name,code in banks %}<option value="{{ name }}" data-branch="{{ code }}" {% if form.get('bank')==name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></div>
-      <div class="form-group"><label class="form-label">Account Type</label><select name="account_type" id="dcAccountType" class="form-control" required>{% for value in ['Cheque/Current','Savings','Transmission'] %}<option value="{{ value }}" {% if form.get('account_type')==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label class="form-label">Account Type</label><select name="account_type" id="dcAccountType" class="form-control" required><option value="">Select account type</option>{% for value in ['Cheque/Current','Savings','Transmission'] %}<option value="{{ value }}" {% if form.get('account_type')==value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></div>
       <div class="form-group"><label class="form-label">Account Number</label><input name="account_number" id="dcAccountNumber" class="form-control" maxlength="11" inputmode="numeric" required value="{{ form.get('account_number','') }}"></div>
       <div class="form-group"><label class="form-label">Branch Code</label><input name="branch_code" id="dcBranch" class="form-control" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" required value="{{ form.get('branch_code','') }}"></div>
       <div class="form-group"><label class="form-label">Instalment Amount</label><input type="number" name="instalment_amount" id="dcAmount" class="form-control" min="0.01" step="0.01" required value="{{ form.get('instalment_amount','') }}"></div>
@@ -55,15 +67,15 @@
       <div class="form-group" id="standalonePassport" style="display:none;"><label class="form-label">Passport Number</label><input name="passport" class="form-control" value="{{ form.get('passport','') }}"></div>
       <div class="form-group" id="standaloneJuristic" style="display:none;"><label class="form-label">Juristic Account</label><input name="juristic_account" class="form-control" maxlength="15" value="{{ form.get('juristic_account','') }}"></div>
     </div>
-    {% if submission_blockers %}
-    <p>NuPay submission requires: {{ submission_blockers | join('; ') }}.</p>
-    {% if selected_member_id %}<a href="{{ url_for('members.member_detail', mid=selected_member_id) }}#docs" class="btn btn-secondary">Upload Application Documents</a>{% endif %}
-    {% endif %}
+    <div id="submissionChecklist">{% include 'debicheck/_checklist.html' %}</div>
+    {% set upload_member_selector = '#memberSelect' %}
+    {% set upload_member_id = selected_member_id %}
+    {% include 'debicheck/_document_upload.html' %}
     <div class="form-actions" style="justify-content:flex-end;">
       <a href="{{ url_for('debicheck.index') }}" class="btn btn-ghost">Cancel</a>
       <button type="submit" name="submit_action" value="save" class="btn btn-secondary">Save Mandate</button>
-      {% if session.get('role') == 'admin' %}<label><input type="checkbox" name="override" value="1"> Admin override of missing documents or qualification (audited)</label>{% endif %}
-      <button type="submit" name="submit_action" value="push_nupay" class="btn btn-primary">Submit &amp; Push to NuPay</button>
+      {% if session.get('role') == 'admin' %}<label><input type="checkbox" name="override" value="1"> Admin override of bank statement qualification (audited)</label>{% endif %}
+      <button type="submit" name="submit_action" value="push_nupay" id="nupaySubmit" class="btn btn-primary" disabled>Submit &amp; Push to NuPay</button>
     </div>
   </div>
 </form>
@@ -71,7 +83,33 @@
 const memberSelect=document.getElementById('memberSelect'), payerSelect=document.getElementById('payerTypeStandalone'), idType=document.querySelector('[name="id_type"]');
 function toggleStandalonePayer(){document.getElementById('thirdPartyStandalone').style.display=payerSelect.value==='third_party'?'block':'none';}
 function toggleStandaloneIdentity(){document.getElementById('standalonePassport').style.display=idType.value==='1'?'flex':'none';document.getElementById('standaloneJuristic').style.display=idType.value==='4'?'flex':'none';}
-function prefillStandalone(){const o=memberSelect.options[memberSelect.selectedIndex];if(!o?.value)return;const set=(id,v)=>{const e=document.getElementById(id);if(e&&!e.value)e.value=v||''};set('dcAccountName',o.dataset.accountName||o.dataset.name);set('dcAmount',o.dataset.amount);set('dcAccountNumber',o.dataset.accountNumber);set('dcBranch',o.dataset.branch);document.getElementById('dcClientRef1').value=o.dataset.clientRef||'';const bank=document.getElementById('dcBank');if(!bank.value)bank.value=o.dataset.bank||'';const type=document.getElementById('dcAccountType');if(o.dataset.accountType)type.value=o.dataset.accountType;}
-memberSelect.addEventListener('change',prefillStandalone);payerSelect.addEventListener('change',toggleStandalonePayer);idType.addEventListener('change',toggleStandaloneIdentity);document.getElementById('dcBank').addEventListener('change',e=>{const code=e.target.options[e.target.selectedIndex]?.dataset.branch;if(code)document.getElementById('dcBranch').value=code});toggleStandalonePayer();toggleStandaloneIdentity();prefillStandalone();
+function prefillStandalone(replace=false){
+  const o=memberSelect.options[memberSelect.selectedIndex];
+  const d=o?.value?o.dataset:{};
+  const set=(id,v)=>{const e=document.getElementById(id);if(e&&(replace||!e.value))e.value=v||'';};
+  set('dcAccountName',d.accountName);set('dcAmount',d.amount);
+  set('dcAccountNumber',d.accountNumber);set('dcBranch',d.branch);
+  set('dcClientRef1',d.clientRef);set('dcBank',d.bank);set('dcAccountType',d.accountType);
+}
+
+let requirementsReady={{ (not submission_blockers and selected_member_id != '')|tojson }}, monthsReady={{ statement_months_ready|tojson }}, requirementRequest=0;
+const submitButton=document.getElementById('nupaySubmit'), overrideBox=document.querySelector('[name="override"]');
+function updateSubmission(){submitButton.disabled=!monthsReady || !(requirementsReady || (overrideBox && overrideBox.checked));}
+if(overrideBox)overrideBox.addEventListener('change',updateSubmission);
+async function loadRequirements(){
+  const id=memberSelect.value, version=++requirementRequest;
+  requirementsReady=false; monthsReady=false; updateSubmission();
+  if(!id){document.getElementById('submissionChecklist').textContent='Select a member to see their requirements.';return;}
+  try{
+    const response=await fetch({{ url_for('debicheck.requirements', member_id=0)|tojson }}.replace('/0','/'+id));
+    if(!response.ok)throw new Error();
+    const data=await response.json();if(version!==requirementRequest)return;
+    document.getElementById('submissionChecklist').innerHTML=data.html;
+    requirementsReady=data.ready;monthsReady=data.months_ready;updateSubmission();
+  }catch(error){if(version===requirementRequest)document.getElementById('submissionChecklist').textContent='Unable to load requirements. Reload this page to try again.';}
+}
+memberSelect.addEventListener('change',loadRequirements);document.addEventListener('documents:uploaded',loadRequirements);updateSubmission();
+{% if orders %}setTimeout(function(){const a=document.getElementById('dcAmount');if(a)a.value={{ orders[0].amount|tojson }};},0);{% endif %}
+memberSelect.addEventListener('change',()=>prefillStandalone(true));payerSelect.addEventListener('change',toggleStandalonePayer);idType.addEventListener('change',toggleStandaloneIdentity);document.getElementById('dcBank').addEventListener('change',e=>{const code=e.target.options[e.target.selectedIndex]?.dataset.branch;if(code)document.getElementById('dcBranch').value=code});toggleStandalonePayer();toggleStandaloneIdentity();prefillStandalone();
 </script>
 {% endblock %}
