@@ -52,6 +52,32 @@
   </section>
 </div>
 
+<details class="form-card" id="payment-profile" style="margin-bottom:16px;">
+  <summary style="cursor:pointer;font-weight:600;">Payment profile &middot; {{ payment_profile|length }} most recent charges</summary>
+  {% if payment_profile %}
+  <div class="table-wrap" style="margin-top:12px;">
+    <table class="table">
+      <thead><tr><th scope="col">Date</th><th scope="col">Charge</th><th scope="col" class="num">Due</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Balance</th><th scope="col">Payment source</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+        {% for payment in payment_profile %}
+        <tr>
+          <td>{{ payment.date or 'Not recorded' }}</td>
+          <td>{{ payment.description or payment.fee_type }}<br><small style="color:var(--t2);">{{ payment.fee_type }}</small></td>
+          <td class="num">R{{ '%.2f'|format(payment.due) }}</td>
+          <td class="num">R{{ '%.2f'|format(payment.paid) }}</td>
+          <td class="num">R{{ '%.2f'|format(payment.balance) }}</td>
+          <td>{{ payment.source }}</td>
+          <td><span class="badge {{ 'badge-success' if payment.status == 'Paid' else ('badge-danger' if payment.status == 'Failed Debit' else 'badge-warning') }}">{{ payment.status }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color:var(--t2);margin-top:12px;">No payment profile charges recorded for this client.</p>
+  {% endif %}
+</details>
+
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:16px;">
   <section class="form-card">
     <h3 style="margin-bottom:12px;">Previous Payment Arrangements</h3>
