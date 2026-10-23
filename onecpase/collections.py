@@ -18,6 +18,8 @@ from .extensions import mail
 from .integrations import push_pos_payment_to_itensity
 from .collections_engine import (
     calculate_daily_call_kpi,
+    visit_call_approach,
+    reactivation_upfront_required,
     complete_call,
     decide_collection_exception,
     find_duplicate_collection,
@@ -32,6 +34,7 @@ from .collections_engine import (
     sync_collection_case,
     talk_seconds_sql,
     transfer_due_sales_cases,
+    verified_sql,
 )
 
 collections_bp = Blueprint("collections", __name__, url_prefix="/collections")
@@ -49,6 +52,11 @@ OUTCOME_FOLLOW_UPS = {
     ]),
     "disputed": ("Which amount is the client disputing?", [
         "Balance", "Installment amount", "Arrears amount", "Premium amount", "Other",
+    ]),
+    "want_to_reactivate": ("What is the client's account position?", [
+        "Owing – contract still active",
+        "Owing – contract lapsed",
+        "Not owing – contract lapsed",
     ]),
     "refused": ("Why is the client refusing to pay?", [
         "Not using the gym", "Cannot afford it", "Unhappy with the service", "Wants to cancel", "Other",
@@ -220,6 +228,18 @@ def _ensure_debit_reminders(db, today: date) -> set[int]:
     return upcoming_members
 
 
+def below_installment_not_callable(balance, installment, has_failed_debit) -> bool:
+    """A client owing less than one instalment is not called unless a debit failed.
+
+    A smaller balance usually means the recurring amount and the amount being
+    paid differ, which needs investigating before anyone phones the client.
+    """
+    if has_failed_debit:
+        return False
+    installment = float(installment or 0)
+    return installment > 0 and float(balance or 0) < installment - 0.005
+
+
 def _old_owing_candidates(db, excluded: set[int], today: date) -> list[dict]:
     """Catch-all queue for stale historical balances. Unlike the reminder and
     failed-debit queues above, this one applies the Rule §7 threshold — a
@@ -229,7 +249,9 @@ def _old_owing_candidates(db, excluded: set[int], today: date) -> list[dict]:
     from .ptp import bulk_member_arrears, ARREARS_RESTRICTION_MONTHS
 
     rows = db.execute(
-        """SELECT m.id AS member_id, MAX(c.id) AS collection_id, m.first_name, m.last_name
+        """SELECT m.id AS member_id, MAX(c.id) AS collection_id, m.first_name, m.last_name,
+                  COALESCE(m.monthly_installment,0) AS installment,
+                  MAX(CASE WHEN c.status='failed' THEN 1 ELSE 0 END) AS has_failed_debit
            FROM members m JOIN collections c ON c.member_id=m.id
            WHERE c.status IN ('failed','pending','partial')
              AND COALESCE(c.outstanding_balance,0)>COALESCE(c.amount_paid,0)
@@ -249,6 +271,9 @@ def _old_owing_candidates(db, excluded: set[int], today: date) -> list[dict]:
             continue
         arrears = arrears_by_member.get(row["member_id"], {})
         if arrears.get("months_in_arrears", 0) <= ARREARS_RESTRICTION_MONTHS:
+            continue
+        if below_installment_not_callable(
+                arrears.get("total_arrears", 0), row["installment"], row["has_failed_debit"]):
             continue
         candidates.append({
             "member_id": row["member_id"], "collection_id": row["collection_id"],
@@ -618,7 +643,8 @@ def call_queue():
         f"""SELECT u.id, u.full_name,
                   COUNT(t.id) AS assigned,
                   SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS calls,
-                  SUM(CASE WHEN {reached_sql(min_talk)} THEN 1 ELSE 0 END) AS contacts,
+                  SUM(CASE WHEN {reached_sql()} THEN 1 ELSE 0 END) AS contacts,
+                  SUM(CASE WHEN t.status='completed' AND {verified_sql(min_talk)} THEN 1 ELSE 0 END) AS verified,
                   SUM({talk_seconds_sql()}) AS talk_seconds
            FROM users u
            LEFT JOIN collection_call_tasks t ON t.assigned_to=u.id AND t.task_date=? AND t.queue_type!='reminder'
@@ -677,6 +703,20 @@ def record_reminder_delivery(reminder_id):
     return redirect(url_for("collections.call_queue"))
 
 
+def mandate_state_for(db, member_id: int, local_status) -> str:
+    """'active' when a mandate is approved here or on NuPay, 'none' or
+    'inactive' when the NuPay check found nothing usable, otherwise 'unknown'
+    (the check has not been run yet)."""
+    if local_status == "approved":
+        return "active"
+    check = db.execute(
+        "SELECT state FROM nupay_mandate_checks WHERE member_id=? AND substr(checked_at,1,10) >= ? "
+        "ORDER BY id DESC LIMIT 1",
+        (member_id, (_collections_today() - timedelta(days=1)).isoformat()),
+    ).fetchone()
+    return check["state"] if check else "unknown"
+
+
 def _offer_from_request(db, member_id: int, form) -> dict:
     """Run the shared Promise-to-Pay decision for a member from posted inputs.
 
@@ -722,20 +762,37 @@ def _offer_from_request(db, member_id: int, form) -> dict:
     }
     offered = amount("upfront_offered")
     verified = str(form.get("upfront_verified", "")).lower() in ("1", "true", "on", "yes")
+    # "Instalments only" is an arrangement with no upfront; only a paid upfront is ever recorded.
+    instalments_only = form.get("intention") == "instalments_only"
     intention = form.get("intention") if form.get("intention") in (INTENT_SETTLE, INTENT_INSTALMENTS) else INTENT_INSTALMENTS
+    if instalments_only:
+        offered, verified = 0.0, False
+    local_status = normalise_debicheck_status(mandate["status"]) if mandate else None
+    # Is there a working mandate? Ours first; otherwise what the NuPay check found.
+    mandate_state = mandate_state_for(db, member_id, local_status)
+    member_row = db.execute("SELECT monthly_installment FROM members WHERE id=?", (member_id,)).fetchone()
+    paid_dates = [r["collection_date"] for r in rows if (r["amount_paid"] or 0) > 0 and r["collection_date"]]
+    last_payment = max(paid_dates)[:10] if paid_dates else None
     result = decide_offer(
         flags=flags,
         arrears=arrears["total_arrears"],
         months_owing=arrears["months_in_arrears"],
-        debicheck_status=normalise_debicheck_status(mandate["status"]) if mandate else None,
+        debicheck_status="approved" if mandate_state == "active" else local_status,
         debicheck_submitted_at=mandate["submitted_at"] if mandate else None,
+        # The caller enters only what the client can pay above the normal instalment.
+        monthly_affordable=(amount("monthly_affordable") + float(member_row["monthly_installment"] or 0))
+        if amount("monthly_affordable") > 0 and member_row else 0,
+        normal_instalment=float(member_row["monthly_installment"] or 0) if member_row else 0,
+        mandate_state=mandate_state,
         upfront_offered=offered,
         upfront_received=offered if verified else 0,
         intention=intention,
         returning_member=str(form.get("returning_member", "")).lower() in ("1", "true", "on", "yes"),
         bank_statement_status=form.get("bank_statement_status"),
         policy=load_policy(db),
+        last_payment_date=last_payment,
     )
+    result["last_payment_date"] = last_payment
     # Where each next step happens. Items with no link are waiting on someone else.
     links = {
         "Set up DebiCheck": url_for("debicheck.add", member_id=member_id),
@@ -754,13 +811,107 @@ def _offer_from_request(db, member_id: int, form) -> dict:
 def offer_preview(task_id: int):
     db = get_db()
     task = db.execute(
+        "SELECT t.member_id, t.assigned_to, m.first_name FROM collection_call_tasks t "
+        "JOIN members m ON m.id=t.member_id WHERE t.id=?", (task_id,)
+    ).fetchone()
+    if not task:
+        return jsonify(error="Call task not found"), 404
+    if session.get("role") != "admin" and task["assigned_to"] != session.get("user_id"):
+        return jsonify(error="This client is assigned to another caller"), 403
+    offer = _offer_from_request(db, task["member_id"], request.args)
+    if offer.get("original_arrears", 0) > 0 and offer.get("total_to_collect", 0) < offer["original_arrears"]:
+        from .communication import collection_offer_message
+
+        gym = g.tenant["name"] if g.get("tenant") else "1Cpace"
+        plan = offer.get("arrangement") or {}
+        args = dict(
+            first_name=task["first_name"], gym_name=gym, arrears=offer["original_arrears"],
+            total_to_collect=offer["total_to_collect"], upfront=offer.get("upfront_received") or offer.get("upfront_offered"),
+            monthly_debit=plan.get("total_monthly"), instalments=plan.get("payments"),
+        )
+        offer["messages"] = {
+            "whatsapp": collection_offer_message(**args),
+            "sms": collection_offer_message(**args, short=True),
+        }
+    return jsonify(offer)
+
+
+@collections_bp.post("/call-queue/<int:task_id>/bank-statement")
+@permission_required("collections_call_queue")
+def upload_bank_statement(task_id: int):
+    """Save a bank statement and analyse it straight away for income and a debit day."""
+    from .statement_uploads import upload_statements
+
+    db = get_db()
+    task = db.execute(
         "SELECT member_id, assigned_to FROM collection_call_tasks WHERE id=?", (task_id,)
     ).fetchone()
     if not task:
         return jsonify(error="Call task not found"), 404
     if session.get("role") != "admin" and task["assigned_to"] != session.get("user_id"):
         return jsonify(error="This client is assigned to another caller"), 403
-    return jsonify(_offer_from_request(db, task["member_id"], request.args))
+    try:
+        analysis = upload_statements(db, task["member_id"], request.files.getlist("document"))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    db.commit()
+    cash = analysis.get("cashflow") or {}
+    return jsonify(
+        error=analysis.get("error"),
+        months=cash.get("months", 0),
+        enough_months=bool(cash.get("enough_months")),
+        income_pattern=cash.get("income_pattern"),
+        income_day=cash.get("income_day"),
+        avg_money_in=cash.get("avg_money_in", 0),
+        avg_money_out=cash.get("avg_money_out", 0),
+        avg_surplus=cash.get("avg_surplus", 0),
+        suggested_debit_day=cash.get("suggested_debit_day"),
+        note=cash.get("note", ""),
+        summary=analysis.get("summary", ""),
+    )
+
+
+@collections_bp.post("/call-queue/<int:task_id>/documents")
+@permission_required("collections_call_queue")
+def upload_documents(task_id: int):
+    from .members import _upload_member_doc
+    task = get_db().execute(
+        "SELECT member_id, assigned_to FROM collection_call_tasks WHERE id=?", (task_id,)
+    ).fetchone()
+    if not task:
+        return jsonify(error="Call task not found"), 404
+    if session.get("role") != "admin" and task["assigned_to"] != session.get("user_id"):
+        return jsonify(error="This client is assigned to another caller"), 403
+    return _upload_member_doc(task["member_id"], inline=True)
+
+
+@collections_bp.post("/call-queue/<int:task_id>/nupay-check")
+@permission_required("collections_call_queue")
+def nupay_check(task_id: int):
+    """Look for the client's mandate on NuPay and keep the answer for the offer."""
+    from .debicheck import check_member_on_nupay
+    from .encryption import decrypt_member
+
+    db = get_db()
+    task = db.execute(
+        "SELECT member_id, assigned_to FROM collection_call_tasks WHERE id=?", (task_id,)
+    ).fetchone()
+    if not task:
+        return jsonify(error="Call task not found"), 404
+    if session.get("role") != "admin" and task["assigned_to"] != session.get("user_id"):
+        return jsonify(error="This client is assigned to another caller"), 403
+    member = decrypt_member(db.execute("SELECT * FROM members WHERE id=?", (task["member_id"],)).fetchone())
+    result = check_member_on_nupay(member)
+    if result["state"] != "error":
+        db.execute(
+            """INSERT INTO nupay_mandate_checks
+                   (member_id, state, status, contract_reference, message, checked_by)
+               VALUES (?,?,?,?,?,?)""",
+            (task["member_id"], result["state"], result["status"], result["contract_reference"],
+             result["message"], session.get("user_id")))
+        member_activity(db, task["member_id"], f"NuPay mandate check on call: {result['message']}")
+        db.commit()
+    return jsonify(result), (502 if result["state"] == "error" else 200)
 
 
 @collections_bp.route("/call-queue/<int:task_id>/profile")
@@ -841,6 +992,7 @@ def call_profile(task_id: int):
     member_for_visit = db.execute(
         "SELECT * FROM members WHERE id=?", (task["member_id"],)
     ).fetchone()
+    last_visit = _get_last_gym_visit(db, member_for_visit)
     tenant_name = g.tenant["name"] if g.get("tenant") else "1Cpace"
     return render_template(
         "collections/call_profile.html",
@@ -853,11 +1005,14 @@ def call_profile(task_id: int):
         mandate=mandate,
         queries=queries,
         previous_calls=previous_calls,
-        last_gym_visit=_get_last_gym_visit(db, member_for_visit),
+        last_gym_visit=last_visit,
+        visit_approach=visit_call_approach(last_visit["days_ago"] if last_visit else None),
         initial_offer=_offer_from_request(db, task["member_id"], {}),
         call_outcomes=CALL_OUTCOMES,
         outcome_follow_ups=OUTCOME_FOLLOW_UPS,
         whatsapp_message=collection_care_message(task["first_name"], tenant_name),
+        whatsapp_available=_collection_whatsapp_available(task),
+        whatsapp_status=db.execute("SELECT status FROM collection_communications WHERE task_id=? AND channel='WHATSAPP' ORDER BY id DESC LIMIT 1", (task_id,)).fetchone(),
     )
 
 
@@ -950,7 +1105,31 @@ def record_call_result(task_id: int):
         if detail:
             notes = f"{detail} — {notes}" if notes else detail
 
+    if outcome == "want_to_reactivate" and request.form.get("detail", "").startswith("Owing"):
+        from .members import _build_payment_profile
+        from .ptp import compute_arrears_from_profile
+
+        rows = db.execute("SELECT * FROM collections WHERE member_id=?", (task["member_id"],)).fetchall()
+        owed = compute_arrears_from_profile(_build_payment_profile(rows))["total_arrears"]
+        same = request.form.get("same_premium", "yes") == "yes"
+        campaign = bool(request.form.get("sales_campaign")) and session.get("role") == "admin"
+        try:
+            paid = max(float(request.form.get("reactivation_upfront") or 0), 0.0)
+        except ValueError:
+            paid = 0.0
+        needed = reactivation_upfront_required(owed, same, campaign)
+        if paid + 0.005 < needed:
+            flash(
+                f"An owing client cannot reactivate without paying upfront. "
+                f"Required: R{needed:,.2f}" + (" (50% of the arrears for the same premium)." if same and not campaign else "."),
+                "error",
+            )
+            return redirect(url_for("collections.call_profile", task_id=task_id))
+        terms = "same premium" if same else "changed premium"
+        notes = f"Reactivation: R{paid:,.2f} upfront on R{owed:,.2f} owed, {terms}{', sales campaign' if campaign else ''}. {notes}".strip()
+    arrangement_offer = None
     if outcome == "promised_to_pay" and request.form.get("intention"):
+        from .collections_decision import DECISION_NO_BALANCE, INTENT_INSTALMENTS
         # Record the conditional offer exactly as the shared calculation sees it.
         # The promise itself changes no balance and applies no discount.
         offer = _offer_from_request(db, task["member_id"], request.form)
@@ -963,7 +1142,21 @@ def record_call_result(task_id: int):
         )
         if offer["conditions"]:
             summary += " Outstanding: " + "; ".join(offer["conditions"]) + "."
+        if offer.get("arrangement"):
+            plan = offer["arrangement"]
+            summary += (f" Arrangement: {plan['payments']} x R{plan['monthly_arrears']:,.2f} "
+                        f"plus the normal instalment of R{plan['normal_instalment']:,.2f}.")
         notes = f"{summary} {notes}".strip()
+        if request.form.get("intention") in (INTENT_INSTALMENTS, "instalments_only") and offer["decision"] != DECISION_NO_BALANCE:
+            # Every arrangement is backed by DebiCheck, so the existing mandate
+            # position and the monthly amount must be known before the call is saved.
+            if offer["mandate_state"] == "unknown":
+                flash("Run the NuPay check first: it shows whether the client already has a mandate.", "error")
+                return redirect(url_for("collections.call_profile", task_id=task_id))
+            if offer["ptp_balance"] > 0 and not offer.get("arrangement"):
+                flash("Enter what the client can afford each month, including the normal instalment.", "error")
+                return redirect(url_for("collections.call_profile", task_id=task_id))
+            arrangement_offer = offer
 
     callback_date = None
     if outcome == "asked_callback":
@@ -1035,7 +1228,29 @@ def record_call_result(task_id: int):
         # recorded. Provider sending is intentionally separate from this audit.
         extra_flash = "Call attempt recorded. The next required contact method is WhatsApp."
 
+    ptp_id = None
+    if arrangement_offer is not None:
+        from .ptp_grant import create_arrangement
+        ptp_id = create_arrangement(
+            db, task["member_id"], arrangement_offer, user_id=session.get("user_id"),
+            normal_active=arrangement_offer["mandate_state"] == "active", notes=notes)
+
     db.commit()
+
+    if ptp_id:
+        # Straight to DebiCheck: the mandates this arrangement needs, amounts filled in.
+        open_links = db.execute(
+            "SELECT purpose, amount FROM ptp_mandate_links WHERE ptp_id=? AND mandate_id IS NULL ORDER BY id",
+            (ptp_id,)).fetchall()
+        can_create = session.get("role") == "admin" or "new_debicheck" in (session.get("permissions") or [])
+        if open_links and can_create:
+            flash("Call recorded. Now load the DebiCheck mandate(s) for this arrangement.", "success")
+            return redirect(url_for(
+                "debicheck.add", member_id=task["member_id"], from_ptp=ptp_id,
+                orders="|".join(f"{r['purpose']}:{float(r['amount']):.2f}" for r in open_links)))
+        flash("Call recorded and the PTP saved. It is not granted until its DebiCheck mandate is approved.",
+              "success")
+        return redirect(url_for("collections.member_profile", mid=task["member_id"]) + "#ptp-arrangement")
 
     if outcome == "promised_to_pay":
         from .ptp import bulk_member_arrears
@@ -1052,6 +1267,83 @@ def record_call_result(task_id: int):
         "success" if successful else "info",
     )
     return redirect(url_for("collections.call_profile", task_id=task_id))
+
+
+def _collection_whatsapp_available(task):
+    channel = str(task['next_channel'] or '').upper()
+    return channel == 'WHATSAPP' or (
+        channel in ('', 'CALL') and task['status'] == 'completed'
+        and task['outcome'] in UNSUCCESSFUL_ESCALATION_OUTCOMES
+        and not task['whatsapp_sent'] and not task['sms_sent'] and not task['email_sent']
+    )
+
+
+@collections_bp.route('/whatsapp/<kind>/<int:record_id>', methods=['GET', 'POST'])
+@permission_required('collections_call_queue')
+def send_collection_whatsapp(kind, record_id):
+    from flask import abort
+    from .comms import _send_staff_whatsapp
+    from .whatsapp_contacts import phone_key
+    db = get_db()
+    task = reminder = None
+    if kind == 'task':
+        task = db.execute('SELECT * FROM collection_call_tasks WHERE id=?', (record_id,)).fetchone()
+        if not task:
+            abort(404)
+        caller = db.execute('SELECT is_collections_caller FROM users WHERE id=?', (session.get('user_id'),)).fetchone()
+        if session.get('role') != 'admin' and (not caller or not caller['is_collections_caller'] or task['assigned_to'] != session.get('user_id')):
+            abort(403)
+        if not _collection_whatsapp_available(task):
+            flash('WhatsApp is not the next required contact method.', 'warning')
+            return redirect(url_for('collections.call_profile', task_id=record_id))
+        member_id = task['member_id']
+    elif kind == 'reminder':
+        reminder = db.execute('SELECT * FROM collection_reminders WHERE id=?', (record_id,)).fetchone()
+        if not reminder:
+            abort(404)
+        day = _collections_today().isoformat()
+        if reminder['status'] != 'pending' or not reminder['reminder_date'] <= day < reminder['due_date']:
+            flash('This reminder is no longer due for sending.', 'warning')
+            return redirect(url_for('collections.call_queue'))
+        member_id = reminder['member_id']
+    else:
+        abort(404)
+    member = db.execute('SELECT * FROM members WHERE id=?', (member_id,)).fetchone()
+    phone = phone_key(member['contact'])
+    tenant_name = g.tenant['name'] if g.get('tenant') else 'Elev8'
+    text = collection_care_message(member['first_name'], tenant_name) if task else (
+        f"Hi {member['first_name']}, this is {tenant_name}. You have an outstanding balance. "
+        f"Please make sure there are enough funds for your upcoming debit on {reminder['due_date']}. "
+        'Please reply if you need assistance.'
+    )
+    marker = f'App WhatsApp {kind} #{record_id}'
+    previous = db.execute('SELECT * FROM collection_communications WHERE member_id=? AND notes LIKE ? ORDER BY id DESC LIMIT 1',
+                          (member_id, marker + '; message #%')).fetchone()
+    if request.method == 'POST':
+        text = request.form.get('message', '').strip()
+        if previous and previous['status'] != 'failed':
+            flash('This message has already been recorded. Check its conversation before sending again.', 'warning')
+        elif not phone or not text or len(text) > 4096:
+            flash('A valid client contact number and a message of 1–4096 characters are required.', 'error')
+        else:
+            if task:
+                db.execute("UPDATE collection_call_tasks SET next_channel='WHATSAPP' WHERE id=?", (record_id,))
+            db.execute("INSERT OR IGNORE INTO wa_conversations(wa_number,contact_phone,linked_member_id) VALUES ('reception',?,?)", (phone, member_id))
+            conv = db.execute("SELECT id FROM wa_conversations WHERE wa_number='reception' AND contact_phone=?", (phone,)).fetchone()
+            db.commit()
+            result = _send_staff_whatsapp(db, 'reception', conv['id'], phone, text)
+            log_collection_communication(db, member_id, 'WHATSAPP', task_id=record_id if task else None,
+                status=result['status'], outcome='pre_debit_reminder' if reminder else None,
+                notes=marker + f"; message #{result['id']}", created_by=session.get('user_id'))
+            member_activity(db, member_id, f"Collections WhatsApp via Reception: {result['status']} (message #{result['id']}).", user_id=session.get('user_id'))
+            if task and result['status'] == 'sent':
+                db.execute('UPDATE collection_call_tasks SET whatsapp_sent=1 WHERE id=?', (record_id,))
+            if reminder and result['status'] == 'sent':
+                db.execute("UPDATE collection_reminders SET status='sent',channel='WHATSAPP' WHERE id=? AND status='pending'", (record_id,))
+            db.commit()
+            return redirect(url_for('collections.send_collection_whatsapp', kind=kind, record_id=record_id))
+    return render_template('collections/whatsapp_preview.html', member=member, phone=phone, message=text,
+                           previous=previous, kind=kind, record_id=record_id)
 
 
 @collections_bp.post("/call-queue/<int:task_id>/escalation")
@@ -1366,7 +1658,8 @@ def daily_call_progress(db, today: date | None = None) -> dict:
     row = db.execute(
         f"""SELECT COUNT(t.id) AS assigned,
                   COALESCE(SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END), 0) AS calls,
-                  COALESCE(SUM(CASE WHEN {reached_sql(min_talk)} THEN 1 ELSE 0 END), 0) AS contacts,
+                  COALESCE(SUM(CASE WHEN {reached_sql()} THEN 1 ELSE 0 END), 0) AS contacts,
+                  COALESCE(SUM(CASE WHEN t.status='completed' AND {verified_sql(min_talk)} THEN 1 ELSE 0 END), 0) AS verified,
                   COALESCE(SUM({talk_seconds_sql()}), 0) AS talk_seconds
            FROM collection_call_tasks t WHERE t.task_date=? AND t.queue_type!='reminder'""",
         (task_date,),
@@ -1386,6 +1679,7 @@ def daily_call_progress(db, today: date | None = None) -> dict:
         "assigned": assigned,
         "calls": calls,
         "contacts": contacts,
+        "verified": row["verified"] or 0,
         "talk_seconds": row["talk_seconds"] or 0,
         "min_talk_seconds": min_talk,
         "contact_target": DAILY_CONTACT_TARGET * caller_count,
@@ -1520,52 +1814,3 @@ def exception_decide(exception_id: int):
     db.commit()
     flash(f"Exception {decision}.", "success")
     return redirect(url_for("collections.exception_queue"))
-
-
-@collections_bp.post("/call-queue/<int:task_id>/documents")
-@permission_required("collections_call_queue")
-def upload_documents(task_id: int):
-    from .members import _upload_member_doc
-    task = get_db().execute(
-        "SELECT member_id, assigned_to FROM collection_call_tasks WHERE id=?", (task_id,)
-    ).fetchone()
-    if not task:
-        return jsonify(error="Call task not found"), 404
-    if session.get("role") != "admin" and task["assigned_to"] != session.get("user_id"):
-        return jsonify(error="This client is assigned to another caller"), 403
-    return _upload_member_doc(task["member_id"], inline=True)
-
-
-@collections_bp.post("/call-queue/<int:task_id>/bank-statement")
-@permission_required("collections_call_queue")
-def upload_bank_statement(task_id: int):
-    """Save a bank statement and analyse it straight away for income and a debit day."""
-    from .statement_uploads import upload_statements
-
-    db = get_db()
-    task = db.execute(
-        "SELECT member_id, assigned_to FROM collection_call_tasks WHERE id=?", (task_id,)
-    ).fetchone()
-    if not task:
-        return jsonify(error="Call task not found"), 404
-    if session.get("role") != "admin" and task["assigned_to"] != session.get("user_id"):
-        return jsonify(error="This client is assigned to another caller"), 403
-    try:
-        analysis = upload_statements(db, task["member_id"], request.files.getlist("document"))
-    except ValueError as exc:
-        return jsonify(error=str(exc)), 400
-    db.commit()
-    cash = analysis.get("cashflow") or {}
-    return jsonify(
-        error=analysis.get("error"),
-        months=cash.get("months", 0),
-        enough_months=bool(cash.get("enough_months")),
-        income_pattern=cash.get("income_pattern"),
-        income_day=cash.get("income_day"),
-        avg_money_in=cash.get("avg_money_in", 0),
-        avg_money_out=cash.get("avg_money_out", 0),
-        avg_surplus=cash.get("avg_surplus", 0),
-        suggested_debit_day=cash.get("suggested_debit_day"),
-        note=cash.get("note", ""),
-        summary=analysis.get("summary", ""),
-    )

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Notifications | 1Cpace{% endblock %}
+{% block content %}
+<header class="page-header"><div><h1>Notifications</h1><p class="page-sub">Your assigned work and staff you supervise. Overdue reminders repeat daily until you acknowledge them or the work is resolved.</p></div></header>
+{% if supervisor_missing %}<div class="alert alert-warning">Your supervisor has not been assigned. Ask an administrator to set your supervisor in your staff account.</div>{% endif %}
+<div class="card"><div class="card-body notification-list">
+{% for item in notifications %}
+<article class="notification-item">
+  <h2>{{ item.title }}</h2>
+  <p>Due {{ item.due_date or 'now' }}{% if item.reminder_count %} · {{ item.reminder_count }} overdue reminder{{ 's' if item.reminder_count != 1 }} · Last reminder {{ item.last_reminder_date }}{% endif %}</p>
+  <div class="notification-actions">
+    {% if links.get(item.id) %}<a class="btn btn-ghost" href="{{ links[item.id] }}">View work</a>{% endif %}
+    {% if item.acknowledged_at %}<span class="badge badge-success">Acknowledged — work remains open</span>
+    {% else %}<form method="post" action="{{ url_for('notifications.acknowledge', notification_id=item.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary" type="submit">Acknowledge</button></form>{% endif %}
+  </div>
+</article>
+{% else %}<p>No open notifications.</p>{% endfor %}
+</div></div>
+{% endblock %}

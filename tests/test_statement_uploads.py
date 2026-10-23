@@ -116,7 +116,7 @@ def test_collections_document_upload_keeps_task_ownership(app):
 
 def test_failed_file_not_hidden_by_successful_file(app, monkeypatch):
     def analyse(path, **kwargs):
-        if 'bad' in path:
+        if path.endswith('_bad.pdf'):
             return {'error': 'Unreadable PDF'}
         return {'error': None, 'tx_rows': [(2026,1,1,0),(2026,1,25,5500)]}
     monkeypatch.setattr('onecpase.statement_uploads.analyse_pdf', analyse)
@@ -152,7 +152,7 @@ def test_collections_uses_shared_upload_rules(app, monkeypatch):
 def test_failed_batch_cannot_qualify_through_last_successful_document(app, monkeypatch):
     from onecpase.applications import nupay_submission_blockers, statement_months_analysed, bank_statement_qualified
     def analyse(path, **kwargs):
-        if 'bad' in path:
+        if path.endswith('_bad.pdf'):
             return {'error':'Unreadable PDF'}
         return {'error':None,'estimated_income':10000,'rating':'good','verification_qualified':True,
                 'tx_rows':[(2026,1,1,1000),(2026,1,25,6000),(2026,2,1,1000),(2026,2,25,6000)]}

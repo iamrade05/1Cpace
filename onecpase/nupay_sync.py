@@ -244,6 +244,8 @@ def _apply_change(db, mandate, report_row: dict[str, Any], new_status: str, acto
         (new_status, note[:2000], mandate["id"]),
     )
     gate = sync_debicheck_to_application(db, mandate["id"], actor_id=actor_id)
+    from .ptp_grant import on_mandate_status_changed
+    on_mandate_status_changed(db, mandate["id"])
     member_activity(
         db, mandate["member_id"],
         f"DebiCheck mandate #{mandate['id']}: status {mandate['status']} -> {new_status} (synced from NuPay)"

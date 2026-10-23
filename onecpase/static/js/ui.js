@@ -61,3 +61,22 @@ document.querySelectorAll('form').forEach(form => {
   input.value = token;
   form.prepend(input);
 });
+// Refresh staff alerts without reloading the current work page.
+document.addEventListener('DOMContentLoaded', () => {
+  const link = document.querySelector('[data-notification-count-url]');
+  if (!link) return;
+  let refreshing = false;
+  async function refreshNotifications() {
+    if (document.hidden || refreshing) return;
+    refreshing = true;
+    try {
+      const response = await fetch(link.dataset.notificationCountUrl, {headers: {'Accept': 'application/json'}});
+      if (!response.ok || response.redirected) return;
+      const data = await response.json();
+      link.querySelector('[data-notification-count]').textContent = data.count;
+    } catch (_) { /* Keep the last count if the connection is unavailable. */ }
+    finally { refreshing = false; }
+  }
+  refreshNotifications();
+  setInterval(refreshNotifications, 60000);
+});

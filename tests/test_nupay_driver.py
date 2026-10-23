@@ -7,7 +7,7 @@ from onecpase.nupay_driver import MandateStatusResult, PushResult
 def _valid_mandate(**overrides):
     mandate = {
         "merchant_id": "000025500014054",
-        "account_name": "Test Member",
+        "account_name": "T Member",
         "account_type": "1",
         "account_number": "123456789",
         "branch_code": "051001",

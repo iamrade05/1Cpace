@@ -1,0 +1,10 @@
+<nav aria-label="HR" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+  <a class="btn btn-secondary" href="{{ url_for('workforce.dashboard') }}">My HR</a>
+  <a class="btn btn-ghost" href="{{ url_for('hr.leave_index') }}">Leave requests</a>
+  <a class="btn btn-ghost" href="{{ url_for('workforce.weeks') }}">Weekly timesheets</a>
+  <a class="btn btn-ghost" href="{{ url_for('workforce.roster') }}">Roster & lunch</a>
+  <a class="btn btn-ghost" href="{{ url_for('hr.staff_index') }}">Staff directory</a>
+  {% if hr_can_calendar %}<a class="btn btn-ghost" href="{{ url_for('workforce.calendar') }}">Team availability</a>{% endif %}
+  {% if hr_can_calendar %}<a class="btn btn-ghost" href="{{ url_for('workforce.reviews') }}">Review queue</a>{% endif %}
+  {% if hr_can_manage %}<a class="btn btn-ghost" href="{{ url_for('workforce.setup') }}">Employee setup</a>{% endif %}
+</nav>

@@ -20,6 +20,26 @@
 
 
 
+<div class="panel" id="debicheck-check">
+  <h2 class="panel-title">DebiCheck verification</h2>
+  <form method="post" action="{{ url_for('members.member_check_debicheck', mid=member.id) }}"
+        onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Checking NuPay?';">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-secondary">Check DebiCheck</button>
+  </form>
+  <p class="text-muted">Checks NuPay for this member?s mandate. The check may take about a minute.</p>
+  {% if latest_debicheck_check %}
+    <p><strong>Last verified result:</strong>
+      {% if latest_debicheck_check.state == 'active' %}Active mandate confirmed
+      {% elif latest_debicheck_check.state == 'inactive' %}Mandate found ? not active
+      {% else %}No mandate found{% endif %}
+      {% if latest_debicheck_check.status %} ? {{ latest_debicheck_check.status|title }}{% endif %}
+      {% if latest_debicheck_check.contract_reference %} ? {{ latest_debicheck_check.contract_reference }}{% endif %}
+    </p>
+    <p class="text-muted">Checked {{ latest_debicheck_check.checked_at }} ? {{ latest_debicheck_check.message }}</p>
+  {% else %}<p>No NuPay verification recorded yet.</p>{% endif %}
+</div>
+
 <!-- Personal and debit order facts -->
 <div id="call-status" class="callout" role="status" hidden></div>
 <div class="profile-grid">
@@ -295,7 +315,7 @@ document.addEventListener("DOMContentLoaded", function () {
         <label class="u-91e41e20">
           File <span class="u-7e3a9447">(PDF, JPG, PNG, DOC, DOCX — max 15 MB)</span>
         </label>
-        <input type="file" name="document" required
+        <input type="file" name="document" required data-statement-upload
                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
                class="u-23598f88">
       </div>
@@ -657,6 +677,20 @@ document.addEventListener("DOMContentLoaded", function () {
           <input class="form-control" type="date" name="promise_date" required>
         </div>
         <div class="form-group">
+          <label class="form-label">Upfront Amount Agreed</label>
+          <input class="form-control" type="number" name="upfront_amount" step="0.01" min="0" value="0">
+          <small>At least 50% of the amount owing earns the larger discount.</small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Number of Monthly Payments</label>
+          <input class="form-control" type="number" name="payment_count" step="1" min="0" max="24" value="0">
+          <small>The schedule is worked out for you. Leave 0 to use the amount promised.</small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">First Collection Date</label>
+          <input class="form-control" type="date" name="first_collection_date">
+        </div>
+        <div class="form-group">
           <label class="form-label">Payment Method <span class="req">*</span></label>
           <select class="form-control" name="payment_method" required>
             <option value="">Select…</option>
@@ -696,7 +730,7 @@ document.addEventListener("DOMContentLoaded", function () {
           <input class="form-control" type="number" name="discount_pct" step="1" min="0" max="100"
                  value="{{ (ptp_from_query.proposed_discount_pct|round(2)) if ptp_from_query and ptp_from_query.approval_status == 'approved' and ptp_from_query.proposed_discount_pct else 0 }}">
           <small>
-            Automatic approval is limited to discounts up to 50%. Without an upfront cash settlement, at least the greater of R1,800 or 50% of arrears must be recovered. Automatic instalment plans require verified bank-statement evidence, authenticated DebiCheck, at least R150 per month, and a term of 12 months or less. Exceptions go to a manager.
+            The discount is set by the arrears category, the upfront payment and months owing (3 or more). It is only proposed until the required DebiCheck mandate is approved. Automatic plans also need verified bank-statement evidence, at least R150 per month, and a term of 12 months or less. Exceptions go to a manager.
           </small>
         </div>
       </div>
@@ -1275,4 +1309,24 @@ async function startPbxCall(phone) {
   } catch (e) { showCallStatus('The call could not start. Please try again or ask an admin to check the phone connection.'); }
 }
 </script>
+<script>
+(function () {
+  const file = document.querySelector('[data-statement-upload]');
+  if (!file) return;
+  const select = file.form.querySelector('[name="document_type"]');
+  const originalAccept = file.accept;
+  const help = document.createElement('small');
+  file.parentNode.appendChild(help);
+  function update() {
+    const statement = select.value === 'Bank Statement';
+    file.accept = statement ? '.pdf' : originalAccept;
+    file.multiple = statement;
+    help.textContent = statement ? 'Bank statements: PDF only. Select one or more files covering at least 2 months. Income, cash flow and a suggested debit day are analysed automatically.' : '';
+    file.value = '';
+  }
+  select.addEventListener('change', update);
+  update();
+})();
+</script>
+
 {% endblock %}

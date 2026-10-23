@@ -27,6 +27,20 @@ def _ready_application(db):
                    'not_required', 'not_required')""",
         (application_id,),
     )
+    for kind in ('SA ID Copy', 'Bank Statement'):
+        db.execute(
+            "INSERT INTO member_documents (member_id, document_type, original_name, stored_name) VALUES (?, ?, 'test.pdf', 'test.pdf')",
+            (member_id, kind),
+        )
+    db.execute("UPDATE member_documents SET analysis_json=? WHERE member_id=? AND document_type='Bank Statement'", ('{"estimated_income":10000,"rating":"good","verification_qualified":true,"cashflow":{"months":2,"enough_months":true}}', member_id))
+    db.execute(
+        """INSERT INTO debicheck_mandates
+           (member_id, merchant_id, client_ref1, client_ref2, account_name,
+            account_type, account_number, branch_code, submit_date, status)
+           VALUES (?, 'TEST', 'ITENSITY-001', 'TEST', 'Ada Lovelace', '1',
+                   '123456', '123456', '2026-09-01', 'approved')""",
+        (member_id,),
+    )
     db.execute(
         """INSERT INTO statement_analyses
            (application_id, income_detected, income_months, verification_qualified)

@@ -1,9 +1,17 @@
 {% extends "base.html" %}
-{% block title %}Add Member | 1Cpace{% endblock %}
-{% block page_title %}Add Member{% endblock %}
+{% block title %}{{ 'Convert Prospect' if lead else 'Add Member' }} | 1Cpace{% endblock %}
+{% block page_title %}{{ 'Convert Prospect to Member' if lead else 'Add Member' }}{% endblock %}
 
 {% block content %}
-<header class="page-header"><div><h1>Add Member</h1></div></header>
+<header class="page-header"><div><h1>{{ 'Convert Prospect to Member' if lead else 'Add Member' }}</h1></div></header>
+{% if lead %}
+<div class="callout callout-warning" role="note">
+  <strong>Prospect being converted: {{ lead.full_name }}</strong>{% if lead.phone %} · {{ lead.phone }}{% endif %}<br>
+  Complete the member's details below. Saving creates the member record and opens the
+  membership application for the signed contract and bank statements.
+  <a href="{{ url_for('leads.lead_detail', lid=lead.id) }}">Back to prospect</a>
+</div>
+{% endif %}
 {% macro sel(name, options, current, placeholder='— Select —') %}
 <select name="{{ name }}" class="form-control">
   <option value="">{{ placeholder }}</option>
@@ -247,9 +255,9 @@
       <div id="debitFields">
         <div class="form-grid-2">
           <div class="form-group">
-            <label class="form-label">Account Holder Name *</label>
-            <input type="text" name="account_name" id="accountName" class="form-control required-if-debit" maxlength="30"
-                   placeholder="Name registered at the bank" value="{{ d.get('account_name','') }}">
+            <label class="form-label">Account Holder Name (initials and surname) *</label>
+            <input data-mandate-name type="text" name="account_name" id="accountName" class="form-control required-if-debit" maxlength="30"
+                   placeholder="J P Smith" value="{{ d.get('account_name','') }}">
           </div>
           <div class="form-group">
             <label class="form-label">Bank *</label>
@@ -332,9 +340,9 @@
             </select>
           </div>
           <div class="form-group">
-            <label class="form-label">Submit Date</label>
-            <input type="date" name="debicheck_submit_date" class="form-control" min="{{ today }}"
-                   value="{{ d.get('debicheck_submit_date',today) }}">
+            <label class="form-label">Submission / First Debit Date</label>
+            <input data-mandate-date data-sales-lead-time type="date" name="debicheck_submit_date" class="form-control" min="{{ debicheck_min_date }}"
+                   value="{{ d.get('debicheck_submit_date',debicheck_min_date) }}">
           </div>
           <div class="form-group">
             <label class="form-label">Member ID — NuPay Reference</label>
@@ -345,7 +353,7 @@
             <label class="form-label">Client Reference 2 — Staff Number</label>
             <input type="text" name="debicheck_client_ref2" class="form-control" maxlength="4"
                    inputmode="numeric" pattern="[0-9]{4}"
-                   placeholder="4-digit staff number" value="{{ d.get('debicheck_client_ref2','') }}">
+                   placeholder="4-digit staff number" value="{{ employee_number or d.get('debicheck_client_ref2','') }}" {% if employee_number %}readonly{% endif %}>
           </div>
           <div class="form-group">
             <label class="form-label">Frequency</label>
@@ -705,6 +713,8 @@ function checkParq() {
 document.addEventListener('DOMContentLoaded', () => {
   const id = document.getElementById('idField');
   if (id?.value) extractFromId(id.value);
+  const tariff = document.getElementById('tariffSelect');
+  if (tariff?.value && tariff.value !== 'Custom') applyTariff(tariff.value);
   togglePayment();
   toggleDebicheckIdentity();
   {% if d.get('_open_payment') %}goTab(2);{% endif %}
@@ -713,4 +723,5 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
+<script src="{{ url_for('static', filename='js/debicheck-rules.js') }}" defer></script>
 {% endblock %}

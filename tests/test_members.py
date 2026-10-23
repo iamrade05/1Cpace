@@ -1,6 +1,7 @@
 from onecpase.database import get_db
 from onecpase.encryption import decrypt_member, hash_for_lookup
 from unittest.mock import patch
+import pytest
 
 
 def _find_member(db, id_number):
@@ -75,7 +76,8 @@ def test_members_add_member(app):
         assert member["member_ref"] == "ELE-0000000001"
 
 
-def test_add_member_pushes_third_party_debicheck(app):
+@pytest.mark.parametrize('override', [False, True])
+def test_add_member_third_party_debicheck_requires_two_month_evidence_even_for_admin(app, override):
     with app.test_client() as client:
         _login_as_admin(client)
         data = {
@@ -88,17 +90,18 @@ def test_add_member_pushes_third_party_debicheck(app):
             "payer_type": "third_party",
             "payer_name": "Parent Payer",
             "payer_id_number": "7001015009084",
-            "account_name": "Parent Payer",
+            "account_name": "P Payer",
             "bank": "FNB / RMB",
             "account_type": "Cheque/Current",
             "account_number": "1234567890",
             "branch_code": "250655",
-            "debicheck_submit_date": "2026-07-01",
+            "debicheck_submit_date": "2099-01-01",
             "debicheck_client_ref2": "1234",
             "debicheck_frequency": "3",
             "debicheck_installments": "12",
             "debicheck_tracking": "14",
             "submit_action": "push_nupay",
+            "override": "1" if override else "0",
         }
         with patch(
             "onecpase.members.push_mandate_to_nupay",
@@ -107,7 +110,9 @@ def test_add_member_pushes_third_party_debicheck(app):
             response = client.post("/members/add", data=data)
 
         assert response.status_code == 302
-        push.assert_called_once()
+        push.assert_not_called()
+        assert "/applications/" in response.headers["Location"]
+        assert "intake=1" in response.headers["Location"]
         db = get_db()
         member = _find_member(db, data["id_number"])
         mandate = db.execute(
@@ -118,7 +123,8 @@ def test_add_member_pushes_third_party_debicheck(app):
         assert decrypt_member(member)["payer_id_number"] == data["payer_id_number"]
         assert mandate["payer_type"] == "third_party"
         assert mandate["account_type"] == "1"
-        assert mandate["status"] == "submitted"
+        assert mandate["status"] == 'pending'
+        assert db.execute("SELECT COUNT(*) FROM audit_logs WHERE action='nupay_admin_override'").fetchone()[0] == 0
 
 
 def test_third_party_debicheck_requires_valid_payer_id(app):
@@ -134,12 +140,12 @@ def test_third_party_debicheck_requires_valid_payer_id(app):
             "payer_type": "third_party",
             "payer_name": "Parent Payer",
             "payer_id_number": "123",
-            "account_name": "Parent Payer",
+            "account_name": "P Payer",
             "bank": "ABSA",
             "account_type": "Savings",
             "account_number": "1234567890",
             "branch_code": "632005",
-            "debicheck_submit_date": "2026-07-01",
+            "debicheck_submit_date": "2099-01-01",
             "debicheck_client_ref2": "1234",
             "submit_action": "push_nupay",
         }
@@ -159,9 +165,12 @@ def test_third_party_debicheck_requires_valid_payer_id(app):
 
 def _member_id(app):
     with app.app_context():
-        return get_db().execute(
+        db = get_db()
+        member_id = db.execute(
             "INSERT INTO members (first_name, last_name, id_number) VALUES ('Doc', 'Test', 'DOC-TEST-1')"
         ).lastrowid
+        db.commit()
+        return member_id
 
 
 def test_document_upload_defaults_to_the_member_page(app):

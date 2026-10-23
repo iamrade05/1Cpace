@@ -45,3 +45,40 @@ def collection_care_email_html(first_name: str, gym_name: str) -> str:
       </div>
     </div>
     """
+
+
+def _rand(value) -> str:
+    return f"R{float(value or 0):,.2f}".replace(",", " ")
+
+
+def collection_offer_message(first_name, gym_name, arrears, total_to_collect, upfront=0,
+                             monthly_debit=0, instalments=0, short=False) -> str:
+    """WhatsApp (full) and SMS (short) wording for a Promise-to-Pay offer."""
+    name = (first_name or "there").strip()
+    gym = (gym_name or "your gym").strip()
+    arrears = float(arrears or 0)
+    total = float(total_to_collect or 0)
+    saving = max(round(arrears - total, 2), 0)
+    if short:
+        text = (
+            f"{gym}: Hi {name}, you owe {_rand(arrears)}. Pay {_rand(total)} instead and save {_rand(saving)}"
+        )
+        if upfront:
+            text += f", starting with {_rand(upfront)} now"
+        if monthly_debit and instalments:
+            text += f", then {_rand(monthly_debit)} a month for {int(instalments)} months"
+        return text + ". Reply to arrange."
+    lines = [
+        f"Hi {name},",
+        "",
+        f"This is {gym}. We would love to see you back at the gym, and we want to make it easier to clear your account.",
+        "",
+        f"Your outstanding balance is {_rand(arrears)}. We can reduce this to {_rand(total)}, a saving of {_rand(saving)}.",
+    ]
+    if upfront:
+        lines.append(f"This starts with an upfront payment of {_rand(upfront)}.")
+    if monthly_debit and instalments:
+        lines.append(f"The rest is {_rand(monthly_debit)} a month for {int(instalments)} months, by debit order.")
+    lines += ["", "If this amount is too much for you, tell us what you can afford and we will work something out together.",
+              "", "Please reply to this message and we will set it up.", "", f"Ubuntu — we move forward together.\n{gym}"]
+    return "\n".join(lines)

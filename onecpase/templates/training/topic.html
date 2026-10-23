@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ chapter.title }} | Staff Training | 1Cpace{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('training.index') }}">← All training topics</a></p>
+<header class="page-header"><div><h1>{{ chapter.title }}</h1><p class="page-sub">Staff Training · Version 3 · 9 October 2026</p></div></header>
+<div class="training-actions"><a class="btn btn-ghost" href="{{ url_for('training.manual', format='pdf') }}#page={{ chapter.page }}" target="_blank" rel="noopener">See this chapter in the manual</a><a class="btn btn-ghost" href="{{ url_for('training.manual', format='docx') }}">Download Word manual</a></div>
+<article class="card"><div class="card-body training-reader">
+{% for block in chapter.blocks %}
+  {% if block.type == 'heading' %}<h2>{{ block.text }}</h2>
+  {% elif block.type == 'paragraph' %}<p>{{ block.text }}</p>
+  {% elif block.type == 'ordered' %}<ol>{% for item in block['items'] %}<li>{{ item }}</li>{% endfor %}</ol>
+  {% elif block.type == 'unordered' %}<ul>{% for item in block['items'] %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% elif block.type == 'table' %}<div class="training-table" role="region" aria-label="{{ chapter.title }} reference table" tabindex="0"><table><thead><tr>{% for cell in block.rows[0] %}<th scope="col">{{ cell }}</th>{% endfor %}</tr></thead><tbody>{% for row in block.rows[1:] %}<tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+  {% endif %}
+{% endfor %}
+</div></article>
+<nav class="training-actions" aria-label="Training topics">{% for topic in chapters %}{% if topic.slug != chapter.slug %}<a class="btn btn-ghost" href="{{ url_for('training.topic', slug=topic.slug) }}">{{ topic.title }}</a>{% endif %}{% endfor %}</nav>
+{% endblock %}

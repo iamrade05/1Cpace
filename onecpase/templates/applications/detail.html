@@ -3,6 +3,14 @@
 {% block page_title %}Application #{{ app.id }}{% endblock %}
 
 {% block content %}
+{% if intake_context and nupay_blockers %}
+<dialog id="intakeStatementPrompt" aria-labelledby="intakeStatementTitle" class="intake-statement-dialog">
+  <h2 id="intakeStatementTitle"><strong>Upload 2 months of bank statements to open DebiCheck.</strong></h2>
+  <p>Select one or more PDF statements. Once the two-month analysis and affordability checks pass, DebiCheck will open automatically.</p>
+  <button type="button" class="btn btn-primary" id="intakeUploadButton">Upload bank statements</button>
+  <button type="button" class="btn btn-ghost" onclick="document.getElementById('intakeStatementPrompt').close()">Continue reviewing application</button>
+</dialog>
+{% endif %}
 <header class="page-header"><div><h1>Application #{{ app.id }}</h1></div></header>
 {% set color = status_colors.get(app.application_status, '#6b7280') %}
 
@@ -63,7 +71,7 @@
 <div class="card">
   <div class="card-body">
     <h2>Submit Application to NuPay</h2>
-    <p>Upload the ID copy and bank statement, then analyse the statement before submitting. DebiCheck approval is required before pushing to Itensity.</p>
+    <p>Upload and analyse at least two months of bank statements before submitting to NuPay. An ID copy is not required for DebiCheck submission. DebiCheck approval and the membership application requirements must be satisfied before pushing to Itensity.</p>
     {% if nupay_blockers %}
     <p>{{ nupay_blockers | join('; ') }}.</p>
     {% endif %}
@@ -190,7 +198,7 @@
 
       <form method="POST" action="{{ url_for('members.member_upload_doc', mid=app.member_id) }}"
             enctype="multipart/form-data">
-        <input type="hidden" name="return_to" value="{{ url_for('applications.application_detail', aid=app.id) }}">
+        <input type="hidden" name="return_to" value="{{ url_for('applications.application_detail', aid=app.id, intake=1 if intake_context else none) }}">
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
           <div style="flex:0 0 180px;">
             <label style="font-size:0.75rem;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">Document Type</label>
@@ -202,7 +210,7 @@
           </div>
           <div style="flex:1; min-width:180px;">
             <label style="font-size:0.75rem;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">File</label>
-            <input type="file" name="document" required
+            <input type="file" name="document" required data-statement-upload
                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
                    style="display:block;width:100%;padding:7px 10px;border:1px solid #e5e7eb;
                           border-radius:8px;font-size:0.8rem;">
@@ -231,7 +239,7 @@
                class="btn btn-ghost btn-sm" style="font-size:0.74rem;">Download</a>
             {% if ext == 'pdf' and doc.document_type == 'Bank Statement' %}
             <form method="POST" action="{{ url_for('members.member_analyse_doc', mid=app.member_id, doc_id=doc.id) }}" style="margin:0;">
-              <input type="hidden" name="return_to" value="{{ url_for('applications.application_detail', aid=app.id) }}">
+              <input type="hidden" name="return_to" value="{{ url_for('applications.application_detail', aid=app.id, intake=1 if intake_context else none) }}">
               <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.74rem;">
                 {{ 'Re-analyse' if doc.analysis else 'Analyse' }}
               </button>
@@ -239,7 +247,7 @@
             {% endif %}
             <details class="row-menu"><summary>Actions</summary><div class="row-menu-panel"><form method="POST" action="{{ url_for('members.member_delete_doc', mid=app.member_id, doc_id=doc.id) }}"
                   data-confirm="Delete this document?" style="margin:0;">
-              <input type="hidden" name="return_to" value="{{ url_for('applications.application_detail', aid=app.id) }}">
+              <input type="hidden" name="return_to" value="{{ url_for('applications.application_detail', aid=app.id, intake=1 if intake_context else none) }}">
               <button type="submit" class="btn btn-ghost btn-sm" style="font-size:0.74rem; color:#ef4444;">Delete</button>
             </form></div></details>
           </div>
@@ -441,4 +449,40 @@
   </div>
 
 </div>
+<script>
+(function () {
+  const file = document.querySelector('[data-statement-upload]');
+  if (!file) return;
+  const select = file.form.querySelector('[name="document_type"]');
+  const originalAccept = file.accept;
+  const help = document.createElement('small');
+  file.parentNode.appendChild(help);
+  function update() {
+    const statement = select.value === 'Bank Statement';
+    file.accept = statement ? '.pdf' : originalAccept;
+    file.multiple = statement;
+    help.textContent = statement ? 'Bank statements: PDF only. Select one or more files covering at least 2 months. Income, cash flow and a suggested debit day are analysed automatically.' : '';
+    file.value = '';
+  }
+  select.addEventListener('change', update);
+  update();
+})();
+</script>
+
+{% if intake_context and nupay_blockers %}
+<script>
+(function(){
+  const dialog=document.getElementById('intakeStatementPrompt');
+  if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','');
+  document.getElementById('intakeUploadButton').addEventListener('click',function(){
+    dialog.close();
+    const file=document.querySelector('[data-statement-upload]');
+    if(!file)return;
+    const select=file.form.querySelector('[name="document_type"]');
+    select.value='Bank Statement';select.dispatchEvent(new Event('change'));
+    file.scrollIntoView({behavior:'smooth',block:'center'});file.focus();
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

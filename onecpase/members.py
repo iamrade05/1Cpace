@@ -8,6 +8,8 @@ from flask import Blueprint, abort, current_app, flash, redirect, render_templat
 from werkzeug.utils import secure_filename
 from .auth import permission_required
 from .database import CUSTOM_TARIFF, current_tenant_name, get_db, member_activity, next_member_ref
+from .employee_numbers import current_employee_number, employee_number_context
+from .debicheck_rules import account_holder_error, mandate_rules_context
 from .member_counts import get_member_counts
 from .elev8_data import get_elev8_member_count
 from .communication import collection_care_message
@@ -215,6 +217,8 @@ def _get_last_gym_visit(db, member):
     return None
 
 members_bp = Blueprint("members", __name__, template_folder="templates/members")
+members_bp.context_processor(employee_number_context)
+members_bp.context_processor(mandate_rules_context)
 
 TARIFFS = [
     "Couples Membership",
@@ -296,7 +300,7 @@ def _get_form_data():
         payer_type          = f.get("payer_type", "self").strip(),
         debicheck_auth_type = f.get("debicheck_auth_type", "cell").strip(),
         debicheck_client_ref1 = f.get("debicheck_client_ref1", "").strip(),
-        debicheck_client_ref2 = f.get("debicheck_client_ref2", "").strip(),
+        debicheck_client_ref2 = current_employee_number() or f.get("debicheck_client_ref2", "").strip(),
         debicheck_frequency = f.get("debicheck_frequency", "3").strip(),
         debicheck_installments = f.get("debicheck_installments", "1").strip(),
         debicheck_tracking = f.get("debicheck_tracking", "14").strip(),
@@ -419,6 +423,33 @@ def _get_tariffs():
     ).fetchall()
 
 
+def _prefill_from_lead(lead, tariff_rows) -> dict:
+    """Add Member form values already known from the prospect being converted."""
+    first_name, _, last_name = (lead["full_name"] or "").strip().partition(" ")
+    d = {
+        "first_name": first_name,
+        "last_name": last_name.strip(),
+        "contact": lead["phone"] or "",
+        "email": lead["email"] or "",
+        "opt_in": lead["marketing_consent"] if lead["marketing_consent"] is not None else 1,
+        "uploaded_by_id": lead["assigned_to"] or session.get("user_id") or "",
+    }
+    interest = (lead["interested_package"] or "").strip()
+    for t in tariff_rows:
+        # Older prospects stored the convert form's "<name> R<amount>" label.
+        if interest and interest in (t["name"], f"{t['name']} R{t['monthly_amount']:.0f}"):
+            d.update(
+                tariff=t["name"], package=t["name"],
+                contract_duration=f"{t['duration_months']} months",
+                monthly_installment=t["monthly_amount"],
+            )
+            break
+    else:
+        if interest:
+            d["package"] = interest
+    return d
+
+
 # ── Custom package (a manager's call) ─────────────────────────────────────────
 
 CUSTOM_PACKAGE_TYPES = ("Family package", "Different agreement", "Other")
@@ -519,42 +550,49 @@ def members_add():
         "SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name"
     ).fetchall()
     tariff_rows = _get_tariffs()
+    lead = None
+    lead_id = request.args.get("lead_id", type=int)
+    if lead_id:
+        from .leads import lead_conversion_redirect
+        lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
+        blocked = lead_conversion_redirect(db, lead)
+        if blocked:
+            return blocked
+
+    def _form(d):
+        from datetime import date
+        return render_template("members/add.html", d=d, tariffs=TARIFFS,
+                               tariff_rows=tariff_rows, banks=BANKS,
+                               consultants=consultants, lead=lead,
+                               today=date.today().isoformat())
 
     if request.method == "POST":
         d = _get_form_data()
+        if lead is not None:
+            # Attribution comes from the prospect record, never the form.
+            d["source"] = lead["original_source"] or lead["source"] or d["source"]
+            d["entry_type"] = "lead"
         d["payer_type"] = (
             "third_party" if d["payment_type"] == "Third-Party Debit Order" else "self"
         )
         push_nupay = request.form.get("submit_action") == "push_nupay"
         if not (d["first_name"] and d["last_name"] and d["id_number"] and d["contact"]):
             flash("First name, last name, ID number, and cell number are required.", "error")
-            from datetime import date
-            return render_template("members/add.html", d=d, tariffs=TARIFFS,
-                                   tariff_rows=tariff_rows, banks=BANKS,
-                                   consultants=consultants, today=date.today().isoformat())
+            return _form(d)
 
         custom_error = _apply_custom_package(d)
         if custom_error:
             flash(custom_error, "error")
-            from datetime import date
-            return render_template("members/add.html", d=d, tariffs=TARIFFS,
-                                   tariff_rows=tariff_rows, banks=BANKS,
-                                   consultants=consultants, today=date.today().isoformat())
+            return _form(d)
 
         if d["debicheck_id_type"] == "1":
             if not d["id_number"]:
                 flash("Passport number is required.", "error")
-                from datetime import date
-                return render_template("members/add.html", d=d, tariffs=TARIFFS,
-                                       tariff_rows=tariff_rows, banks=BANKS,
-                                       consultants=consultants, today=date.today().isoformat())
+                return _form(d)
             d["debicheck_passport"] = d["id_number"]
         elif not (d["id_number"].isdigit() and len(d["id_number"]) == 13):
             flash("RSA ID number must be exactly 13 digits, or select Passport as the identity type.", "error")
-            from datetime import date
-            return render_template("members/add.html", d=d, tariffs=TARIFFS,
-                                   tariff_rows=tariff_rows, banks=BANKS,
-                                   consultants=consultants, today=date.today().isoformat())
+            return _form(d)
 
         # Duplicate ID check (use hash when encryption is active, plaintext otherwise)
         if encryption_enabled():
@@ -568,10 +606,7 @@ def members_add():
             ).fetchone()
         if dup:
             flash(f"A member with this ID number already exists (member #{dup['id']}).", "error")
-            from datetime import date
-            return render_template("members/add.html", d=d, tariffs=TARIFFS,
-                                   tariff_rows=tariff_rows, banks=BANKS,
-                                   consultants=consultants, today=date.today().isoformat())
+            return _form(d)
 
         if d["payment_type"] in ("Debit Order", "Third-Party Debit Order"):
             missing_bank = [label for field, label in (
@@ -581,28 +616,24 @@ def members_add():
                 ("account_number", "Account number"),
                 ("branch_code", "Branch code"),
             ) if not d.get(field)]
-            if missing_bank:
-                flash(f"Debit order requires: {', '.join(missing_bank)}.", "error")
-                from datetime import date
-                return render_template("members/add.html", d=d, tariffs=TARIFFS,
-                                       tariff_rows=tariff_rows, banks=BANKS,
-                                       consultants=consultants, today=date.today().isoformat())
+            name_error = account_holder_error(d.get("account_name"), d.get("debicheck_id_type") == "4")
+            if missing_bank or name_error:
+                if name_error:
+                    flash(name_error, "error")
+                if missing_bank:
+                    flash(f"Debit order requires: {', '.join(missing_bank)}.", "error")
+                return _form(d)
 
         if push_nupay:
             if d["payment_type"] not in ("Debit Order", "Third-Party Debit Order"):
                 errors = ["NuPay push is only available for debit-order payments."]
             else:
-                errors = validate_mandate(d)
+                errors = validate_mandate(d, sales=True)
             if errors:
                 for error in errors:
                     flash(error, "error")
                 d["_open_payment"] = 1
-                from datetime import date
-                return render_template(
-                    "members/add.html", d=d, tariffs=TARIFFS,
-                    tariff_rows=tariff_rows, banks=BANKS,
-                    consultants=consultants, today=date.today().isoformat(),
-                )
+                return _form(d)
         try:
             # Direct member creation is an onboarding shortcut, never a JOINED shortcut.
             # A normal staff user creates an Unverified member + application; only the
@@ -648,11 +679,23 @@ def members_add():
             )
             mid = cursor.lastrowid
             from .applications import ensure_member_application
-            ensure_member_application(db, mid, d["package"] or d["tariff"])
+            intake_aid = ensure_member_application(db, mid, d["package"] or d["tariff"],
+                                                   lead_id=lead["id"] if lead is not None else None)
             member_activity(db, mid, "Member profile created")
             custom_note = _custom_package_activity(None, d)
             if custom_note:
                 member_activity(db, mid, custom_note)
+            if lead is not None:
+                from .leads import record_lead_conversion, sa_id_luhn_valid
+                record_lead_conversion(db, lead, mid, intake_aid, d["id_number"], d["date_of_birth"])
+                if d["debicheck_id_type"] != "1" and not sa_id_luhn_valid(d["id_number"]):
+                    flash(
+                        "That ID number failed the standard check-digit test — please "
+                        "confirm it against the client's ID document. Conversion has "
+                        "continued, but the number may be mistyped.",
+                        "warning",
+                    )
+                member_activity(db, mid, f"Converted from prospect #{lead['id']}")
             db.commit()
 
             if push_nupay:
@@ -671,7 +714,7 @@ def members_add():
                 blockers = nupay_submission_blockers(db, mid)
                 if blockers and not authorize_nupay_override(db, mid, blockers):
                     flash("Member and mandate saved. NuPay submission blocked: " + "; ".join(blockers), "warning")
-                    return redirect(url_for("members.member_detail", mid=mid))
+                    return redirect(url_for("applications.application_detail", aid=intake_aid, intake=1))
                 db.commit()  # Persist an explicit admin exception before external submission.
                 try:
                     pushed, message = push_mandate_to_nupay(mandate)
@@ -694,25 +737,23 @@ def members_add():
                         f"Member saved, but the NuPay push failed: {message}. The mandate can be retried.",
                         "warning",
                     )
-                return redirect(url_for("members.member_detail", mid=mid))
+                return redirect(url_for("applications.application_detail", aid=intake_aid, intake=1))
             
             # Itensity push happens from the compliance-approved application flow.
             flash(f"Member {d['first_name']} {d['last_name']} added.", "success")
 
             if d["payment_type"] in ("Debit Order", "Third-Party Debit Order"):
-                flash("Complete the DebiCheck mandate to finish setting up the debit order.", "info")
-                return redirect(url_for("debicheck.add", member_id=mid))
+                flash("Upload at least two months of bank statements to open DebiCheck.", "info")
+                return redirect(url_for("applications.application_detail", aid=intake_aid, intake=1))
 
-            return redirect(url_for("members.member_detail", mid=mid))
+            return redirect(url_for("applications.application_detail", aid=intake_aid, intake=1))
         except Exception:
+            db.rollback()
             current_app.logger.exception("Failed to add member")
             flash("Failed to save member. Please check the details and try again.", "error")
+            return _form(d)
 
-    from datetime import date
-    return render_template("members/add.html", d={}, tariffs=TARIFFS,
-                           tariff_rows=tariff_rows,
-                           banks=BANKS, consultants=consultants,
-                           today=date.today().isoformat())
+    return _form(_prefill_from_lead(lead, tariff_rows) if lead is not None else {})
 
 
 @members_bp.route("/members/<int:mid>")
@@ -919,6 +960,9 @@ def member_detail(mid: int):
         ptp_receipts=ptp_receipts,
         plan_items=plan_items,
         arrears_info=arrears_info,
+        latest_debicheck_check=db.execute(
+            "SELECT * FROM nupay_mandate_checks WHERE member_id=? ORDER BY id DESC LIMIT 1", (mid,)
+        ).fetchone(),
         has_submitted_mandate=has_submitted_mandate,
         mandate=mandate,
         active_ptp=active_ptp,
@@ -932,6 +976,34 @@ def member_detail(mid: int):
         ptp_from_query=ptp_from_query,
         whatsapp_message=collection_care_message(member["first_name"], tenant_name),
     )
+
+
+@members_bp.post("/members/<int:mid>/check-debicheck")
+@permission_required("all_members")
+def member_check_debicheck(mid: int):
+    from .debicheck import check_member_on_nupay
+
+    db = get_db()
+    row = db.execute("SELECT * FROM members WHERE id=?", (mid,)).fetchone()
+    if row is None:
+        abort(404)
+    result = check_member_on_nupay(decrypt_member(row))
+    if result["state"] == "error":
+        flash("Unable to verify DebiCheck: " + result["message"], "warning")
+    else:
+        db.execute(
+            """INSERT INTO nupay_mandate_checks
+               (member_id, state, status, contract_reference, message, checked_by)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (mid, result["state"], result["status"], result["contract_reference"],
+             result["message"], session.get("user_id")),
+        )
+        member_activity(db, mid, "DebiCheck check on NuPay: " + result["message"])
+        db.commit()
+        labels = {"active": "Active DebiCheck mandate confirmed", "inactive": "Mandate found, but it is not active", "none": "No DebiCheck mandate found"}
+        flash(labels[result["state"]] + ". " + result["message"],
+              "success" if result["state"] == "active" else "warning")
+    return redirect(url_for("members.member_detail", mid=mid) + "#debicheck-check")
 
 
 @members_bp.route("/members/<int:mid>/notes", methods=["POST"])
@@ -949,6 +1021,63 @@ def member_add_note(mid: int):
 @permission_required("all_members")
 def member_upload_doc(mid: int):
     return _upload_member_doc(mid)
+
+
+def _upload_member_doc(mid: int, inline=False):
+    """Shared document storage and analysis for member and DebiCheck screens."""
+    from flask import jsonify
+    from .applications import ensure_member_application, sync_application_status
+    from .statement_uploads import upload_statements
+    from uuid import uuid4
+    db = get_db()
+    if not db.execute("SELECT 1 FROM members WHERE id=?", (mid,)).fetchone():
+        abort(404)
+    def finish(message, category="success", status=200, analysis=None):
+        if inline:
+            return jsonify(message=message, category=category, analysis=analysis), status
+        flash(message, category)
+        return redirect(_doc_return_to(mid))
+    doc_type = request.form.get("document_type", "Other")
+    if doc_type not in DOC_TYPES:
+        return finish("Select a valid document type.", "error", 400)
+    files = [f for f in request.files.getlist("document") if f and f.filename]
+    if doc_type == "Bank Statement":
+        try:
+            result = upload_statements(db, mid, files)
+        except ValueError as exc:
+            return finish(str(exc), "error", 400)
+        db.commit()
+        cash = result["cashflow"]
+        if result.get("error"):
+            return finish(f"Statements uploaded, but automatic analysis failed: {result['error']}", "warning", analysis=result)
+        message = (f"Bank statements uploaded and analysed. {cash.get('note', '')} "
+                   f"Average money in R{cash['avg_money_in']:,.2f}; money out R{cash['avg_money_out']:,.2f}; "
+                   f"surplus R{cash['avg_surplus']:,.2f}. Suggested debit day: {cash['suggested_debit_day'] or 'unavailable'}.")
+        return finish(message, "success" if cash['enough_months'] else "warning", analysis=result)
+    if not files:
+        return finish("No file selected.", "error", 400)
+    if not all(_allowed(f.filename) for f in files):
+        return finish("File type not allowed. Use PDF, JPG, PNG, DOC, DOCX, XLS, XLSX.", "error", 400)
+    upload_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "members" / str(mid)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    for file in files:
+        stored_name = f"{uuid4().hex}_{secure_filename(file.filename)}"
+        dest = upload_dir / stored_name
+        file.save(str(dest))
+        db.execute("""INSERT INTO member_documents
+            (member_id, document_type, original_name, stored_name, file_size, uploaded_by)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (mid, doc_type, file.filename, stored_name, dest.stat().st_size, session.get("user_id")))
+        member_activity(db, mid, f"Uploaded {doc_type}: {file.filename}")
+    aid = ensure_member_application(db, mid)
+    checklist_updates = {"Signed Contract": ("contract_status", "signed"),
+                         "SA ID Copy": ("id_copy_status", "uploaded")}
+    if doc_type in checklist_updates:
+        field, status = checklist_updates[doc_type]
+        db.execute(f"UPDATE compliance_checklists SET {field}=?, updated_at=datetime('now') WHERE application_id=?", (status, aid))
+        sync_application_status(db, aid)
+    db.commit()
+    return finish(f"{len(files)} document(s) uploaded successfully.")
 
 
 @members_bp.route("/members/<int:mid>/documents/<int:doc_id>/download")
@@ -1197,60 +1326,3 @@ def member_edit(mid: int):
         banks=BANKS,
         consultants=consultants,
     )
-
-
-def _upload_member_doc(mid: int, inline=False):
-    """Shared document storage and analysis for member and DebiCheck screens."""
-    from flask import jsonify
-    from .applications import ensure_member_application, sync_application_status
-    from .statement_uploads import upload_statements
-    from uuid import uuid4
-    db = get_db()
-    if not db.execute("SELECT 1 FROM members WHERE id=?", (mid,)).fetchone():
-        abort(404)
-    def finish(message, category="success", status=200, analysis=None):
-        if inline:
-            return jsonify(message=message, category=category, analysis=analysis), status
-        flash(message, category)
-        return redirect(_doc_return_to(mid))
-    doc_type = request.form.get("document_type", "Other")
-    if doc_type not in DOC_TYPES:
-        return finish("Select a valid document type.", "error", 400)
-    files = [f for f in request.files.getlist("document") if f and f.filename]
-    if doc_type == "Bank Statement":
-        try:
-            result = upload_statements(db, mid, files)
-        except ValueError as exc:
-            return finish(str(exc), "error", 400)
-        db.commit()
-        cash = result["cashflow"]
-        if result.get("error"):
-            return finish(f"Statements uploaded, but automatic analysis failed: {result['error']}", "warning", analysis=result)
-        message = (f"Bank statements uploaded and analysed. {cash.get('note', '')} "
-                   f"Average money in R{cash['avg_money_in']:,.2f}; money out R{cash['avg_money_out']:,.2f}; "
-                   f"surplus R{cash['avg_surplus']:,.2f}. Suggested debit day: {cash['suggested_debit_day'] or 'unavailable'}.")
-        return finish(message, "success" if cash['enough_months'] else "warning", analysis=result)
-    if not files:
-        return finish("No file selected.", "error", 400)
-    if not all(_allowed(f.filename) for f in files):
-        return finish("File type not allowed. Use PDF, JPG, PNG, DOC, DOCX, XLS, XLSX.", "error", 400)
-    upload_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "members" / str(mid)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    for file in files:
-        stored_name = f"{uuid4().hex}_{secure_filename(file.filename)}"
-        dest = upload_dir / stored_name
-        file.save(str(dest))
-        db.execute("""INSERT INTO member_documents
-            (member_id, document_type, original_name, stored_name, file_size, uploaded_by)
-            VALUES (?, ?, ?, ?, ?, ?)""",
-            (mid, doc_type, file.filename, stored_name, dest.stat().st_size, session.get("user_id")))
-        member_activity(db, mid, f"Uploaded {doc_type}: {file.filename}")
-    aid = ensure_member_application(db, mid)
-    checklist_updates = {"Signed Contract": ("contract_status", "signed"),
-                         "SA ID Copy": ("id_copy_status", "uploaded")}
-    if doc_type in checklist_updates:
-        field, status = checklist_updates[doc_type]
-        db.execute(f"UPDATE compliance_checklists SET {field}=?, updated_at=datetime('now') WHERE application_id=?", (status, aid))
-        sync_application_status(db, aid)
-    db.commit()
-    return finish(f"{len(files)} document(s) uploaded successfully.")

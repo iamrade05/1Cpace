@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}New WhatsApp message | 1Cpace{% endblock %}
+{% block page_title %}New WhatsApp message{% endblock %}
+{% block content %}
+<header class="page-header"><div><h1>New message — {{ number|title }}</h1></div></header>
+<div class="card" style="max-width:680px;">
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="form-group">
+        <label for="recipient">Recipient number</label>
+        <input id="recipient" name="phone" type="tel" class="form-control" value="{{ phone }}" placeholder="082 123 4567 or +27 82 123 4567" required aria-describedby="phone-help">
+        <p id="phone-help">Use a country code for international numbers. Numbers starting with 0 are treated as South African.</p>
+      </div>
+      <div class="form-group">
+        <label for="message">Message</label>
+        <textarea id="message" name="message" class="form-control" rows="6" maxlength="4096" required>{{ message }}</textarea>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button type="submit" class="btn btn-primary">Send message</button>
+        <a href="{{ url_for('comms.whatsapp_inbox', number=number) }}" class="btn btn-ghost">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

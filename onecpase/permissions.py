@@ -55,6 +55,9 @@ MODULE_PERMISSIONS = {
         ("hr_leave", "Leave"),
         ("hr_payroll", "Payroll"),
         ("hr_timesheets", "Timesheets"),
+        ("hr_manage", "HR administration and balance verification"),
+        ("hr_leave_approve", "Approve assigned employees' leave"),
+        ("hr_timesheet_approve", "Approve assigned employees' timesheets"),
     ],
     "ADMIN": [
         ("user_management", "User Management"),
@@ -72,7 +75,7 @@ MODULE_PERMISSIONS = {
 # Flat set of all valid permission keys
 ALL_PERMISSIONS = {perm for perms in MODULE_PERMISSIONS.values() for perm, _ in perms}
 
-_HR_WITHOUT_PAYROLL = {key for key, _ in MODULE_PERMISSIONS['HR']} - {'hr_payroll'}
+_HR_WITHOUT_PAYROLL = {'hr_module', 'hr_staff', 'hr_leave', 'hr_timesheets'}
 _MEMBER_ACCESS = {'all_members', 'add_member', 'daily_queries', 'verification'}
 _SALES_ACCESS = {'view_leads', 'capture_leads', 'pbx_call'}
 _COMMUNICATION_ACCESS = {key for key, _ in MODULE_PERMISSIONS['COMMUNICATIONS']}
@@ -100,8 +103,8 @@ def staff_access_profile(role, department, is_sales_consultant=False):
 def effective_permissions_for(role, department, assigned=(), is_sales_consultant=False):
     profile = staff_access_profile(role, department, is_sales_consultant)
     if profile:
-        return set(STAFF_ACCESS_PROFILES[profile])
-    return set(assigned) | default_permissions_for(role, department)
+        return set(STAFF_ACCESS_PROFILES[profile]) | (set(assigned) & {'hr_manage', 'hr_leave_approve', 'hr_timesheet_approve'})
+    return set(assigned) | default_permissions_for(role, department) | _HR_WITHOUT_PAYROLL
 
 # Permissions granted automatically by department/role, on top of whatever a
 # user is individually assigned via the Add/Edit User form. Keeps a Sales

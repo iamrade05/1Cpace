@@ -15,7 +15,7 @@
 
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
   <a href="{{ url_for('comms.whatsapp_inbox', number=number) }}" class="btn btn-ghost btn-sm">← Inbox</a>
-  <span style="font-weight:800;color:#172033;font-size:1rem;">{{ conv.contact_name or conv.contact_phone }}</span>
+  <span style="font-weight:800;color:#172033;font-size:1rem;">{{ conv.client.full_name if conv.client else (conv.contact_name or conv.contact_phone) }}</span>
   <span style="font-size:.78rem;color:#9ca3af;">{{ conv.contact_phone }}</span>
   <div style="margin-left:auto;">
     <a href="{{ url_for('comms.whatsapp_link_lead', number=number, conv_id=conv.id) }}" class="btn btn-ghost btn-sm">
@@ -24,12 +24,21 @@
   </div>
 </div>
 
+{% if conv.client %}
+<div class="alert alert-info">Linked client: <a href="{{ url_for('members.member_detail', mid=conv.client.id) }}">{{ conv.client.full_name }}{% if conv.client.member_ref %} · {{ conv.client.member_ref }}{% endif %}</a> · {{ conv.client.member_status or '' }}</div>
+{% if phase_open('fitness') and session.get('access_profile') != 'sales' and has_perm('reception_whatsapp') %}<a class="btn btn-secondary btn-sm" href="{{ url_for('fitness_journey.member_intake',mid=conv.client.id) }}">Fitness interest and attendance times</a>{% endif %}
+{% elif conv.phone_match_count > 1 %}
+<div class="alert alert-warning">This number is shared by {{ conv.phone_match_count }} clients. Use “Link to lead / member” to select the correct profile.</div>
+{% elif not conv.linked_lead_id %}
+<div class="alert alert-info">No matching client profile. Use “Link to lead / member” to choose a profile manually.</div>
+{% endif %}
+
 <div class="card">
   <div class="chat-thread">
     {% if messages %}
       {% for m in messages %}
       <div class="chat-bubble {{ m.direction }}">{{ m.content }}</div>
-      <div class="chat-meta {{ m.direction }}">{{ (m.timestamp or '')[:16] }}{% if m.status == 'sent' %} · sent{% endif %}</div>
+      <div class="chat-meta {{ m.direction }}">{{ (m.timestamp or '')[:16] }}{% if m.direction == 'outbound' %} · {{ m.status }}{% endif %}</div>
       {% endfor %}
     {% else %}
       <div style="text-align:center;color:#9ca3af;font-size:.82rem;padding:20px 0;">No messages yet.</div>
@@ -37,9 +46,16 @@
   </div>
   <div class="card-body" style="border-top:1px solid #e4e8f0;">
     <form method="POST" style="display:flex;gap:10px;align-items:flex-end;">
-      <textarea name="message" class="form-control" rows="2" style="flex:1;" placeholder="Type a reply…" required></textarea>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <textarea name="message" class="form-control" rows="2" style="flex:1;" placeholder="Type a reply…" maxlength="4096" required></textarea>
       <button type="submit" class="btn btn-primary btn-sm" style="margin-bottom:0;">Send</button>
     </form>
   </div>
 </div>
+<script>
+setInterval(() => {
+  const draft = document.querySelector('textarea[name="message"]');
+  if (document.visibilityState === 'visible' && !draft.value && document.activeElement !== draft && !window.getSelection().toString()) window.location.reload();
+}, 15000);
+</script>
 {% endblock %}

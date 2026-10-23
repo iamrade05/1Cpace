@@ -7,6 +7,10 @@ on:
 jobs:
   pytest:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
     env:
       FLASK_ENV: testing
       SECRET_KEY: ci-test-secret-not-for-production
@@ -22,10 +26,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Compile Python
         run: python -m compileall -q onecpase
       - name: Run tests
         run: python -m pytest -q
+      - name: Install browser for UI release checks
+        if: matrix.python-version == '3.12'
+        run: python -m playwright install --with-deps chromium
+      - name: Check desktop and mobile UI
+        if: matrix.python-version == '3.12'
+        run: python -m scripts.verify_ui
+      - name: Upload UI evidence
+        if: always() && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-release-checks
+          path: artifacts/ui-review/

@@ -90,14 +90,8 @@ def _backup_before_write(root: Path, db_path: str, label: str) -> Path:
     backup_dir.mkdir(exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = backup_dir / f"{label}_{stamp}.db"
-    src = sqlite3.connect(db_path)
-    dst = sqlite3.connect(backup_path)
-    try:
-        src.backup(dst)
-    finally:
-        src.close()
-        dst.close()
-    return backup_path
+    from .backup_retention import snapshot_database
+    return snapshot_database(db_path, backup_dir, backup_path.name)
 
 
 # ── Job 1: PTP / collections automations ────────────────────────────────────
@@ -392,6 +386,24 @@ def _job_itensity_transactions_sweep(app) -> None:
 
 # ── Wiring ───────────────────────────────────────────────────────────────────
 
+def _job_staff_notifications(app):
+    from .notifications import sync_notifications, SOURCE_BLUEPRINTS
+    from .phases import is_enabled
+    phase = app.config.get("ACTIVE_PHASE", 1)
+    kinds = [kind for kind, blueprint in SOURCE_BLUEPRINTS if is_enabled(blueprint, phase)]
+    for tenant in _active_tenants(app):
+        conn = sqlite3.connect(tenant["db_path"])
+        conn.row_factory = sqlite3.Row
+        try:
+            sync_notifications(conn, enabled_kinds=kinds, query_routing_enabled=(
+                app.config.get("ELEV8_QUERY_ROUTING", tenant["slug"] == "elev8")))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            logger.exception("Staff notification refresh failed for %s", tenant["slug"])
+        finally:
+            conn.close()
+
 def init_scheduler(app) -> None:
     """Start the background scheduler for this process, once."""
     global _scheduler
@@ -410,6 +422,9 @@ def init_scheduler(app) -> None:
         return
 
     scheduler = BackgroundScheduler(timezone="Africa/Johannesburg")
+    scheduler.add_job(lambda: _job_staff_notifications(app), IntervalTrigger(minutes=5),
+                      id="staff_notifications", replace_existing=True,
+                      misfire_grace_time=300, max_instances=1)
     itensity_ready = itensity_scripts_available()
     if not itensity_ready:
         app.logger.warning(

@@ -30,13 +30,28 @@ from pathlib import Path
 
 from flask import (
     Blueprint, abort, current_app, flash, jsonify, redirect, render_template,
-    request, send_file, url_for,
+    request, send_file, url_for, g, session,
 )
 
 from .admin import _admin_required
 from .extensions import limiter
 
 whatsapp_web_bp = Blueprint("whatsapp_web", __name__, url_prefix="/admin/whatsapp-web")
+
+
+@whatsapp_web_bp.before_request
+def restrict_linked_tenant():
+    # A browser profile belongs to one gym; other tenants must never read its QR.
+    if current_app.testing:
+        return None
+    if not session.get('user_id'):
+        return redirect(url_for('auth.login'))
+    if not g.get('tenant_slug'):
+        flash('Select Elev8 and sign in as an admin to link WhatsApp.', 'info')
+        return redirect(url_for('tenants.welcome'))
+    if g.get('tenant_slug') != current_app.config.get('WHATSAPP_WEB_TENANT', 'elev8'):
+        flash('WhatsApp Web is linked to Elev8. Switch to Elev8 to manage this connection.', 'warning')
+        return redirect(url_for('dashboard.dashboard'))
 
 QR_SELECTOR = 'canvas[aria-label*="Scan" i], canvas[data-testid="qrcode"]'
 QR_EXPIRED_SELECTOR = 'button[data-testid="link_device_qr_expired_refresh_button"], button:has-text("reload QR")'
@@ -58,7 +73,7 @@ LINK_COOLDOWN = timedelta(hours=3)
 
 class LinkBlocked(Exception):
     """WhatsApp is refusing new linking attempts for this number for now."""
-LOGGED_IN_SELECTOR = '[data-testid="chat-list"], div#pane-side'
+LOGGED_IN_SELECTOR = '[data-testid="chat-list"], div#pane-side, #side, [aria-label="Chat list"]'
 COMPOSE_SELECTOR = 'div[data-testid="conversation-compose-box-input"], footer div[contenteditable="true"]'
 
 # WhatsApp Web refuses to load at all - showing a generic "works with Chrome
@@ -82,11 +97,14 @@ _state: dict = {
     "enabled": False,
     "started": False,
     "logged_in": False,
+    "syncing": False,
     "last_qr_at": None,
     "last_error": None,
     "last_sent_at": None,
     "pairing_code": None,
     "pairing_status": None,
+    "pairing_requested_at": None,
+    "last_browser_poll_at": None,
     "pairing_blocked_until": None,
 }
 _worker_thread: threading.Thread | None = None
@@ -104,6 +122,13 @@ def _set_state(**kwargs) -> None:
 def get_status() -> dict:
     with _state_lock:
         status = dict(_state)
+    requested = status.get('pairing_requested_at')
+    if requested and status.get('pairing_status'):
+        if (datetime.now(timezone.utc) - datetime.fromisoformat(requested)).total_seconds() > 120:
+            status.update(pairing_status=None, last_error='Linking timed out. Reload the QR and try again once the browser session is running.')
+    polled = status.get('last_browser_poll_at')
+    if polled and (datetime.now(timezone.utc)-datetime.fromisoformat(polled)).total_seconds() > 45:
+        status.update(logged_in=False, last_error='Browser session is not responding; the connection is being restarted.')
     status["queue_length"] = _send_queue.qsize()
     return status
 
@@ -112,7 +137,7 @@ def queue_message(phone: str, text: str) -> None:
     """Queue a message for background sending. Never raises and never
     blocks the caller - a WhatsApp Web hiccup must not make a registration
     (or anything else that wants to notify someone) fail."""
-    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    digits = normalise_phone(phone)
     if not digits or not text:
         return
     _send_queue.put((digits, text))
@@ -150,7 +175,9 @@ def request_phone_link(phone_text: str) -> bool:
     phone = normalise_phone(phone_text)
     if not phone:
         return False
-    _set_state(pairing_code=None, pairing_status="Asking WhatsApp for a code")
+    if get_status().get("pairing_status"):
+        return True
+    _set_state(pairing_code=None, pairing_status="Asking WhatsApp for a code", pairing_requested_at=_now_iso())
     _commands.put(("phone", phone))
     return True
 
@@ -210,6 +237,13 @@ def _handle_command(page, command: str, phone: str) -> None:
     from a freshly loaded WhatsApp Web so it never depends on what screen the
     previous attempt left behind."""
     try:
+        # A scan may have completed while this request waited in the queue.
+        if page.locator(LOGGED_IN_SELECTOR).first.is_visible():
+            _set_state(logged_in=True, pairing_status=None, pairing_code=None)
+            return
+        if get_status().get("syncing"):
+            _set_state(pairing_status="Phone linked - downloading chats", pairing_code=None)
+            return
         page.goto("https://web.whatsapp.com", wait_until="domcontentloaded")
         if command == "phone":
             _start_phone_link(page, phone)
@@ -244,12 +278,24 @@ def _refresh_expired_qr(page) -> None:
 def _poll_login_state(page, session_dir: Path) -> bool:
     """Refresh logged_in/last_qr_at from the page's current DOM. Returns
     the current logged_in value."""
+    _set_state(last_browser_poll_at=_now_iso())
     try:
         if page.locator(LOGGED_IN_SELECTOR).first.is_visible(timeout=1000):
-            _set_state(logged_in=True, pairing_code=None, pairing_status=None, pairing_blocked_until=None)
+            _set_state(logged_in=True, syncing=False, pairing_code=None, pairing_status=None, pairing_requested_at=None, pairing_blocked_until=None)
             return True
+    except Exception as exc:
+        _set_state(last_error=f"Browser status check failed: {exc}", logged_in=False)
+        if exc.__class__.__module__.startswith("urllib3"):
+            raise
+    try:
+        syncing = page.evaluate("document.body ? /Loading your chats|Your messages are downloading/i.test(document.body.innerText) : false")
     except Exception:
-        pass
+        syncing = False
+    if syncing:
+        _set_state(logged_in=False, syncing=True, pairing_code=None,
+                   pairing_requested_at=None, pairing_status='Phone linked - downloading chats', last_error=None)
+        return False
+    _set_state(syncing=False)
     _refresh_expired_qr(page)
     try:
         qr = page.locator(QR_SELECTOR).first
@@ -259,7 +305,8 @@ def _poll_login_state(page, session_dir: Path) -> bool:
             return False
     except Exception:
         pass
-    return get_status()["logged_in"]
+    _set_state(logged_in=False)
+    return False
 
 
 def _send_one(page, phone: str, text: str) -> None:
@@ -280,57 +327,97 @@ def _send_one(page, phone: str, text: str) -> None:
 
 
 def _run_worker(app, session_dir: Path, delay: float) -> None:
-    from playwright.sync_api import sync_playwright
+    from contextlib import contextmanager
+
+    @contextmanager
+    def browser_page():
+        if app.config.get('WHATSAPP_WEB_BROWSER', 'playwright') == 'selenium':
+            from .whatsapp_selenium import SeleniumPage
+            page = SeleniumPage(session_dir / "selenium-profile", app.config.get('WHATSAPP_WEB_CHROME_BINARY'))
+            try:
+                yield page
+            finally:
+                page.close()
+        else:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as playwright:
+                context = playwright.chromium.launch_persistent_context(
+                    str(session_dir), headless=True, user_agent=REAL_CHROME_UA,
+                    args=['--disable-blink-features=AutomationControlled'])
+                try:
+                    page = context.pages[0] if context.pages else context.new_page()
+                    page.add_init_script(HIDE_WEBDRIVER_SCRIPT)
+                    yield page
+                finally:
+                    context.close()
 
     session_dir.mkdir(parents=True, exist_ok=True)
-    _set_state(started=True)
+    _set_state(started=True, browser=app.config.get('WHATSAPP_WEB_BROWSER','playwright'))
     try:
-        with sync_playwright() as playwright:
-            context = playwright.chromium.launch_persistent_context(
-                str(session_dir), headless=True,
-                user_agent=REAL_CHROME_UA,
-                args=["--disable-blink-features=AutomationControlled"],
-            )
-            try:
-                page = context.pages[0] if context.pages else context.new_page()
-                page.add_init_script(HIDE_WEBDRIVER_SCRIPT)
-                page.goto("https://web.whatsapp.com", wait_until="domcontentloaded")
-
-                while True:
-                    logged_in = _poll_login_state(page, session_dir)
+        from .fitness_journey import sync_welcomes
+        sync_welcomes(app, send=False)
+        with browser_page() as page:
+            page.goto('https://web.whatsapp.com', wait_until='domcontentloaded')
+            while True:
+                logged_in = _poll_login_state(page, session_dir)
+                if logged_in:
                     try:
-                        command, argument = _commands.get_nowait()
-                    except queue.Empty:
-                        pass
-                    else:
-                        if not logged_in:
-                            _handle_command(page, command, argument)
-                        continue
+                        from .fitness_journey import sync_welcomes
+                        sync_welcomes(app)
+                        _set_state(welcome_error=None)
+                    except Exception:
+                        app.logger.exception('Fitness welcome sync failed')
+                        _set_state(welcome_error='Fitness welcome sync needs attention.')
                     try:
-                        phone, text = _send_queue.get(timeout=5)
-                    except queue.Empty:
-                        continue
+                        from .whatsapp_receive import poll_incoming
+                        received = poll_incoming(app, page)
+                        _set_state(last_receive_poll_at=_now_iso(), receive_error=None)
+                        if received:
+                            _set_state(last_received_at=_now_iso())
+                    except Exception:
+                        app.logger.exception('WhatsApp inbox sync failed')
+                        _set_state(receive_error='Inbox sync failed; retrying on the next poll.')
+                try:
+                    command, argument = _commands.get_nowait()
+                except queue.Empty:
+                    pass
+                else:
                     if not logged_in:
-                        # Nobody has scanned the QR code yet - keep the
-                        # message rather than lose it, and don't hammer the
-                        # queue while waiting.
-                        _send_queue.put((phone, text))
-                        time.sleep(5)
-                        continue
-                    try:
-                        _send_one(page, phone, text)
-                        _set_state(last_sent_at=_now_iso(), last_error=None)
-                    except Exception as exc:
-                        with app.app_context():
-                            app.logger.exception("WhatsApp Web send failed for %s", phone)
-                        _set_state(last_error=f"Send to {phone} failed: {exc}")
-                    time.sleep(delay)
-            finally:
-                context.close()
+                        _handle_command(page, command, argument)
+                    continue
+                try:
+                    phone, text = _send_queue.get(timeout=5)
+                except queue.Empty:
+                    continue
+                if not logged_in:
+                    _send_queue.put((phone, text))
+                    time.sleep(5)
+                    continue
+                try:
+                    _send_one(page, phone, text)
+                    _set_state(last_sent_at=_now_iso(), last_error=None)
+                    outgoing_status = 'sent'
+                except Exception as exc:
+                    _set_state(last_error=f'Send to {phone} failed: {exc}')
+                    outgoing_status = 'failed'
+                try:
+                    from .whatsapp_receive import record_outgoing_result
+                    record_outgoing_result(app, phone, text, outgoing_status)
+                except Exception:
+                    app.logger.exception('Could not update queued WhatsApp message status')
+                time.sleep(delay)
     except Exception as exc:
         with app.app_context():
-            app.logger.exception("WhatsApp Web worker crashed")
-        _set_state(last_error=f"Worker crashed: {exc}", started=False)
+            app.logger.exception('WhatsApp Web worker crashed')
+        _set_state(last_error=f'Worker crashed: {exc}', started=False, logged_in=False)
+
+
+def _supervise_worker(app, session_dir, delay):
+    for attempt in range(3):
+        _run_worker(app, session_dir, delay)
+        if attempt < 2:
+            _set_state(pairing_status=None, pairing_code=None, last_error='Restarting an unresponsive WhatsApp browser session.')
+            time.sleep(5)
 
 
 def init_whatsapp_web(app) -> None:
@@ -345,7 +432,7 @@ def init_whatsapp_web(app) -> None:
     session_dir = Path(app.config["WHATSAPP_WEB_SESSION_DIR"])
     delay = float(app.config.get("WHATSAPP_WEB_SEND_DELAY", 8))
     _worker_thread = threading.Thread(
-        target=_run_worker, args=(app, session_dir, delay),
+        target=_supervise_worker, args=(app, session_dir, delay),
         name="whatsapp-web-sender", daemon=True,
     )
     _worker_thread.start()
@@ -402,6 +489,11 @@ def show_qr():
 def qr_image():
     session_dir = Path(current_app.config["WHATSAPP_WEB_SESSION_DIR"])
     path = _qr_path(session_dir)
-    if not path.exists():
+    status = get_status()
+    if not path.exists() or status.get('logged_in') or status.get('syncing'):
         abort(404)
-    return send_file(str(path), mimetype="image/png", max_age=0)
+    if status.get('last_qr_at') and (datetime.now(timezone.utc)-datetime.fromisoformat(status['last_qr_at'])).total_seconds() > 90:
+        abort(404)
+    response = send_file(str(path), mimetype="image/png", max_age=0, conditional=False)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+    return response

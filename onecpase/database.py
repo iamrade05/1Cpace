@@ -98,9 +98,16 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
     from .sales_kpi import ensure_sales_kpi_schema
     ensure_sales_kpi_schema(db, backend)
 
+    from .mobile_api import ensure_schema as ensure_mobile_schema
+    ensure_mobile_schema(db)
+
     # ── Additive column migrations ────────────────────────────────────────────
     _ensure_column(db, backend, "users", "must_change_password", "INTEGER DEFAULT 0")
     _ensure_column(db, backend, "users", "staff_id", "INTEGER")
+    _ensure_column(db, backend, "users", "employee_number", "TEXT")
+    _ensure_column(db, backend, "users", "supervisor_id", "INTEGER")
+    from .notifications import ensure_schema as ensure_notification_schema
+    ensure_notification_schema(db, backend)
     _ensure_column(db, backend, "users", "is_platform_user", "INTEGER DEFAULT 0")
     _ensure_column(db, backend, "users", "platform_admin_id", "INTEGER")
     _ensure_column(db, backend, "users", "is_sales_consultant", "INTEGER DEFAULT 0")
@@ -245,6 +252,19 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
     _ensure_column(db, backend, "ptp_agreements", "remaining_balance", "REAL DEFAULT 0")
     _ensure_column(db, backend, "ptp_agreements", "recovery_installment", "REAL DEFAULT 0")
     _ensure_column(db, backend, "ptp_agreements", "recovery_months", "INTEGER DEFAULT 0")
+    for col, defn in (
+        ("rule_version", "TEXT"),
+        ("arrears_category", "INTEGER"),
+        ("months_owing", "INTEGER DEFAULT 0"),
+        ("payment_count", "INTEGER DEFAULT 0"),
+        ("first_collection_date", "TEXT"),
+        ("upfront_verified", "INTEGER DEFAULT 0"),
+        ("grant_status", "TEXT"),
+        ("granted_at", "TEXT"),
+        ("grant_reference", "TEXT"),
+        ("existing_mandate_ok", "INTEGER DEFAULT 0"),
+    ):
+        _ensure_column(db, backend, "ptp_agreements", col, defn)
     _ensure_column(db, backend, "collection_call_tasks", "whatsapp_sent", "INTEGER DEFAULT 0")
     _ensure_column(db, backend, "collection_call_tasks", "sms_sent", "INTEGER DEFAULT 0")
     _ensure_column(db, backend, "collection_call_tasks", "email_sent", "INTEGER DEFAULT 0")
@@ -352,6 +372,8 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
         ("witness_name", "TEXT"),
         # Why a member is on a custom package (see CUSTOM_TARIFF)
         ("custom_package_note", "TEXT"),
+        # Consultant who sold the membership (Elev8 dbo.Members.soldby)
+        ("sold_by", "TEXT"),
     ]:
         _ensure_column(db, backend, "members", col, defn)
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_members_member_ref ON members(member_ref)")
@@ -449,6 +471,8 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
     _seed_tariffs(db)
     _seed_contract_template(db)
     _backfill_contract_config(db)
+    from .hr_workforce import migrate as migrate_hr_workforce
+    migrate_hr_workforce(db, backend)
 
 
 def member_ref_prefix(tenant_name: str) -> str:

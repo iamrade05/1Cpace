@@ -20,7 +20,7 @@ import secrets
 from datetime import date, datetime
 from pathlib import Path
 
-from flask import (Blueprint, Response, abort, current_app, flash, redirect,
+from flask import (Blueprint, Response, abort, current_app, flash, redirect, g,
                    render_template, request, send_file, session, url_for)
 from werkzeug.utils import secure_filename
 
@@ -227,7 +227,8 @@ def _send_ticket_message(event, registration, *, invited_by_name: str | None = N
             current_app.logger.exception(
                 "Cloud API WhatsApp send failed for registration %s", registration["id"]
             )
-    if not sent and current_app.config.get("WHATSAPP_WEB_ENABLED"):
+    if (not sent and current_app.config.get("WHATSAPP_WEB_ENABLED")
+            and g.get('tenant_slug') == current_app.config.get('WHATSAPP_WEB_TENANT', 'elev8')):
         from . import whatsapp_web
         whatsapp_web.queue_message(registration["phone"], text)
         sent = True

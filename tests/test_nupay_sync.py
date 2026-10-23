@@ -211,8 +211,10 @@ def test_a_live_nupay_mandate_is_recorded_for_the_member_it_belongs_to(app):
 
     (mandate,) = _mandates(app)
     assert result["import"]["recorded"] == 1
-    assert (mandate["member_id"], mandate["client_ref1"], mandate["client_ref2"], mandate["status"]) \
-        == (member_id, "3000001", "5555", "active")
+    with app.app_context():
+        assert mandate['client_ref1'].startswith('enc:')
+        assert (mandate["member_id"], decrypt(mandate["client_ref1"]), mandate["client_ref2"], mandate["status"]) \
+            == (member_id, "3000001", "5555", "active")
     assert mandate["imported_from_nupay"] == 1 and mandate["contract_reference"] == "DCPRD9"
     assert (mandate["instalment_amount"], mandate["instalment_rands"], mandate["instalment_cents"]) == (345.58, 345, 58)
     assert mandate["submit_date"] == "2026-08-25" and mandate["account_type"] == "1"

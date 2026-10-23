@@ -21,6 +21,149 @@ PERIODS = [
 
 VALID_TABS = ('overview', 'membership', 'finance', 'arrears', 'queries', 'custom')
 
+# ── Membership report (one row per member) ────────────────────────────────────
+
+REGISTER_STATUSES = ('Active', 'Inactive', 'Blocked', 'Unverified')
+NOT_ATTENDING_DAYS = 30
+_VISIT_CACHE = {"at": None, "data": None, "error": None}
+
+
+def _mask_id(value):
+    """Show the first 6 digits (date of birth) and last 3 only."""
+    text = (value or "").strip()
+    if len(text) < 10:
+        return text
+    return f"{text[:6]} \u2022\u2022\u2022\u2022 {text[-3:]}"
+
+
+def _phone_key(value):
+    digits = "".join(ch for ch in (value or "") if ch.isdigit())
+    return digits[-9:] if len(digits) >= 9 else ""
+
+
+def _itensity_last_visits():
+    """Last gym visit per member from the Elev8 SQL Server, keyed by the last 9
+    digits of the cellphone number. Returns (dict, error). Cached for 5 minutes.
+    When the server cannot be reached the report still loads, with no visit data,
+    rather than showing invented dates."""
+    from datetime import datetime
+    now = datetime.now()
+    if _VISIT_CACHE["at"] and (now - _VISIT_CACHE["at"]).total_seconds() < 300:
+        return _VISIT_CACHE["data"], _VISIT_CACHE["error"]
+    data, error = {}, None
+    try:
+        from .access_report import _elev8_conn
+        conn = _elev8_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT RIGHT(NULLIF(LTRIM(RTRIM(cell)), ''), 9) AS p, "
+                "MAX(TRY_CONVERT(datetime2(0), last_visited)) AS lv "
+                "FROM dbo.last_visited_report "
+                "WHERE NULLIF(LTRIM(RTRIM(cell)), '') IS NOT NULL "
+                "GROUP BY RIGHT(NULLIF(LTRIM(RTRIM(cell)), ''), 9)"
+            )
+            for p, lv in cur.fetchall():
+                if p and lv:
+                    data[p] = lv.date().isoformat() if hasattr(lv, "date") else str(lv)[:10]
+        finally:
+            conn.close()
+    except Exception as exc:  # no driver, server off, not on the gym network
+        data, error = {}, str(exc)[:160]
+    _VISIT_CACHE.update(at=now, data=data, error=error)
+    return data, error
+
+
+def _load_register(db, status='', search='', segment=''):
+    today = date.today()
+    rows = db.execute("""
+        SELECT m.id, m.member_ref, m.first_name, m.last_name, m.id_number, m.contact,
+               m.member_status, m.package, m.monthly_installment, m.join_date,
+               m.payment_type, m.sold_by, u.full_name AS signed_by_user,
+               (SELECT MAX(c.collection_date) FROM collections c
+                 WHERE c.member_id = m.id AND COALESCE(c.amount_paid,0) > 0) AS last_paid,
+               (SELECT MAX(t.created_at) FROM turnstile_events t
+                 WHERE t.member_id = m.id AND t.decision = 'granted') AS local_last_visit,
+               (SELECT d.status FROM debicheck_mandates d
+                 WHERE d.member_id = m.id ORDER BY d.id DESC LIMIT 1) AS mandate_status
+        FROM members m LEFT JOIN users u ON m.uploaded_by_id = u.id
+        ORDER BY m.last_name, m.first_name
+    """).fetchall()
+
+    from .ptp import bulk_member_arrears
+    arrears = bulk_member_arrears(db)
+    visits, visit_error = _itensity_last_visits()
+
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["id_masked"] = _mask_id(decrypt(d["id_number"]))
+        d["name"] = f"{d['first_name'] or ''} {d['last_name'] or ''}".strip()
+        d["signed_by"] = d["sold_by"] or d["signed_by_user"]
+        last_visit = visits.get(_phone_key(d["contact"])) or (d["local_last_visit"] or "")[:10] or None
+        d["last_visit"] = last_visit
+        d["days_since_visit"] = (today - date.fromisoformat(last_visit)).days if last_visit else None
+        d["last_paid"] = (d["last_paid"] or "")[:10] or None
+        d["owing"] = round(arrears.get(d["id"], {}).get("total_arrears", 0) or 0, 2)
+        ms = (d["mandate_status"] or "").strip()
+        if ms:
+            d["mandate"], d["mandate_ok"] = ms.replace("_", " ").title(), True
+        elif (d["payment_type"] or "") == "Debit Order":
+            d["mandate"], d["mandate_ok"] = "No mandate on file", False
+        else:
+            d["mandate"], d["mandate_ok"] = "Not a debit order", None
+        active = d["member_status"] == "Active"
+        d["not_attending"] = bool(active and visits_known(visits, d) and (
+            d["days_since_visit"] is None or d["days_since_visit"] > NOT_ATTENDING_DAYS))
+        out.append(d)
+
+    summary = {
+        "total": len(out),
+        "by_status": {s: sum(1 for d in out if d["member_status"] == s) for s in REGISTER_STATUSES},
+        "owing": sum(1 for d in out if d["owing"] > 0),
+        "owing_total": round(sum(d["owing"] for d in out), 2),
+        "no_mandate": sum(1 for d in out if d["mandate_ok"] is False and d["member_status"] == "Active"),
+        "not_attending": sum(1 for d in out if d["not_attending"]),
+        "reactivate": sum(1 for d in out if d["member_status"] in ("Inactive", "Blocked")),
+        "premium_active": round(sum(d["monthly_installment"] or 0 for d in out if d["member_status"] == "Active"), 2),
+        "has_visit_data": bool(visits) or any(d["local_last_visit"] for d in out),
+    }
+
+    joins = db.execute("""
+        SELECT strftime('%Y-%m', join_date) AS month, COUNT(*) AS joined,
+               COALESCE(SUM(monthly_installment),0) AS premium,
+               SUM(CASE WHEN member_status='Active' THEN 1 ELSE 0 END) AS still_active
+        FROM members WHERE join_date IS NOT NULL AND join_date >= date('now','-12 months','start of month')
+        GROUP BY month ORDER BY month DESC
+    """).fetchall()
+    collected = {r["month"]: r["total"] for r in db.execute(
+        "SELECT strftime('%Y-%m', collection_date) AS month, SUM(amount_paid) AS total "
+        "FROM collections WHERE collection_date >= date('now','-12 months','start of month') GROUP BY month")}
+    joins_by_month = [{**dict(j), "collected": collected.get(j["month"], 0)} for j in joins]
+
+    if status:
+        out = [d for d in out if d["member_status"] == status]
+    if segment == "not_attending":
+        out = [d for d in out if d["not_attending"]]
+    elif segment == "owing":
+        out = [d for d in out if d["owing"] > 0]
+    elif segment == "no_mandate":
+        out = [d for d in out if d["mandate_ok"] is False and d["member_status"] == "Active"]
+    elif segment == "reactivate":
+        out = [d for d in out if d["member_status"] in ("Inactive", "Blocked")]
+    if search:
+        q = search.lower()
+        out = [d for d in out if q in d["name"].lower() or q in (d["contact"] or "").lower()
+               or q in (d["member_ref"] or "").lower()]
+    return dict(register=out, summary=summary, joins_by_month=joins_by_month,
+                visit_error=visit_error, status=status, search=search, segment=segment,
+                statuses=REGISTER_STATUSES, not_attending_days=NOT_ATTENDING_DAYS)
+
+
+def visits_known(visits, d):
+    """A member only counts as 'not attending' when we actually have visit data."""
+    return bool(visits) or bool(d.get("local_last_visit"))
+
 # ── Custom Report Builder ─────────────────────────────────────────────────────
 
 REPORT_TABLES = {
@@ -467,6 +610,28 @@ def index():
                    form_data=form_data, saved_reports=saved_reports, saved_report=saved_report)
 
     return render_template('reports/index.html', **ctx)
+
+
+@reports_bp.route('/membership-report')
+@permission_required("reports_module")
+def membership_report():
+    import csv, io
+    from flask import Response
+    db = get_db()
+    ctx = _load_register(db, request.args.get('status', ''), request.args.get('q', '').strip(),
+                         request.args.get('segment', ''))
+    if request.args.get('format') == 'csv':
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(['Member', 'Member ref', 'ID number', 'Premium', 'Signed by', 'Last visit',
+                    'Package', 'Status', 'Last paid', 'Owing', 'Mandate'])
+        for d in ctx['register']:
+            w.writerow([d['name'], d['member_ref'], d['id_masked'], d['monthly_installment'] or 0,
+                        d['signed_by'] or '', d['last_visit'] or '', d['package'] or '',
+                        d['member_status'], d['last_paid'] or '', d['owing'], d['mandate']])
+        return Response(buf.getvalue(), mimetype='text/csv',
+                        headers={'Content-Disposition': 'attachment; filename=membership-report.csv'})
+    return render_template('reports/membership_register.html', tab='register', **ctx)
 
 
 @reports_bp.route('/run-custom', methods=['POST'])

@@ -11,6 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  {% if request.blueprint in ('hr','workforce') %}<link rel="stylesheet" href="{{ url_for('static', filename='css/hr-workforce.css') }}">{% endif %}
 </head>
 <body class="oc">
 
@@ -33,6 +34,12 @@
        class="nav-item {% if request.endpoint == 'dashboard.dashboard' %}active{% endif %}">
       <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Dashboard
     </a>
+
+    {% if session.user_id %}
+    <a href="{{ url_for('training.index') }}" class="nav-item {% if request.blueprint == 'training' %}active{% endif %}">
+      <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v15M12 5C8 3 5 3 2 4v15c3-1 6-1 10 1 4-2 7-2 10-1V4c-3-1-6-1-10 1z"/></svg> Staff Training
+    </a>
+    {% endif %}
 
     {# Top-level so reception can capture walk-ins without opening Sales CRM.
        Same permission leads_add enforces. #}
@@ -196,7 +203,7 @@
 
     {% if phase_open('finance') and (has_perm('debicheck_mandates') or has_perm('new_debicheck') or has_perm('all_collections')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="finance" aria-expanded="false">
-      <span>{{ 'DebiCheck' if session.get('access_profile') == 'sales' else 'Finance' }}</span><span class="nav-accordion-chevron">▸</span>
+      <span>DebitCheck</span><span class="nav-accordion-chevron">▸</span>
     </button>
     <div class="nav-accordion-panel" data-section-panel="finance" hidden>
       {% if phase_open('access_report') and has_perm('all_collections') %}
@@ -224,6 +231,7 @@
     </button>
     <div class="nav-accordion-panel" data-section-panel="fitness" hidden>
       {% if has_perm('fitness_module') %}
+      <a class="nav-item" href="{{ url_for('fitness.anatomy') }}">Anatomy & exercises</a>
       <a href="{{ url_for('onboarding.today_list') }}"
          class="nav-item {% if request.blueprint == 'onboarding' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> New Member Onboarding
@@ -297,15 +305,19 @@
       <span>HR</span><span class="nav-accordion-chevron">▸</span>
     </button>
     <div class="nav-accordion-panel" data-section-panel="hr" hidden>
+      <a href="{{ url_for('workforce.dashboard') }}" class="nav-item {% if request.endpoint == 'workforce.dashboard' %}active{% endif %}">My HR</a>
+      <a href="{{ url_for('workforce.roster') }}" class="nav-item {% if request.endpoint == 'workforce.roster' %}active{% endif %}">Roster & lunch</a>
+      {% if hr_can_calendar %}<a href="{{ url_for('workforce.calendar') }}" class="nav-item">Team availability</a>{% endif %}
+      {% if hr_can_manage %}<a href="{{ url_for('workforce.setup') }}" class="nav-item">Employee setup & balances</a>{% endif %}
       {% if has_perm('hr_staff') %}
       <a href="{{ url_for('hr.staff_index') }}"
          class="nav-item {% if request.endpoint == 'hr.staff_index' or request.endpoint == 'hr.staff_add' or request.endpoint == 'hr.staff_edit' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> HR & Staff
       </a>
-      <a href="{{ url_for('hr.employee_index') }}"
+      {% if hr_can_manage %}<a href="{{ url_for('hr.employee_index') }}"
          class="nav-item {% if request.blueprint == 'hr' and request.endpoint.startswith('hr.employee') %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Employee Register
-      </a>
+      </a>{% endif %}
       {% endif %}
       {% if has_perm('hr_leave') or session.user_id %}
       <a href="{{ url_for('hr.leave_index') }}"
@@ -340,6 +352,11 @@
       <a href="{{ url_for('reports.index') }}?tab=membership"
          class="nav-item {% if request.endpoint == 'reports.index' and request.args.get('tab') == 'membership' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Membership
+      </a>
+      <a href="{{ url_for('reports.membership_report') }}"
+         class="nav-item {% if request.endpoint == 'reports.membership_report' %}active{% endif %}">
+        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Membership report
       </a>
       <a href="{{ url_for('reports.index') }}?tab=finance"
          class="nav-item {% if request.endpoint == 'reports.index' and request.args.get('tab') == 'finance' %}active{% endif %}">
@@ -407,6 +424,9 @@
       </a>
     </div>
     {% endif %}
+    {% if g.tenant_slug == 'elev8' %}
+    <a class="nav-item" href="{{ url_for('static', filename='downloads/1Cpace-Android-1.0.0.apk') }}" download>Download Android app</a>
+    {% endif %}
   </nav>
   <div class="sidebar-footer">
     {% if session.get('is_power_user') %}
@@ -458,6 +478,9 @@
 
 {% endif %}
 
+{% if session.user_id %}
+<a class="notification-button" href="{{ url_for('notifications.index') }}" data-notification-count-url="{{ url_for('notifications.count') }}">Notifications <span data-notification-count aria-live="polite">{{ staff_notification_count|default(0) }}</span></a>
+{% endif %}
 <span class="topbar-user">{{ session.get("full_name", "") }}</span>
   </div>
   <div class="content">
@@ -472,7 +495,9 @@
     </div>
     {% endif %}
     <span hidden>{% block page_title %}{% endblock %}</span>
+    {% if request.blueprint in ('hr','workforce') %}<div class="hr-workforce">{% endif %}
     {% block content %}{% endblock %}
+    {% if request.blueprint in ('hr','workforce') %}</div>{% endif %}
   </div>
 </div>
 

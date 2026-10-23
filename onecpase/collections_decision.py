@@ -32,6 +32,22 @@ DECISION_LABELS = {
 
 INTENT_SETTLE = "settle"
 INTENT_INSTALMENTS = "instalments"
+MAX_REMAIN_PLUS_UPFRONT = 2000
+STALE_PAYMENT_MONTHS = 3
+
+
+def stale_cutoff(now=None):
+    from datetime import date, datetime, timedelta
+
+    today = now.date() if isinstance(now, datetime) else (now or date.today())
+    return today - timedelta(days=30 * STALE_PAYMENT_MONTHS)
+
+
+def payment_is_stale(last_payment_date, now=None) -> bool:
+    """True when the last payment is older than the cut-off. Unknown dates are not stale."""
+    if not last_payment_date:
+        return False
+    return str(last_payment_date)[:10] < stale_cutoff(now).isoformat()
 
 CONFIRMED_DEBICHECK = {"approved", "authorised", "authorized", "accepted", "active", "completed"}
 FAILED_DEBICHECK = {"failed", "rejected", "declined", "cancelled", "canceled", "expired"}
@@ -102,9 +118,15 @@ def decide_offer(
     bank_statement_status=None,
     flags=None,
     policy=None,
+    monthly_affordable=0,
+    normal_instalment=0,
+    mandate_state=None,
+    last_payment_date=None,
 ) -> dict:
     """Recommend an offer. Pure: no database, no side effects."""
-    from .collections_engine import arrears_discount_policy
+    import math
+
+    from .collections_engine import MIN_MONTHS_FOR_DISCOUNT, category_offer
 
     policy = policy or {}
     flags = flags or {}
@@ -149,45 +171,73 @@ def decide_offer(
         result["reasons"].append("No verified balance is owing.")
         return finish(DECISION_NO_BALANCE)
 
-    # ── Discount: the same tiers and manager threshold the live engine uses ──
-    tier = arrears_discount_policy(months)
-    percent = tier["discount_percent"]
-    manager_required = tier["manager_approval_required"]
+    # ── Discount: the arrears category, the upfront paid and months owing ──
+    # The discount applies to what is left after the upfront. It is only a
+    # proposal until the DebiCheck mandate is approved.
+    # A full settlement is paid in one go, so it is priced at the no-upfront rate.
+    counted_upfront = 0 if intention == INTENT_SETTLE else max(upfront_offered, upfront_received)
+    offer = category_offer(arrears, counted_upfront, months)
+    percent = float(offer["discount_percent"])
+    discount_amount = float(offer["discount_amount"])
+    ptp_balance = float(offer["ptp_balance"])
+    upfront_counted = float(offer["upfront"])
+    total = _money(upfront_counted + ptp_balance)
     result.update(
-        discount_min_percent=tier["min_percent"],
-        discount_max_percent=tier["max_percent"],
-        discount_range_label=tier["range_label"],
+        category=offer["category"], rule_version=offer["rule_version"],
+        ptp_balance=ptp_balance, half_upfront=offer["half_upfront"],
     )
-    if tier["manager_discretion"]:
+    if months < MIN_MONTHS_FOR_DISCOUNT:
         result["reasons"].append(
-            f"{months} months owing: the discount is at manager discretion — full account review first."
+            f"{months} month(s) owing: a discount needs {MIN_MONTHS_FOR_DISCOUNT} or more months; collect the full balance."
         )
-    minimum = policy.get("recovery_minimum_amount", DEFAULT_RECOVERY_MINIMUM)
-    from_months = int(policy.get("recovery_minimum_from_months", DEFAULT_RECOVERY_FROM_MONTHS))
-    recovery_account = months >= from_months
-
-    if months <= 1:
-        result["reasons"].append("One month or less owing: no discount is defined; collect the full balance.")
-
-    discount_amount = _money(arrears * percent / 100)
-    total = _money(arrears - discount_amount)
-
-    # Recovery floor: a discount may never take the total below the minimum,
-    # and we never ask for more than is actually owed.
+    else:
+        result["reasons"].append(
+            f"Category {offer['category']}: {percent:g}% off what is left after the upfront"
+            + (" (50% or more paid upfront)." if offer["half_upfront"] else " (under 50% upfront).")
+        )
+    recovery_account = False
     below_minimum = False
-    if recovery_account:
-        floor = min(minimum, arrears)
-        if arrears < minimum:
-            below_minimum = True
-            result["reasons"].append(
-                f"Balance R{arrears:,.2f} is below the R{minimum:,.2f} recovery minimum: review before offering."
-            )
-            result["conditions"].append("Balance below the recovery minimum")
-        if total < floor:
-            total = _money(floor)
-            discount_amount = _money(arrears - total)
-            percent = round(100 * discount_amount / arrears, 2) if arrears else 0
-            result["reasons"].append(f"Discount limited so the total collected stays at R{floor:,.2f} or more.")
+    manager_required = False
+    arrangement_conditions = []
+    result["intention"] = intention
+
+    # ── The arrangement: what the client can afford each month ──
+    # The affordable figure is everything debited monthly, so the normal
+    # instalment comes off it and the rest pays down the PTP balance.
+    normal_instalment = max(_money(normal_instalment), 0.0)
+    affordable = max(_money(monthly_affordable), 0.0)
+    result["normal_instalment"] = normal_instalment
+    result["mandate_state"] = mandate_state or "unknown"
+    # An active mandate means only the arrangement mandate is new; without one
+    # the normal instalment needs a mandate as well.
+    mandates_to_load = []
+    if mandate_state != "active":
+        mandates_to_load.append({"purpose": "Normal instalment", "amount": normal_instalment})
+    if ptp_balance > 0:
+        mandates_to_load.append({"purpose": "Arrangement (PTP)", "amount": ptp_balance})
+    arrangement = None
+    if intention != INTENT_SETTLE and ptp_balance > 0:
+        monthly_arrears = round(affordable - normal_instalment, 2)
+        if affordable <= 0:
+            arrangement_conditions.append(("affordable", "Enter what the client can pay above the normal instalment",
+                                           "receptionist", "Ask the client what they can afford"))
+        elif monthly_arrears <= 0:
+            arrangement_conditions.append(("affordable", "The monthly amount does not cover the normal instalment plus an arrears payment",
+                                           "client", "Agree a higher monthly amount"))
+        else:
+            payments = int(math.ceil(ptp_balance / monthly_arrears - 1e-9))
+            regular = _money(math.ceil(ptp_balance / payments * 100 - 1e-9) / 100)
+            arrangement = {
+                "monthly_arrears": regular, "payments": payments, "normal_instalment": normal_instalment,
+                "total_monthly": _money(regular + normal_instalment),
+                "final_payment": _money(ptp_balance - regular * (payments - 1)),
+            }
+            mandates_to_load[-1:] = [
+                {**m, "amount": regular} if m["purpose"] == "Arrangement (PTP)" else m
+                for m in mandates_to_load[-1:]
+            ]
+    result["arrangement"] = arrangement
+    result["mandates_to_load"] = mandates_to_load
 
     result.update(discount_percent=percent, discount_amount=discount_amount, total_to_collect=total)
     result["remaining_to_collect"] = max(round(total - upfront_received, 2), 0.0)
@@ -200,25 +250,37 @@ def decide_offer(
     else:
         if upfront_offered > 0:
             # Upfront is whatever the client can offer; it just has to be verified.
-            check("upfront", "Upfront payment not verified",
-                  upfront_received + 0.005 >= upfront_offered, "receptionist", "Record the proof of payment")
-        if result["remaining_to_collect"] > 0:
-            if debicheck_confirmed:
-                check("debicheck", "DebiCheck confirmed", True, "client")
-            elif status in FAILED_DEBICHECK:
-                check("debicheck", "DebiCheck failed - a new mandate is needed", False, "receptionist",
-                      "Set up a new DebiCheck")
-            elif authorisation_lapsed(status, debicheck_submitted_at, now):
-                check("debicheck", "DebiCheck approval expired after 1 day - send it again", False,
-                      "receptionist", "Set up a new DebiCheck")
-            elif not status:
-                check("debicheck", "DebiCheck not set up", False, "receptionist", "Set up DebiCheck")
-            elif status == "pending" and not debicheck_submitted_at:
-                check("debicheck", "DebiCheck saved but not yet sent to the bank", False, "receptionist",
-                      "Send the mandate to the bank")
-            else:
-                check("debicheck", "DebiCheck awaiting authorisation", False, "client",
-                      "Ask the client to approve it in their banking app within 1 day")
+            paid = upfront_received + 0.005 >= upfront_offered
+            check("upfront", "Upfront payment verified" if paid else "Upfront payment not verified",
+                  paid, "receptionist", "Record the proof of payment")
+        for key, label, owner, action in arrangement_conditions:
+            check(key, label, False, owner, action)
+        if mandate_state == "unknown":
+            check("nupay_check", "Check NuPay for an existing mandate", False, "receptionist",
+                  "Run the NuPay check")
+        if payment_is_stale(last_payment_date, now):
+            # A debit order set up after the cut-off counts as the new one.
+            renewed = bool(debicheck_submitted_at) and str(debicheck_submitted_at)[:10] > stale_cutoff(now).isoformat()
+            check("stale_payment", f"Last payment was over {STALE_PAYMENT_MONTHS} months ago - run a new debit order",
+                  renewed, "receptionist", "Set up a new DebiCheck")
+        # No DebiCheck, no PTP: it is needed even when nothing is left to
+        # collect, because the normal membership mandate must be approved too.
+        if debicheck_confirmed:
+            check("debicheck", "DebiCheck confirmed", True, "client")
+        elif status in FAILED_DEBICHECK:
+            check("debicheck", "DebiCheck failed - a new mandate is needed", False, "receptionist",
+                  "Set up a new DebiCheck")
+        elif authorisation_lapsed(status, debicheck_submitted_at, now):
+            check("debicheck", "DebiCheck approval expired after 1 day - send it again", False,
+                  "receptionist", "Set up a new DebiCheck")
+        elif not status:
+            check("debicheck", "DebiCheck not set up", False, "receptionist", "Set up DebiCheck")
+        elif status == "pending" and not debicheck_submitted_at:
+            check("debicheck", "DebiCheck saved but not yet sent to the bank", False, "receptionist",
+                  "Send the mandate to the bank")
+        else:
+            check("debicheck", "DebiCheck awaiting authorisation", False, "client",
+                  "Ask the client to approve it in their banking app within 1 day")
 
     if returning_member:
         check("returning_debicheck", "Returning member needs a confirmed DebiCheck", debicheck_confirmed,
@@ -242,8 +304,14 @@ def decide_offer(
         manager_flags.append("the account is in the legal pathway")
         check("legal", "Account is in the legal pathway", False, "manager", None, blocking=False)
     if intention != INTENT_SETTLE and flags.get("bank_statement_on_file") is False:
-        check("bank_on_file", "No bank statement on file", False, "receptionist",
-              "Ask the client for a bank statement", blocking=False)
+        check("bank_on_file", "Bank statement required: none on file", False, "client",
+              "Ask the client to send a bank statement", blocking=False)
+    if intention != INTENT_SETTLE and ptp_balance > 0 and ptp_balance + max(upfront_offered, upfront_received) > MAX_REMAIN_PLUS_UPFRONT + 0.005:
+        check("cap", f"Remaining balance plus upfront is above R{MAX_REMAIN_PLUS_UPFRONT:,.0f}", False,
+              "manager", "Get manager approval")
+    if arrangement and arrangement["payments"] > 12:
+        manager_flags.append("the term is over 12 months")
+        check("long_term", "Term over 12 months needs a manager", False, "manager", None, blocking=False)
 
     # ── Decision ───────────────────────────────────────────────────────────
     for note in manager_flags:

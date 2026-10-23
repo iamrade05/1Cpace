@@ -17,5 +17,8 @@
  --font-body:'Barlow','Segoe UI',sans-serif; --font-display:'Barlow Condensed',sans-serif;
  --font-mono:'IBM Plex Mono',Consolas,monospace; --radius:8px; --sw:230px;
  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px;
+ --dash-1:#002e45; --dash-2:#3f6b82; --dash-3:#8a9e96; --dash-4:#dcc79e; --dash-5:#f1e9d8;
+ --dash-gold:#b0842d; --dash-gold-lt:#d6a548;
+ --dash-band:linear-gradient(100deg,#002e45,#001e2d);
  color-scheme:light;
 }

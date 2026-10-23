@@ -1,15 +1,16 @@
 """Daily fitness onboarding for newly joined members."""
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 
 from .auth import login_required, permission_required
 from .database import get_db
 from .encryption import decrypt_member
 
 onboarding_bp = Blueprint("onboarding", __name__, url_prefix="/fitness/onboarding")
-ONBOARDING_VISITS = 7
-ONBOARDING_MAX_DAYS = 30
+ONBOARDING_VISITS = 10
+ONBOARDING_MAX_DAYS = 10
 ELIGIBILITY_DAYS = 45
 
 VISIT_ACTIONS = [("welcomed", "Welcomed"), ("gym_intro", "Gym/equipment introduction"),
@@ -44,7 +45,7 @@ def calculate_daily_calories(weight_kg, height_cm, age_years, gender, activity_l
         weight, height, age = float(weight_kg), float(height_cm), int(age_years)
     except (TypeError, ValueError):
         return None
-    if weight <= 0 or height <= 0 or not 10 <= age <= 100:
+    if weight <= 0 or height <= 0 or not 18 <= age <= 100 or str(gender).lower() not in ('m','male','f','female') or activity_level not in ACTIVITY_FACTORS:
         return None
     bmr = 10 * weight + 6.25 * height - 5 * age + (5 if str(gender).lower() in ("m", "male") else -161)
     return int(round(bmr * ACTIVITY_FACTORS.get(activity_level, ACTIVITY_FACTORS["light"])))
@@ -70,10 +71,18 @@ def add_onboarding_columns():
 
 
 def ensure_onboarding_rows(db):
+    from .fitness_journey import ensure_journey
+    ensure_journey(db)
     db.execute("""INSERT INTO member_onboarding (member_id, status, eligible_from)
         SELECT m.id, 'eligible', COALESCE(m.join_date, date('now')) FROM members m
         WHERE m.outcome='joined' AND NOT EXISTS
         (SELECT 1 FROM member_onboarding o WHERE o.member_id=m.id)""")
+    db.commit()
+    from .fitness_cycle import today
+    cutoff=(today()-timedelta(days=10)).isoformat()
+    db.execute("""UPDATE member_onboarding SET status='complete',close_reason='window_expired',closed_at=?,updated_at=?
+        WHERE status IN ('eligible','active') AND member_id IN (SELECT member_id FROM fitness_intake WHERE started_on IS NOT NULL AND substr(started_on,1,10)<=?)""",
+        (today().isoformat(),today().isoformat(),cutoff))
     db.commit()
 
 
@@ -83,7 +92,8 @@ def _close(db, row, reason):
 
 
 def register_arrival(db, member_id, source="turnstile", at=None):
-    at = at or datetime.now()
+    at = at or datetime.now(ZoneInfo('Africa/Johannesburg'))
+    if at.tzinfo is not None:at=at.astimezone(ZoneInfo('Africa/Johannesburg'))
     day = at.date().isoformat()
     row = db.execute("SELECT * FROM member_onboarding WHERE member_id=?", (member_id,)).fetchone()
     if not row or row["status"] in ("complete", "lapsed"):
@@ -91,8 +101,9 @@ def register_arrival(db, member_id, source="turnstile", at=None):
     existing = db.execute("SELECT id FROM onboarding_visits WHERE member_id=? AND visit_date=?", (member_id, day)).fetchone()
     if existing:
         return existing["id"]
+    started=db.execute('SELECT started_on FROM fitness_intake WHERE member_id=?',(member_id,)).fetchone()
     first = row["first_visit_date"] or day
-    if (at.date() - date.fromisoformat(str(first)[:10])).days >= ONBOARDING_MAX_DAYS:
+    if started and started['started_on'] and (at.date() - date.fromisoformat(str(started['started_on'])[:10])).days >= ONBOARDING_MAX_DAYS:
         _close(db, row, "window_expired"); db.commit(); return None
     visit_no = (row["visits_recorded"] or 0) + 1
     db.execute("""INSERT INTO onboarding_visits
@@ -102,8 +113,7 @@ def register_arrival(db, member_id, source="turnstile", at=None):
     db.execute("""UPDATE member_onboarding SET status='active', first_visit_date=COALESCE(first_visit_date,?),
         last_visit_date=?, visits_recorded=?, updated_at=datetime('now','localtime') WHERE id=?""",
         (day, day, visit_no, row["id"]))
-    if visit_no >= ONBOARDING_VISITS:
-        _close(db, db.execute("SELECT * FROM member_onboarding WHERE id=?", (row["id"],)).fetchone(), "visits_complete")
+    # Entries count attendance only. The ten-calendar-day window determines expiry.
     db.commit()
     return visit_id
 
@@ -115,13 +125,21 @@ def sync_arrivals_from_turnstile(db):
         AND lower(coalesce(decision,'')) IN ('allowed','granted','ok')
         AND lower(coalesce(direction,'in')) IN ('in','entry','') ORDER BY id""", (last_id,)).fetchall()
     for event in events:
-        try: stamp = datetime.strptime(str(event["created_at"])[:19], "%Y-%m-%d %H:%M:%S")
-        except (TypeError, ValueError): stamp = datetime.now()
-        register_arrival(db, event["member_id"], "turnstile", stamp); last_id = max(last_id, event["id"])
+        last_id=max(last_id,event['id'])
+        try:
+            stamp=datetime.fromisoformat(str(event['created_at']).replace('Z','+00:00'))
+            if stamp.tzinfo is None:stamp=stamp.replace(tzinfo=timezone.utc)
+            stamp=stamp.astimezone(ZoneInfo('Africa/Johannesburg'))
+        except (TypeError,ValueError):
+            current_app.logger.warning('Skipping turnstile event %s with invalid timestamp',event['id'])
+            continue
+        register_arrival(db, event["member_id"], "turnstile", stamp)
     db.execute("UPDATE onboarding_sync_state SET last_event_id=?, last_run_at=datetime('now','localtime') WHERE id=1", (last_id,)); db.commit()
 
 
-def _today(): return date.today().isoformat()
+def _today():
+    from .fitness_cycle import today
+    return today().isoformat()
 
 
 @onboarding_bp.route("/")
@@ -129,6 +147,11 @@ def _today(): return date.today().isoformat()
 @permission_required("fitness_module")
 def today_list():
     db = get_db(); ensure_onboarding_rows(db); sync_arrivals_from_turnstile(db)
+    from .fitness_cycle import onboarding_cohort
+    try:
+        cohort = onboarding_cohort(db, request.args)
+    except (ValueError, TypeError):
+        return render_template('fitness/cycle_joiners.html', error='Choose a valid full cycle and a joining period within it.'), 400
     day = request.args.get("date") or _today()
     visits = db.execute("""SELECT v.*,m.first_name,m.last_name,m.package,u.full_name instructor_name
         FROM onboarding_visits v JOIN members m ON m.id=v.member_id LEFT JOIN users u ON u.id=v.instructor_id
@@ -136,8 +159,17 @@ def today_list():
     visits = [decrypt_member(v) for v in visits]
     reviews = db.execute("""SELECT o.*,m.first_name,m.last_name,m.package FROM member_onboarding o JOIN members m ON m.id=o.member_id
         WHERE o.status='complete' AND o.review_done=0 ORDER BY o.closed_at""").fetchall()
+    reviews = [decrypt_member(row) for row in reviews]
+    eligible = {row['member_id'] for row in db.execute(
+        "SELECT member_id FROM member_onboarding WHERE status IN ('eligible','active') AND substr(eligible_from,1,10)<=?", (_today(),)).fetchall()}
+    manual = [member for member in cohort['members'] if member['id'] in eligible]
+    intake_map={row['member_id']:dict(row) for row in db.execute('''SELECT f.*,u.full_name instructor_name,
+        (SELECT count(*) FROM onboarding_visits v WHERE v.member_id=f.member_id AND v.recorded_at IS NOT NULL AND v.outcome!='not_assisted') assisted_sessions,
+        (SELECT count(*) FROM fitness_signoffs s JOIN onboarding_visits v ON v.id=s.visit_id WHERE v.member_id=f.member_id) signed_sessions
+        FROM fitness_intake f LEFT JOIN users u ON u.id=f.assigned_instructor_id''').fetchall()}
     return render_template("fitness/onboarding_today.html", day=day, visits=visits, awaiting=[v for v in visits if not v["recorded_at"]],
-        reviews_due=reviews, never_attended=[], members_for_manual=[], action_labels=ACTION_LABELS, window_visits=ONBOARDING_VISITS)
+        reviews_due=reviews, never_attended=[], members_for_manual=manual, action_labels=ACTION_LABELS,
+        window_visits=ONBOARDING_VISITS,intake_map=intake_map, **cohort)
 
 
 @onboarding_bp.post("/arrive")
@@ -153,17 +185,45 @@ def manual_arrival():
 @login_required
 @permission_required("fitness_module")
 def record_visit(vid):
-    db = get_db(); visit = db.execute("SELECT v.*,m.first_name,m.last_name,m.package,m.join_date FROM onboarding_visits v JOIN members m ON m.id=v.member_id WHERE v.id=?", (vid,)).fetchone()
+    db = get_db(); visit = db.execute("SELECT v.*,m.first_name,m.last_name,m.package,m.join_date,m.fitness_goal AS member_goal,u.full_name AS instructor_name FROM onboarding_visits v JOIN members m ON m.id=v.member_id LEFT JOIN users u ON u.id=v.instructor_id WHERE v.id=?", (vid,)).fetchone()
     if not visit: flash("Visit not found.", "error"); return redirect(url_for("onboarding.today_list"))
+    from .fitness_journey import ensure_journey
+    ensure_journey(db)
+    signoff=db.execute('SELECT * FROM fitness_signoffs WHERE visit_id=?',(vid,)).fetchone()
+    if signoff:
+        from .fitness_journey import display_stamp
+        signoff=dict(signoff)|{'signed_label':display_stamp(signoff['signed_at'])}
     if request.method == "POST":
+        if signoff:
+            flash('This session has been signed. Its original record is preserved.','warning')
+            return redirect(url_for('onboarding.record_visit',vid=vid))
         instructor = request.form.get("instructor_id")
         if not instructor: flash("Select an instructor.", "error"); return redirect(url_for("onboarding.record_visit", vid=vid))
+        if not db.execute("SELECT id FROM users WHERE id=? AND active=1 AND role IN ('trainer','instructor','admin','manager')",(instructor,)).fetchone():
+            return 'Choose an active fitness instructor',400
+        if request.form.get('outcome') not in dict(VISIT_OUTCOMES):
+            return 'Choose a session outcome',400
+        if request.form.get('outcome')!='not_assisted':
+            started=db.execute('SELECT started_on FROM fitness_intake WHERE member_id=?',(visit['member_id'],)).fetchone()
+            if started and started['started_on'] and not 0<=(date.fromisoformat(visit['visit_date'])-date.fromisoformat(started['started_on'][:10])).days<10:
+                return 'This session is outside the ten-calendar-day window.',400
+            db.execute('UPDATE fitness_intake SET started_on=COALESCE(started_on,?) WHERE member_id=?',(visit['visit_date'],visit['member_id']))
         db.execute("UPDATE onboarding_visits SET instructor_id=?,actions=?,outcome=?,notes=?,recorded_at=datetime('now','localtime') WHERE id=?",
                    (int(instructor), ",".join(request.form.getlist("actions")), request.form.get("outcome") or None, request.form.get("notes") or None, vid)); db.commit()
         flash("Interaction recorded.", "success"); return redirect(url_for("onboarding.today_list"))
-    instructors = db.execute("SELECT id,full_name FROM users WHERE active=1 AND role IN ('trainer','admin','manager') ORDER BY full_name").fetchall()
-    return render_template("fitness/onboarding_visit.html", visit=visit, instructors=instructors, is_day_one=visit["visit_no"] == 1,
-        visit_actions=VISIT_ACTIONS, visit_outcomes=VISIT_OUTCOMES, activity_levels=ACTIVITY_LEVELS, age=None, prior=[], action_labels=ACTION_LABELS)
+    instructors = db.execute("SELECT id,full_name FROM users WHERE active=1 AND role IN ('trainer','instructor','admin','manager') ORDER BY full_name").fetchall()
+    started=db.execute('SELECT * FROM fitness_intake WHERE member_id=?',(visit['member_id'],)).fetchone()
+    first=(started['started_on'] if started else None) or visit['visit_date']
+    calendar_day=(date.fromisoformat(visit['visit_date'])-date.fromisoformat(first[:10])).days+1
+    prior=db.execute('SELECT * FROM assessments WHERE member_id=? ORDER BY date DESC,id DESC',(visit['member_id'],)).fetchall()
+    import json
+    return render_template("fitness/onboarding_session.html", visit=visit, instructors=instructors, is_day_one=True,
+        visit_actions=VISIT_ACTIONS, visit_outcomes=VISIT_OUTCOMES, activity_levels=ACTIVITY_LEVELS, age=None, prior=prior, action_labels=ACTION_LABELS,
+        signoff=signoff,signoff_strokes=json.loads(signoff['signature']) if signoff else [],calendar_day=calendar_day,
+        current_goal=visit['member_goal'] or '',
+        baseline_ready=any(a['is_onboarding'] and a['weight_kg'] and a['height_cm'] and a['fitness_goal'] for a in prior),
+        selected_instructor=visit['instructor_id'] or (started['assigned_instructor_id'] if started else None),
+        stage='Introduction and assessment' if calendar_day<=2 else 'Machine circuit: strength and mobility' if calendar_day<=4 else 'Progressive free weights, circuits and functional training')
 
 
 @onboarding_bp.post("/visit/<int:vid>/assessment")
@@ -179,15 +239,32 @@ def save_assessment(vid):
         flash("Visit not found.", "error")
         return redirect(url_for("onboarding.today_list"))
 
+    from .fitness_journey import ensure_journey
+    ensure_journey(db)
+    if db.execute('SELECT visit_id FROM fitness_signoffs WHERE visit_id=?',(vid,)).fetchone():
+        return 'This signed session is preserved. Record a new assessment on a later session.',409
     weight = request.form.get("weight_kg")
     height = request.form.get("height_cm")
+    if not request.form.get('fitness_goal','').strip():
+        return 'Record the client goal before saving the assessment.',400
+    try:
+        if not 20<=float(weight)<=500 or not 50<=float(height)<=260:
+            raise ValueError()
+        measurements={key:float(request.form[key]) if request.form.get(key) else None for key in ('chest_cm','waist_cm','hips_cm','arms_cm','thighs_cm')}
+        if any(value is not None and not 0<value<=300 for value in measurements.values()):raise ValueError()
+    except (ValueError,TypeError):
+        return 'Enter valid weight, height and body measurements.',400
     bmi = calculate_bmi(weight, height)
     age = None
     dob = visit["date_of_birth"]
     if dob:
-        birth_date = date.fromisoformat(str(dob)[:10])
-        today = date.today()
-        age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+        try:
+            birth_date = date.fromisoformat(str(dob)[:10])
+            from .fitness_cycle import today as local_today
+            assessed_today = local_today()
+            age = assessed_today.year - birth_date.year - ((assessed_today.month, assessed_today.day) < (birth_date.month, birth_date.day))
+        except ValueError:
+            age=None
     calories = calculate_daily_calories(
         weight, height, age, visit["gender"], request.form.get("activity_level")
     ) if age is not None else None
@@ -204,6 +281,10 @@ def save_assessment(vid):
          (request.form.get("fitness_goal") or "").strip() or None,
          (request.form.get("assessment_notes") or "").strip() or None),
     )
+    db.execute('''INSERT INTO body_matrix(member_id,recorded_by_id,date,weight_kg,bmi,chest_cm,waist_cm,hips_cm,arms_cm,thighs_cm)
+        VALUES(?,?,?,?,?,?,?,?,?,?)''',(visit['member_id'],session.get('user_id'),visit['visit_date'],float(weight),bmi,*measurements.values()))
+    db.execute('UPDATE fitness_intake SET goal=? WHERE member_id=?',(request.form['fitness_goal'].strip(),visit['member_id']))
+    db.execute('UPDATE members SET fitness_goal=? WHERE id=?',(request.form['fitness_goal'].strip(),visit['member_id']))
     db.commit()
     flash("Assessment saved.", "success")
     return redirect(url_for("onboarding.record_visit", vid=vid))
@@ -216,6 +297,8 @@ def seven_day_review(oid):
     db = get_db(); row = db.execute("SELECT o.*,m.first_name,m.last_name,m.package FROM member_onboarding o JOIN members m ON m.id=o.member_id WHERE o.id=?", (oid,)).fetchone()
     if not row: return redirect(url_for("onboarding.today_list"))
     if request.method == "POST":
+        if row['status']!='complete' or request.form.get('review_outcome') not in dict(REVIEW_OUTCOMES):
+            return 'Complete the ten-calendar-day window and choose a review outcome.',400
         db.execute("UPDATE member_onboarding SET review_done=1,review_by_id=?,review_date=date('now','localtime'),review_outcome=?,review_notes=? WHERE id=?", (session.get("user_id"), request.form.get("review_outcome"), request.form.get("review_notes"), oid)); db.commit(); return redirect(url_for("onboarding.today_list"))
     visits = db.execute("SELECT v.*,u.full_name instructor_name FROM onboarding_visits v LEFT JOIN users u ON u.id=v.instructor_id WHERE v.onboarding_id=? ORDER BY visit_no", (oid,)).fetchall()
     return render_template("fitness/onboarding_review.html", row=row, visits=visits, review_outcomes=REVIEW_OUTCOMES, action_labels=ACTION_LABELS)
@@ -225,16 +308,30 @@ def seven_day_review(oid):
 @login_required
 @permission_required("fitness_module")
 def report():
-    db = get_db(); start = request.args.get("start") or (date.today() - timedelta(days=30)).isoformat(); end = request.args.get("end") or _today()
+    db = get_db(); start = request.args.get("start") or (date.fromisoformat(_today()) - timedelta(days=30)).isoformat(); end = request.args.get("end") or _today()
     def count(sql, args=(start, end)): return db.execute(sql, args).fetchone()[0] or 0
     new = count("SELECT count(*) FROM member_onboarding WHERE eligible_from BETWEEN ? AND ?")
     attended = count("SELECT count(*) FROM member_onboarding WHERE eligible_from BETWEEN ? AND ? AND first_visit_date IS NOT NULL")
     recorded = count("SELECT count(*) FROM onboarding_visits v JOIN member_onboarding o ON o.id=v.onboarding_id WHERE v.recorded_at IS NOT NULL AND o.eligible_from BETWEEN ? AND ?")
     stats = {"new_members": new, "attended": attended, "never_attended": new-attended, "assessments_done": 0, "assisted": recorded, "interactions": recorded, "pt_interest": 0, "independent": 0, "follow_up": 0, "unrecorded_visits": count("SELECT count(*) FROM onboarding_visits v JOIN member_onboarding o ON o.id=v.onboarding_id WHERE v.recorded_at IS NULL AND o.eligible_from BETWEEN ? AND ?")}
-    return render_template("fitness/onboarding_report.html", stats=stats, by_instructor=[], start=start, end=end)
+    stats['assessments_done']=count('SELECT count(DISTINCT a.member_id) FROM assessments a JOIN member_onboarding o ON o.member_id=a.member_id WHERE a.is_onboarding=1 AND o.eligible_from BETWEEN ? AND ?')
+    stats['assisted']=count("SELECT count(DISTINCT v.member_id) FROM onboarding_visits v JOIN member_onboarding o ON o.id=v.onboarding_id WHERE v.recorded_at IS NOT NULL AND v.outcome!='not_assisted' AND o.eligible_from BETWEEN ? AND ?")
+    for key,choices in [('pt_interest',('pt_interest',)),('independent',('independent',)),('follow_up',('follow_up','needs_assistance','needs_programme'))]:
+        slots=','.join('?' for _ in choices)
+        stats[key]=count(f'SELECT count(*) FROM member_onboarding WHERE eligible_from BETWEEN ? AND ? AND review_outcome IN ({slots})',(start,end,*choices))
+    by_instructor=get_db().execute('''SELECT u.full_name,count(v.id) sessions,count(DISTINCT v.member_id) members
+        FROM onboarding_visits v JOIN member_onboarding o ON o.id=v.onboarding_id JOIN users u ON u.id=v.instructor_id
+        WHERE v.recorded_at IS NOT NULL AND o.eligible_from BETWEEN ? AND ? GROUP BY u.id,u.full_name ORDER BY u.full_name''',(start,end)).fetchall()
+    return render_template("fitness/onboarding_report.html", stats=stats, by_instructor=by_instructor, start=start, end=end)
 
 
 @onboarding_bp.get("/pending-count")
 @login_required
 def pending_count():
-    return jsonify({"pending": get_db().execute("SELECT count(*) FROM onboarding_visits WHERE visit_date=date('now','localtime') AND recorded_at IS NULL").fetchone()[0]})
+    return jsonify({"pending": get_db().execute("SELECT count(*) FROM onboarding_visits WHERE visit_date=? AND recorded_at IS NULL",(_today(),)).fetchone()[0]})
+
+
+@onboarding_bp.get('/joiners')
+@permission_required('fitness_module')
+def cycle_joiners():
+    return redirect(url_for('onboarding.today_list', **request.args.to_dict()))

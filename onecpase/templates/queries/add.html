@@ -94,7 +94,10 @@
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">Assign To</label>
+          <label class="form-label">Assigned to</label>
+          {% if session.get('tenant_slug') == 'elev8' %}
+          <p class="text-muted">Refunds: Ayrton. Sales and membership renewals/upgrades: Thato (Ayrton notified). Other queries: Admin. Escalations notify Mvuleni and Ayrton.</p>
+          {% endif %}
           <select name="assigned_to" class="form-control">
             <option value="">Unassigned</option>
             {% for u in users %}

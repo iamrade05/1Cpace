@@ -165,6 +165,115 @@ def _name(row, key="staff"):
     return row[key] or "System"
 
 
+def account_summary(db, member_id):
+    """The collections view of one account: what is owed against the instalment,
+    whether the client may be called, and what an arrangement would look like.
+
+    Balance, mandate and PTP facts come from the same summary the Queries page
+    uses, so the two screens agree.
+    """
+    from .collections import below_installment_not_callable
+    from .collections_engine import category_offer, ptp_debit_orders_needed
+    from .ptp import bulk_member_arrears
+    from .queries import _account_summary
+
+    base = _account_summary(db, member_id)
+    if base is None:
+        return None
+    owing = float(base["total_outstanding"])
+    installment = float(base["monthly_installment"])
+    failed = db.execute(
+        """SELECT COUNT(*) AS n, MAX(collection_date) AS last_date FROM collections
+           WHERE member_id=? AND status='failed'
+             AND COALESCE(outstanding_balance,0)>COALESCE(amount_paid,0)""",
+        (member_id,)).fetchone()
+    last_paid = db.execute(
+        """SELECT collection_date, amount_paid FROM collections
+           WHERE member_id=? AND COALESCE(amount_paid,0)>0 AND status IN ('paid','partial')
+           ORDER BY collection_date DESC, id DESC LIMIT 1""", (member_id,)).fetchone()
+    last_call = db.execute(
+        """SELECT outcome, COALESCE(called_at, task_date) AS at FROM collection_call_tasks
+           WHERE member_id=? AND status='completed' ORDER BY id DESC LIMIT 1""",
+        (member_id,)).fetchone()
+    has_failed = bool(failed["n"])
+    below = owing > 0 and below_installment_not_callable(owing, installment, has_failed)
+    orders, paying = ptp_debit_orders_needed(db, member_id, installment or 0, installment)
+    months = int(bulk_member_arrears(db, [member_id]).get(member_id, {}).get("months_in_arrears", 0) or 0)
+    return {
+        "summary": base,
+        "owing": owing,
+        "installment": installment,
+        "installments_owed": round(owing / installment, 2) if installment else None,
+        "below_installment": below,
+        "callable": not below,
+        "call_note": (
+            "Owes less than one instalment and no failed debit. Check the recurring amount "
+            "against what the client is paying before calling." if below else
+            "Can be called." if owing > 0 else "No balance owing."),
+        "failed_debits": failed["n"] or 0,
+        "last_failed": failed["last_date"],
+        "last_payment": dict(last_paid) if last_paid else None,
+        "paying": paying,
+        "mandate_status": base["debit_order_status"],
+        "has_debit_order": base["has_debit_order"],
+        "payment_type": base["payment_type"],
+        "debit_order_date": base["debit_order_date"],
+        "access_status": base["access_status"],
+        "open_ptp_id": base["open_ptp_id"],
+        "open_ptp_status": base["open_ptp_status"],
+        "last_call": dict(last_call) if last_call else None,
+        "offer_no_upfront": _plain(category_offer(owing, 0, months)),
+        "offer_half_upfront": _plain(category_offer(owing, owing / 2, months)),
+        "months_owing": months,
+        "ptp": _ptp_arrangement(db, member_id),
+    }
+
+
+def _plain(offer):
+    return {k: (float(v) if hasattr(v, "quantize") else v) for k, v in offer.items()}
+
+
+def _ptp_arrangement(db, member_id):
+    """The latest arrangement with its DebiCheck requirements and next step."""
+    ptp = db.execute(
+        """SELECT * FROM ptp_agreements WHERE member_id=? AND ptp_status <> 'superseded'
+           ORDER BY id DESC LIMIT 1""", (member_id,)).fetchone()
+    if ptp is None:
+        return None
+    links = db.execute(
+        """SELECT l.purpose, l.amount, l.mandate_id, d.status
+           FROM ptp_mandate_links l LEFT JOIN debicheck_mandates d ON d.id = l.mandate_id
+           WHERE l.ptp_id=? ORDER BY l.id""", (ptp["id"],)).fetchall()
+    from .debicheck import normalise_debicheck_status
+    mandates = [{"purpose": l["purpose"], "amount": float(l["amount"]),
+                 "status": normalise_debicheck_status(l["status"]) if l["mandate_id"] else "not prepared"}
+                for l in links]
+    grant = ptp["grant_status"] or "legacy"
+    upfront_paid = float(db.execute(
+        "SELECT COALESCE(SUM(amount_paid),0) AS t FROM ptp_receipts "
+        "WHERE ptp_id=? AND verification_status='verified'", (ptp["id"],)).fetchone()["t"])
+    next_action = {
+        "awaiting_debicheck": "Prepare or obtain approval for the DebiCheck mandate(s).",
+        "awaiting_prerequisites": "Clear manager review or verify the upfront payment.",
+        "declined": "A required mandate was declined. Agree a new arrangement.",
+        "granted": "Monitor repayments.",
+        "legacy": "Recorded before the approval gate; review for DebiCheck evidence.",
+    }.get(grant, "")
+    return {
+        "id": ptp["id"], "category": ptp["arrears_category"],
+        "arrears": float(ptp["arrears_amount"] or 0), "upfront": float(ptp["upfront_amount"] or 0),
+        "discount": float(ptp["discount_amount"] or 0), "balance": float(ptp["remaining_balance"] or 0),
+        "payments": ptp["payment_count"] or 0, "installment": float(ptp["recovery_installment"] or 0),
+        "first_date": ptp["first_collection_date"], "manager": ptp["manager_approval_status"],
+        "grant_status": grant, "granted_at": ptp["granted_at"], "reference": ptp["grant_reference"],
+        "mandates": mandates, "next_action": next_action,
+        "upfront_paid": upfront_paid,
+        "upfront_due": max(round(float(ptp["upfront_amount"] or 0) - upfront_paid, 2), 0),
+        "can_record_upfront": grant in ("awaiting_prerequisites", "awaiting_debicheck")
+        and float(ptp["upfront_amount"] or 0) - upfront_paid > 0.005,
+    }
+
+
 def member_profile(db, member_id):
     """One member's whole collections history: the current case, the records
     behind it, and a single chronological timeline across all of them."""
@@ -269,6 +378,7 @@ def member_profile(db, member_id):
         "contacts": contacts, "ptps": ptps, "payments": payments, "exceptions": exceptions,
         "access": access, "assignments": assignments, "stages": stages,
         "notes": notes, "discounts": discounts,
+        "account": account_summary(db, member_id),
     }
 
 
@@ -373,7 +483,7 @@ def performance_report(db, month):
     callers = db.execute(
         f"""SELECT t.assigned_to AS staff_id, u.full_name AS name, COUNT(*) AS assigned,
                   SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS calls,
-                  SUM(CASE WHEN {reached_sql(_min_talk(db))} THEN 1 ELSE 0 END) AS contacts
+                  SUM(CASE WHEN {reached_sql()} THEN 1 ELSE 0 END) AS contacts
            FROM collection_call_tasks t LEFT JOIN users u ON u.id = t.assigned_to
            WHERE substr(t.task_date,1,7)=? GROUP BY 1, 2 ORDER BY calls DESC, name""", (month,)).fetchall()
     totals = {
@@ -411,12 +521,13 @@ def _min_talk(db):
 def daily_call_report(db, day, call_target=100, contact_target=10):
     """Attempts use the actual call date; pending work uses its assigned date.
 
-    A client counts as reached only with a contact outcome AND enough PBX talk time.
+    Reached follows a saved contact outcome; PBX confirmation is a separate count.
     """
-    from .collections_engine import reached_sql, talk_seconds_sql
+    from .collections_engine import reached_sql, talk_seconds_sql, verified_sql
 
     min_talk = _min_talk(db)
-    reached = reached_sql(min_talk)
+    reached = reached_sql()
+    verified = verified_sql(min_talk)
     talk = talk_seconds_sql()
     rows = db.execute(
         f"""SELECT u.id AS staff_id, u.full_name AS name,
@@ -424,6 +535,8 @@ def daily_call_report(db, day, call_target=100, contact_target=10):
                       substr(COALESCE(t.called_at,t.task_date),1,10)=? THEN 1 ELSE 0 END) AS calls,
                   SUM(CASE WHEN t.status='completed' AND {reached} AND
                       substr(COALESCE(t.called_at,t.task_date),1,10)=? THEN 1 ELSE 0 END) AS contacts,
+                  SUM(CASE WHEN t.status='completed' AND {verified} AND
+                      substr(COALESCE(t.called_at,t.task_date),1,10)=? THEN 1 ELSE 0 END) AS verified,
                   SUM(CASE WHEN t.status='completed' AND
                       substr(COALESCE(t.called_at,t.task_date),1,10)=? THEN {talk} ELSE 0 END) AS talk_seconds,
                   SUM(CASE WHEN t.status='pending' AND t.task_date=? THEN 1 ELSE 0 END) AS pending
@@ -432,7 +545,7 @@ def daily_call_report(db, day, call_target=100, contact_target=10):
               OR (t.status='completed' AND substr(COALESCE(t.called_at,t.task_date),1,10)=?)
               OR (t.status='pending' AND t.task_date=?)
            GROUP BY u.id,u.full_name ORDER BY calls DESC,u.full_name""",
-        (day, day, day, day, day, day),
+        (day, day, day, day, day, day, day),
     ).fetchall()
     callers = []
     for row in rows:
@@ -453,9 +566,12 @@ def daily_call_report(db, day, call_target=100, contact_target=10):
     contacts = _scalar(db, f"""SELECT COUNT(*) FROM collection_call_tasks t
         WHERE t.status='completed' AND {reached}
         AND substr(COALESCE(t.called_at,t.task_date),1,10)=?""", (day,))
+    verified_total = _scalar(db, f"""SELECT COUNT(*) FROM collection_call_tasks t
+        WHERE t.status='completed' AND {verified}
+        AND substr(COALESCE(t.called_at,t.task_date),1,10)=?""", (day,))
     pending = _scalar(db, "SELECT COUNT(*) FROM collection_call_tasks WHERE status='pending' AND task_date=?", (day,))
     return {'day': day, 'callers': callers, 'outcomes': outcomes,
-            'calls': calls, 'contacts': contacts, 'pending': pending,
+            'calls': calls, 'contacts': contacts, 'verified': verified_total, 'pending': pending,
             'talk_seconds': sum(c['talk_seconds'] for c in callers),
             'contact_rate': round(100 * contacts / calls,1) if calls else None,
             'call_target': call_target, 'contact_target': contact_target,

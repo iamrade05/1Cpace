@@ -3,7 +3,7 @@
 {% block page_title %}WhatsApp Web Sender{% endblock %}
 
 {% block content %}
-<header class="page-header"><div><h1>WhatsApp Web Sender</h1></div></header>
+<header class="page-header"><div><h1>WhatsApp Web Sender</h1><p>Link WhatsApp to send and sync recent direct-chat text. New contacts appear in WhatsApp Reception. Opening chats for sync also marks them read in WhatsApp. Attachments, groups and full history are not imported.</p></div></header>
 <div class="card" style="max-width:520px;">
   <div class="card-body" style="padding:20px;">
     {% if not status.enabled %}
@@ -15,6 +15,8 @@
        Connected — a WhatsApp number is linked and sending.
       {% if status.last_sent_at %}<br><small>Last message sent: {{ status.last_sent_at[:19].replace('T', ' ') }}</small>{% endif %}
     </div>
+    {% elif status.syncing %}
+    <div class="alert alert-info"><strong>Phone linked. Loading your chats.</strong><p>WhatsApp is downloading messages. Keep this connection open; the status changes to Connected when it finishes.</p></div>
     {% elif status.pairing_code %}
     <div class="alert alert-info" style="margin-bottom:16px;">
       On the phone: open WhatsApp → <strong>Settings → Linked Devices → Link a Device</strong> →
@@ -52,9 +54,9 @@
     </div>
     {% endif %}
 
-    {% if status.enabled and not status.logged_in and not status.pairing_code and link_blocked %}
+    {% if status.enabled and not status.logged_in and not status.syncing and not status.pairing_code and link_blocked %}
     <div class="alert alert-warning" style="margin-bottom:16px;">{{ link_blocked }}</div>
-    {% elif status.enabled and not status.logged_in and not status.pairing_code %}
+    {% elif status.enabled and not status.logged_in and not status.syncing and not status.pairing_code %}
     <form method="post" action="{{ url_for('whatsapp_web.link_by_phone') }}" style="margin-bottom:16px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label for="linkPhone" style="display:block;font-size:0.83rem;color:#6b7280;margin-bottom:4px;">
@@ -75,16 +77,30 @@
     <div class="table-wrap"><table style="width:100%;font-size:0.83rem;" class="table">
       <tr><td style="color:#6b7280;padding:4px;">Background session running</td><td>{{ 'Yes' if status.started else 'No' }}</td></tr>
       <tr><td style="color:#6b7280;padding:4px;">Messages waiting to send</td><td>{{ status.queue_length }}</td></tr>
+      <tr><td>Last inbox check</td><td>{{ status.last_receive_poll_at or 'Waiting for a linked session' }}</td></tr>
+      <tr><td>Last received message</td><td>{{ status.last_received_at or 'None synced yet' }}</td></tr>
     </table></div>
+    {% if status.receive_error %}<div class="alert alert-warning">{{ status.receive_error }}</div>{% endif %}
+    {% if status.welcome_error %}<div class="alert alert-warning">{{ status.welcome_error }}</div>{% endif %}
   </div>
 </div>
 
 <script>
-// Refresh to pick up a new QR code / pairing code - but never while a number is being typed.
-setInterval(function () {
-  var box = document.getElementById('linkPhone');
-  if (box && (document.activeElement === box || box.value)) { return; }
-  window.location.reload();
-}, 6000);
+// Poll status even while a phone number is in the form. Do not keep resubmitting it.
+var shownState = {{ [status.logged_in, status.pairing_code, status.pairing_status, status.last_error, status.syncing]|tojson }};
+setInterval(async function () {
+  try {
+    var response = await fetch({{ url_for('whatsapp_web.status_json')|tojson }}, {cache:'no-store'});
+    if (!response.ok) return;
+    var status = await response.json();
+    var next = [status.logged_in, status.pairing_code, status.pairing_status, status.last_error, status.syncing];
+    if (JSON.stringify(next) !== JSON.stringify(shownState)) { window.location.reload(); return; }
+    var image = document.getElementById('qrImage');
+    if (image && status.last_qr_at && !status.pairing_status) {
+      var nextUrl = {{ url_for('whatsapp_web.qr_image')|tojson }} + '?t=' + encodeURIComponent(status.last_qr_at);
+      if (image.getAttribute('src') !== nextUrl) image.src = nextUrl;
+    }
+  } catch (error) { /* The next poll retries a temporary connection error. */ }
+}, 3000);
 </script>
 {% endblock %}

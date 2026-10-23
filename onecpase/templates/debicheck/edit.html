@@ -14,8 +14,8 @@
     <h3 class="section-heading" style="font-size:0.9rem;">Banking &amp; Mandate</h3>
     <div class="form-grid-2">
       <div class="form-group">
-        <label class="form-label">Account Holder Name</label>
-        <input name="account_name" id="dcAccountName" class="form-control" maxlength="30" required
+        <label class="form-label">Account Holder Name (initials and surname)</label>
+        <input data-mandate-name placeholder="J P Smith" name="account_name" id="dcAccountName" class="form-control" maxlength="30" required
                value="{{ mandate.account_name or '' }}">
       </div>
       <div class="form-group">
@@ -61,9 +61,9 @@
                 placeholder="4 digits" value="{{ mandate.client_ref2 or '' }}">
       </div>
       <div class="form-group">
-        <label class="form-label">Submit Date</label>
-        <input type="date" name="submit_date" class="form-control" min="{{ today }}" required
-               value="{{ mandate.submit_date or today }}">
+        <label class="form-label">Submission / First Debit Date</label>
+        <input data-mandate-date type="date" name="submit_date" class="form-control" min="{{ debicheck_earliest_date }}" required
+               value="{{ mandate.submit_date or debicheck_earliest_date }}">
       </div>
       <div class="form-group">
         <label class="form-label">Frequency</label>
@@ -136,4 +136,5 @@ function toggleDcIdentity() {
 document.getElementById('dcIdType').addEventListener('change', toggleDcIdentity);
 toggleDcIdentity();
 </script>
+<script src="{{ url_for('static', filename='js/debicheck-rules.js') }}" defer></script>
 {% endblock %}

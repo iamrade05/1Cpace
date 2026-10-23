@@ -261,3 +261,27 @@ def test_declining_needs_no_code(app, client):
 
     assert _token(app)["status"] == "declined"
     assert _contracts_signed(app) == 0
+
+
+def test_identity_and_banking_numbers_stay_hidden_until_the_code_is_entered(app, client, sent):
+    with app.app_context():
+        db = get_db()
+        member_id = _member(app)
+        from onecpase.encryption import encrypt
+        db.execute(
+            "UPDATE members SET id_number=?, payer_name='Payer', payer_id_number=?, branch_code=? WHERE id=?",
+            (encrypt("8001015009087"), encrypt("7507074800085"), encrypt("051001"), member_id),
+        )
+        db.commit()
+    path = _share_link(client, member_id)
+
+    before = _text(client.get(path))
+    assert "8001015009087" not in before
+    assert "7507074800085" not in before
+    assert "051001" not in before
+    assert "087" in before  # only the last digits remain
+
+    _act(client, path, action="send_code")
+    after = _text(_act(client, path, action="verify_code", code=sent.code))
+    assert "8001015009087" in after
+    assert "7507074800085" in after

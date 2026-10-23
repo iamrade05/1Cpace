@@ -4,8 +4,7 @@ from datetime import date, datetime, time, timedelta
 from flask import Blueprint, flash, g, redirect, render_template, request, session, url_for
 
 from .auth import permission_required
-from .database import audit_log, current_tenant_name, get_db, next_member_ref
-from .encryption import encrypt_member, hash_for_lookup
+from .database import audit_log, get_db
 
 
 def sa_id_birth_date(id_number, today=None):
@@ -1378,14 +1377,16 @@ def funnel_report():
     )
 
 
-@leads_bp.route("/<int:lid>/convert", methods=["GET", "POST"])
-@permission_required("capture_leads")
-def convert_lead(lid: int):
-    db = get_db()
-    lead = db.execute("SELECT * FROM leads WHERE id=?", (lid,)).fetchone()
+_CONVERTIBLE_STAGES = {"SHOW", "CONSULTATION", "APPLICATION_INVITED", "APPLICATION_STARTED"}
+
+
+def lead_conversion_redirect(db, lead):
+    """Flash and return a redirect when this prospect cannot start a membership
+    application; None when the Add Member form may convert it."""
     if lead is None:
         flash("Prospect not found.", "warning")
         return redirect(url_for("leads.leads_index"))
+    lid = lead["id"]
     existing = db.execute(
         "SELECT id FROM membership_applications WHERE lead_id=?", (lid,)
     ).fetchone()
@@ -1409,129 +1410,79 @@ def convert_lead(lid: int):
             "attendance has been recorded.", "error",
         )
         return redirect(url_for("leads.lead_detail", lid=lid))
+    from .sales_pipeline import current_sales_stage
+    if current_sales_stage(lead) not in _CONVERTIBLE_STAGES:
+        flash(
+            "The prospect must be at Show, Consultation, or already invited to "
+            "apply before an application can be started.", "error",
+        )
+        return redirect(url_for("leads.lead_detail", lid=lid))
+    return None
 
-    tariffs = db.execute(
-        "SELECT * FROM tariffs WHERE active=1 ORDER BY sort_order, name"
-    ).fetchall()
 
-    if request.method == "POST":
-        package = request.form.get("package", lead["interested_package"] or "").strip()
-        id_number = request.form.get("id_number", "").strip()
-        date_of_birth = request.form.get("date_of_birth", "")
-        if not id_number:
-            flash("ID number is required to create a member record.", "error")
-            return render_template("leads/convert.html", lead=lead, tariffs=tariffs)
+def record_lead_conversion(db, lead, member_id: int, app_id: int, id_number: str, date_of_birth: str = ""):
+    """Link a member created from the Add Member form back to its prospect.
 
-        id_hash = hash_for_lookup(id_number)
-        if id_hash:
-            duplicate = db.execute(
-                "SELECT id FROM members WHERE id_number_hash = ?", (id_hash,)
-            ).fetchone()
-        else:
-            duplicate = db.execute(
-                "SELECT id FROM members WHERE id_number = ?", (id_number,)
-            ).fetchone()
-        if duplicate:
-            flash(
-                f"A member with that ID number already exists (member #{duplicate['id']}). Link or close this prospect as Existing Member.",
-                "error",
-            )
-            return render_template("leads/convert.html", lead=lead, tariffs=tariffs)
-
-        if not sa_id_luhn_valid(id_number):
-            flash(
-                "That ID number failed the standard check-digit test — please "
-                "confirm it against the client's ID document. Conversion has "
-                "continued, but the number may be mistyped.",
-                "warning",
-            )
-
+    Runs inside the caller's transaction: sets the under-23 compliance rules,
+    advances the sales stage to APPLICATION_STARTED and closes the prospect as
+    joined. The caller commits.
+    """
+    lid = lead["id"]
+    dob = sa_id_birth_date(id_number)
+    if dob is None and date_of_birth:
         try:
-            parts = lead["full_name"].strip().split(" ", 1)
-            first_name = parts[0]
-            last_name = parts[1] if len(parts) > 1 else ""
-            encrypted = encrypt_member({"id_number": id_number})
-            member_ref = next_member_ref(db, current_tenant_name())
-            mem_cur = db.execute(
-                """INSERT INTO members
-                   (member_ref, first_name, last_name, id_number, id_number_hash, contact, email,
-                    join_date, package, member_status, outcome, entry_type, source, opt_in)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, 'Unverified', 'application', 'lead', ?, ?)""",
-                (
-                    member_ref, first_name, last_name, encrypted["id_number"], encrypted.get("id_number_hash"),
-                    lead["phone"], lead["email"], package,
-                    lead["original_source"] or lead["source"], lead["marketing_consent"],
-                ),
-            )
-            member_id = mem_cur.lastrowid
+            dob = date.fromisoformat(date_of_birth)
+        except ValueError:
+            dob = None
+    under_23 = dob is not None and _age_on(dob) < 23
+    requirement = "required" if under_23 else "not_required"
+    db.execute(
+        """UPDATE compliance_checklists SET age_category=?, guardian_required=?,
+           guardian_status=?, manager_approval_status=? WHERE application_id=?""",
+        ("below_23" if under_23 else "above_23", requirement, requirement, requirement, app_id),
+    )
+    from .sales_pipeline import current_sales_stage, transition_sales_stage
+    stage = current_sales_stage(lead)
+    if stage in ("SHOW", "CONSULTATION"):
+        transition_sales_stage(db, lid, "APPLICATION_INVITED", session.get("user_id"),
+                               reason="Membership application initiated", commit=False)
+        transition_sales_stage(db, lid, "APPLICATION_STARTED", session.get("user_id"),
+                               reason="Membership application created", commit=False)
+    elif stage == "APPLICATION_INVITED":
+        # A manager can move the canonical stage straight to
+        # APPLICATION_INVITED (Controlled Sales Stage) before the
+        # actual application is created here - only one hop remains.
+        transition_sales_stage(db, lid, "APPLICATION_STARTED", session.get("user_id"),
+                               reason="Membership application created", commit=False)
+    elif stage != "APPLICATION_STARTED":
+        raise ValueError(
+            "Lead must be at SHOW, CONSULTATION, or already invited to "
+            "apply before an application can be started."
+        )
+    db.execute(
+        """UPDATE leads SET lead_status='joined', converted_member_id=?,
+           closure_reason=NULL, next_action='Complete membership application', next_action_at=datetime('now'),
+           last_activity_at=datetime('now'), updated_at=datetime('now') WHERE id=?""",
+        (member_id, lid),
+    )
+    _add_activity(
+        db, lid, "conversion", outcome="joined",
+        notes=f"Application #{app_id}; member #{member_id}; status=Unverified",
+    )
+    audit_log(
+        db, "converted_to_member", lead_id=lid, application_id=app_id,
+        new_value=f"member_id={member_id}",
+    )
 
-            dob = sa_id_birth_date(id_number)
-            if dob is None and date_of_birth:
-                try:
-                    dob = date.fromisoformat(date_of_birth)
-                except ValueError:
-                    dob = None
-            age_category = "above_23"
-            if dob is not None:
-                age_category = "below_23" if _age_on(dob) < 23 else "above_23"
 
-            app_cur = db.execute(
-                """INSERT INTO membership_applications
-                   (lead_id, member_id, package, application_status, created_by)
-                   VALUES (?, ?, ?, 'awaiting_docs', ?)""",
-                (lid, member_id, package, session.get("user_id")),
-            )
-            app_id = app_cur.lastrowid
-            guardian_req = "required" if age_category == "below_23" else "not_required"
-            mgr_req = "required" if age_category == "below_23" else "not_required"
-            db.execute(
-                """INSERT INTO compliance_checklists
-                   (application_id, age_category, guardian_required, guardian_status,
-                    manager_approval_status)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (app_id, age_category, guardian_req, guardian_req, mgr_req),
-            )
-            from .sales_pipeline import current_sales_stage, transition_sales_stage
-            stage = current_sales_stage(lead)
-            if stage in ("SHOW", "CONSULTATION"):
-                transition_sales_stage(db, lid, "APPLICATION_INVITED", session.get("user_id"),
-                                       reason="Membership application initiated", commit=False)
-                transition_sales_stage(db, lid, "APPLICATION_STARTED", session.get("user_id"),
-                                       reason="Membership application created", commit=False)
-            elif stage == "APPLICATION_INVITED":
-                # A manager can move the canonical stage straight to
-                # APPLICATION_INVITED (Controlled Sales Stage) before the
-                # actual application is created here - only one hop remains.
-                transition_sales_stage(db, lid, "APPLICATION_STARTED", session.get("user_id"),
-                                       reason="Membership application created", commit=False)
-            elif stage != "APPLICATION_STARTED":
-                raise ValueError(
-                    "Lead must be at SHOW, CONSULTATION, or already invited to "
-                    "apply before an application can be started."
-                )
-            db.execute(
-                """UPDATE leads SET lead_status='joined', converted_member_id=?,
-                   closure_reason=NULL, next_action='Complete membership application', next_action_at=datetime('now'),
-                   last_activity_at=datetime('now'), updated_at=datetime('now') WHERE id=?""",
-                (member_id, lid),
-            )
-            _add_activity(
-                db, lid, "conversion", outcome="joined",
-                notes=f"Application #{app_id}; member #{member_id}; status=Unverified",
-            )
-            audit_log(
-                db, "converted_to_member", lead_id=lid, application_id=app_id,
-                new_value=f"member_id={member_id}",
-            )
-            db.commit()
-            flash(
-                f"Prospect converted — Application #{app_id} opened. Upload the signed "
-                "contract and bank statement to unlock the Itensity push.",
-                "success",
-            )
-            return redirect(url_for("applications.application_detail", aid=app_id))
-        except Exception as exc:
-            db.rollback()
-            flash(f"Error: {exc}", "error")
-
-    return render_template("leads/convert.html", lead=lead, tariffs=tariffs)
+@leads_bp.route("/<int:lid>/convert")
+@permission_required("capture_leads")
+def convert_lead(lid: int):
+    # Conversion captures the full member profile on the Add Member form,
+    # prefilled from the prospect, before the application's document step.
+    db = get_db()
+    lead = db.execute("SELECT * FROM leads WHERE id=?", (lid,)).fetchone()
+    blocked = lead_conversion_redirect(db, lead)
+    if blocked:
+        return blocked
+    return redirect(url_for("members.members_add", lead_id=lid))

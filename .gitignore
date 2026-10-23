@@ -7,6 +7,10 @@
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-*/
+Dev.pytest_tmp_verify/
+cancel_evidence_*/
+backups/
 .mypy_cache/
 .ruff_cache/
 .venv/
@@ -28,6 +32,7 @@ logs/
 uploads/
 
 # Editor and OS files
+/onecpase/static/downloads/*.apk
 .vscode/
 .idea/
 Thumbs.db
@@ -39,3 +44,6 @@ itensity_rows.json
 
 # Local database safety copies (taken by the scripts before they write)
 *.db.backup-*
+
+# Linked WhatsApp browser credentials and QR login image
+whatsapp_web_session/

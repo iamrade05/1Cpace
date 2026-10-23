@@ -23,6 +23,7 @@ import logging
 import os
 
 from cryptography.fernet import Fernet, InvalidToken
+from flask import current_app, has_app_context
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,12 @@ class EncryptionConfigurationError(RuntimeError):
     """Raised when encryption is required but ENCRYPTION_KEY is unavailable."""
 
 
+def _configured_key() -> str:
+    if has_app_context():
+        return str(current_app.config.get("ENCRYPTION_KEY") or "").strip()
+    return os.environ.get("ENCRYPTION_KEY", "").strip()
+
+
 def _get_fernet() -> Fernet:
     """Return the configured Fernet instance or fail closed.
 
@@ -43,7 +50,7 @@ def _get_fernet() -> Fernet:
     callers handling encrypted data must never silently downgrade to raw data.
     """
     global _fernet, _fernet_key
-    key = os.environ.get("ENCRYPTION_KEY", "").strip()
+    key = _configured_key()
     if _fernet is not None and _fernet_key == key:
         return _fernet
 
@@ -127,7 +134,7 @@ def hash_for_lookup(plaintext: str | None) -> str | None:
     """
     if not plaintext:
         return None
-    key = os.environ.get("ENCRYPTION_KEY", "").strip()
+    key = _configured_key()
     if not key:
         raise EncryptionConfigurationError(
             "ENCRYPTION_KEY is required for searchable PII hashes."

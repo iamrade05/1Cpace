@@ -1,10 +1,71 @@
 """Common bank statement upload and cashflow rules across the app."""
 import json
+from collections import Counter
 from pathlib import Path
 from uuid import uuid4
 from flask import current_app, session, request
 from werkzeug.utils import secure_filename
 from .statement_parser import analyse_pdf, analyse_cashflow
+
+
+def _batch_analysis(results, all_rows, monthly_installment):
+    """Keep qualification consistent with the evidence across all uploaded PDFs."""
+    combined = dict(results[-1])
+    if len(results) == 1:
+        return combined
+    payments = [amount for result in results for amount in result.get("salary_payments", [])]
+    # Only combine income counts when the files cover separate months. Repeated
+    # or overlapping statements must not turn one month's income into two.
+    seen = set()
+    separate = True
+    for result in results:
+        months = {(row[0], row[1]) for row in result.get("tx_rows", [])}
+        if not months or seen.intersection(months):
+            separate = False
+        seen.update(months)
+    income_count = sum(result.get("income_months", 0) for result in results)
+    income_qualified = any(
+        result.get("income_detected") and result.get("income_months", 0) >= 2
+        for result in results
+    ) or (separate and income_count >= 2 and all(
+        result.get("income_detected") for result in results
+    ))
+    balances = [row[3] for row in all_rows]
+    balance_qualified = monthly_installment > 0 and bool(balances) and all(
+        monthly_installment <= balance * 0.30 for balance in balances
+    )
+    combined.update(
+        income_detected=any(result.get("income_detected") for result in results),
+        income_months=income_count if separate else max(result.get("income_months", 0) for result in results),
+        salary_payments=sorted(payments, reverse=True),
+        returned_debits=sum(result.get("returned_debits", 0) for result in results),
+        verification_qualified=bool(income_qualified or balance_qualified),
+        tx_rows=all_rows,
+    )
+    incomes = [result.get("estimated_income", 0) for result in results if result.get("income_detected")]
+    combined["estimated_income"] = (
+        float(Counter(round(amount / 500) * 500 for amount in payments).most_common(1)[0][0])
+        if payments else round(sum(incomes) / len(incomes), 2) if incomes else 0
+    )
+    if balances:
+        combined["max_balance"] = max(balances)
+        upper_half = sorted(balances)[len(balances)//2:]
+        combined["avg_balance"] = round(sum(upper_half) / len(upper_half), 2)
+        combined["closing_balance"] = balances[-1]
+    combined["monthly_balances"] = {}
+    for _year, month, _day, balance in all_rows:
+        key = str(month)
+        combined["monthly_balances"][key] = min(balance, combined["monthly_balances"].get(key, balance))
+    combined["months_seen"] = len(seen)
+    income = combined["estimated_income"]
+    combined["rating"], combined["can_afford"] = "unknown", None
+    if income > 0:
+        ratio = monthly_installment / income
+        affordable = ratio <= 0.15 or (ratio <= 0.30 and combined["returned_debits"] <= 2)
+        combined["can_afford"] = affordable
+        combined["rating"] = "good" if monthly_installment > 0 and ratio <= 0.15 else "moderate" if affordable else "risk"
+    combined["summary"] = "<br>".join(result.get("summary", "") for result in results)
+    return combined
 
 
 def upload_statements(db, mid, files):
@@ -18,6 +79,7 @@ def upload_statements(db, mid, files):
     member = db.execute("SELECT monthly_installment FROM members WHERE id=?", (mid,)).fetchone()
     aid = ensure_member_application(db, mid)
     all_rows, errors, analysis = [], [], {}
+    results = []
     stored_names = []
     for file in files:
         stored_name = f"{uuid4().hex}_{secure_filename(file.filename)}"
@@ -31,6 +93,7 @@ def upload_statements(db, mid, files):
         )
         if analysis.get("error"):
             errors.append(f"{file.filename}: {analysis['error']}")
+        results.append(analysis)
         all_rows += [tuple(r) for r in analysis.get("tx_rows", [])]
         db.execute(
             """INSERT INTO member_documents
@@ -45,12 +108,16 @@ def upload_statements(db, mid, files):
     )
     # Statements from several files are read together, oldest first.
     all_rows.sort(key=lambda r: (r[0], r[1], r[2]))
+    analysis = _batch_analysis(results, all_rows, float(member["monthly_installment"] or 0) if member else 0.0)
     analysis = {**analysis, "error": "; ".join(errors) if errors else None,
                 "cashflow": analyse_cashflow(all_rows)}
+    if errors:
+        analysis["verification_qualified"] = False
     for stored in stored_names:
         row = db.execute("SELECT analysis_json FROM member_documents WHERE member_id=? AND stored_name=?", (mid, stored)).fetchone()
         result = json.loads(row["analysis_json"])
-        result["cashflow"] = analysis["cashflow"]
+        result["file_analysis"] = dict(result)
+        result.update(analysis)
         result["batch_error"] = analysis.get("error")
         db.execute("UPDATE member_documents SET analysis_json=? WHERE member_id=? AND stored_name=?", (json.dumps(result), mid, stored))
     analysis_result = analysis

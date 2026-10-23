@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Staff Training | 1Cpace{% endblock %}
+{% block content %}
+<header class="page-header"><div><h1>Staff Training</h1><p class="page-sub">Sales and accounts guidance, practical examples and daily checklists.</p></div></header>
+<div class="card training-overview"><div class="card-body">
+  <h2>Sales and Accounts Training Manual</h2>
+  <p>Version 3 · 9 October 2026 · 52 pages. Includes the original Sales screenshot guide and detailed Collections, PTP, DebiCheck and Queries procedures.</p>
+  <div class="training-actions">
+    <a class="btn btn-primary" href="{{ url_for('training.manual', format='pdf') }}" target="_blank" rel="noopener">Read complete manual (PDF)</a>
+    <a class="btn btn-ghost" href="{{ url_for('training.manual', format='docx') }}">Download Word manual</a>
+    <a class="btn btn-ghost" href="{{ url_for('training.manual', format='pdf', download='1') }}">Download PDF</a>
+  </div>
+</div></div>
+<div class="training-search"><label class="form-label" for="training-search">Find a training topic</label><input class="form-control" id="training-search" type="search" placeholder="Search topics or guidance, e.g. failed debit" aria-describedby="training-count"><p id="training-count" role="status" aria-live="polite">{{ chapters|length }} topics</p></div>
+<div class="training-grid">
+{% for chapter in chapters %}
+<article class="card training-topic" data-search="{{ chapter.search }}"><div class="card-body"><h2><a href="{{ url_for('training.topic', slug=chapter.slug) }}">{{ chapter.title }}</a></h2><p>{{ chapter.summary }}</p><a class="btn btn-ghost" href="{{ url_for('training.topic', slug=chapter.slug) }}">Read topic</a></div></article>
+{% endfor %}
+</div>
+<p id="training-empty" hidden>No topics match your search. Try “payment”, “approval” or “follow-up”.</p>
+<p class="training-note">Practise with synthetic records or a supervisor-led discussion. Follow your assigned permissions and the current approved gym policy when working with members.</p>
+<script>
+(() => {
+ const input = document.getElementById('training-search');
+ const cards = [...document.querySelectorAll('.training-topic')];
+ input.addEventListener('input', () => {
+   const words = input.value.toLowerCase().trim().split(/\s+/).filter(Boolean);
+   let count = 0;
+   cards.forEach(card => { card.hidden = !words.every(word => card.dataset.search.includes(word)); if (!card.hidden) count++; });
+   document.getElementById('training-count').textContent = `${count} topic${count === 1 ? '' : 's'}`;
+   document.getElementById('training-empty').hidden = count !== 0;
+ });
+})();
+</script>
+{% endblock %}

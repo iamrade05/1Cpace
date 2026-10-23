@@ -54,7 +54,7 @@ def get_active_members():
 def get_fitness_staff():
     return get_db().execute(
         """SELECT id, full_name FROM users
-           WHERE active = 1 AND role IN ('trainer', 'admin', 'manager')
+           WHERE active = 1 AND role IN ('trainer', 'instructor', 'admin', 'manager')
            ORDER BY full_name"""
     ).fetchall()
 
@@ -232,21 +232,9 @@ def fitness_book(fid: int):
         flash("Please select a member.", "error")
         return redirect(url_for("fitness.fitness_bookings", fid=fid))
 
-    fc = db.execute("SELECT capacity FROM fitness_classes WHERE id = ?", (fid,)).fetchone()
-    current = db.execute(
-        "SELECT COUNT(*) FROM class_bookings WHERE class_id = ? AND status = 'booked'", (fid,)
-    ).fetchone()[0]
-
-    if fc and current >= fc["capacity"]:
-        flash("Class is at full capacity.", "warning")
-        return redirect(url_for("fitness.fitness_bookings", fid=fid))
-
     try:
-        db.execute(
-            "INSERT INTO class_bookings (class_id, member_id, status) VALUES (?, ?, 'booked')",
-            (fid, int(member_id)),
-        )
-        db.commit()
+        from .fitness_bookings import change_booking
+        change_booking(db, fid, int(member_id), 'book')
         flash("Member booked successfully.", "success")
     except Exception as e:
         flash(f"Error: {e}", "error")
@@ -258,13 +246,13 @@ def fitness_book(fid: int):
 @permission_required("classes")
 def booking_cancel(bid: int):
     db = get_db()
-    booking = db.execute("SELECT class_id FROM class_bookings WHERE id = ?", (bid,)).fetchone()
+    booking = db.execute("SELECT class_id, member_id FROM class_bookings WHERE id = ?", (bid,)).fetchone()
     if booking is None:
         flash("Booking not found.", "warning")
         return redirect(url_for("fitness.fitness_index"))
 
-    db.execute("UPDATE class_bookings SET status = 'cancelled' WHERE id = ?", (bid,))
-    db.commit()
+    from .fitness_bookings import change_booking
+    change_booking(db, booking['class_id'], booking['member_id'], 'cancel', booking_id=bid)
     flash("Booking cancelled.", "info")
     return redirect(url_for("fitness.fitness_bookings", fid=booking["class_id"]))
 
@@ -666,10 +654,10 @@ def body_matrix_member(mid: int):
         entries = [dict(e) | {"period": e["date"]} for e in raw_entries]
         labels = [str(e["date"] or "")[5:10] for e in raw_entries]
 
-    weights = [as_float(e["weight_kg"]) for e in entries]
-    body_fats = [as_float(e["body_fat_pct"]) for e in entries]
-    muscles = [as_float(e["muscle_mass_kg"]) for e in entries]
-    waists = [as_float(e["waist_cm"]) for e in entries]
+    weights = [as_float(e["weight_kg"],None) for e in entries]
+    body_fats = [as_float(e["body_fat_pct"],None) for e in entries]
+    muscles = [as_float(e["muscle_mass_kg"],None) for e in entries]
+    waists = [as_float(e["waist_cm"],None) for e in entries]
 
     return render_template(
         "fitness/body_matrix_member.html",
@@ -943,3 +931,26 @@ def member_supplements_view(mid: int):
         m=member, full_name=member_full_name(member), assignments=assignments,
         risk_labels=RISK_LABELS, risk_colors=RISK_COLORS, risk_bg=RISK_BG,
     )
+
+
+@fitness_bp.get('/anatomy')
+@permission_required('fitness_module')
+def anatomy():
+    from flask import abort
+    from .fitness_anatomy import GROUPS, HOTSPOTS
+    area = request.args.get('area', 'chest')
+    view = request.args.get('view', 'front')
+    selected = next((group for group in GROUPS if group['id'] == area), None)
+    if not selected or view not in ('front', 'back'):
+        abort(400)
+    member = None
+    if request.args.get('member_id'):
+        mid = request.args.get('member_id', type=int)
+        row = get_db().execute('SELECT * FROM members WHERE id=?', (mid,)).fetchone()
+        if row is None:
+            abort(404)
+        member = decrypt_member(row)
+    return render_template('fitness/anatomy.html', groups=GROUPS, selected=selected,
+                           view=view, member=member, member_id=member['id'] if member else None,
+                           hotspots=HOTSPOTS[view], map_width=275 if view == 'front' else 280,
+                           area_labels={group['id']: group['label'] for group in GROUPS})

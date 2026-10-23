@@ -463,6 +463,24 @@ def _check_share_code(db, row, entered: str) -> str | None:
     return None
 
 
+def _mask_value(value, keep: int = 3) -> str:
+    text = str(value or "")
+    if not text:
+        return ""
+    return "\u2022" * max(len(text) - keep, 4) + (text[-keep:] if keep and len(text) > keep else "")
+
+
+def _mask_unverified(member) -> dict:
+    """A share link is only a bearer token: until the emailed code is entered,
+    the page must not reveal identity or banking numbers to whoever holds it."""
+    masked = dict(member)
+    for field, keep in (("id_number", 3), ("payer_id_number", 3), ("branch_code", 0),
+                        ("account_number", 3), ("contact", 3)):
+        if masked.get(field):
+            masked[field] = _mask_value(masked[field], keep)
+    return masked
+
+
 def _share_page(db, token_id: int, member, notice=None, status: int = 200):
     """The contract page for a shared link, in whichever stage of verification it is."""
     row = db.execute("SELECT * FROM contract_share_tokens WHERE id=?", (token_id,)).fetchone()
@@ -477,7 +495,10 @@ def _share_page(db, token_id: int, member, notice=None, status: int = 200):
         "SELECT * FROM contract_templates WHERE active=1 ORDER BY is_default DESC,id LIMIT 1"
     ).fetchone()
     share = {"stage": stage, "notice": notice, "sent_to": row["otp_sent_to"]}
-    return render_contract(template, decrypt_member(member), share=share), status
+    shown = decrypt_member(member)
+    if stage != "verified":
+        shown = _mask_unverified(shown)
+    return render_contract(template, shown, share=share), status
 
 
 @contracts_bp.route("/<int:mid>")

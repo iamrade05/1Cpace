@@ -9,7 +9,8 @@ logins. Everything else is closed until its phase opens.
 Closed means closed: hidden from the nav *and* refused if someone types the
 URL. A hidden link is not a closed door.
 
-The active phase is set by ACTIVE_PHASE in the environment (default 1).
+The active phase is set by ACTIVE_PHASE in the environment (default 4).
+HR is available in every phase; payroll has its own named-staff access gate.
 ``ACTIVE_PHASE=all`` opens everything, which is what the test suite uses.
 """
 from __future__ import annotations
@@ -21,7 +22,7 @@ ALL_PHASES = "all"
 # endpoints — inbound WhatsApp/Facebook webhooks and the PBX, which answer to
 # outside systems rather than to staff.
 ALWAYS_ON = frozenset(
-    {"auth", "dashboard", "health", "platform", "tenants", "comms_webhooks", "pbx", "turnstile"}
+    {"auth", "dashboard", "health", "platform", "tenants", "comms_webhooks", "pbx", "turnstile", "notifications", "training", "hr", "workforce", "mobile"}
 )
 
 # phase number → (name, blueprints it opens)
@@ -51,9 +52,9 @@ PHASES: dict[int, tuple[str, frozenset[str]]] = {
     ),
     2: ("Collections", frozenset({"collections", "ptp", "reconciliation"})),
     3: ("Queries", frozenset({"queries"})),
-    4: ("Fitness", frozenset({"fitness", "onboarding"})),
+    4: ("Fitness", frozenset({"fitness", "onboarding", "fitness_journey"})),
     5: ("Reports", frozenset({"reports", "access_report"})),
-    6: ("HR", frozenset({"hr"})),
+    6: ("HR", frozenset()),  # retained phase number; HR is now always on
     7: ("Operations", frozenset({"operations"})),
 }
 
@@ -67,7 +68,7 @@ NAV_SECTIONS: dict[str, int] = {
     "connections": 2,
     "fitness": 4,
     "analytics": 5,
-    "hr": 6,
+    "hr": 1,
     "operations": 7,
     "admin": 1,
     "finance": 1,

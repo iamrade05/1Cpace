@@ -1120,6 +1120,12 @@ def _create_query(db, form):
     snap_mgr = 1 if approval_needed else 0
     status = 'pending_approval' if approval_status == 'pending' else 'open'
 
+    from .query_routing import route
+    routing = route(db, category, query_type)
+    if routing:
+        assigned_to = str(routing['assigned_to']) if routing['assigned_to'] else None
+        department = routing['department']
+
     values = dict(
         logged_by=session.get('user_id'),
         member_id=int(mem_id) if mem_id else None,
@@ -1185,6 +1191,7 @@ def _create_query(db, form):
     if cancel_member_now:
         _cancel_member(db, qid, int(mem_id))
     db.commit()
+    _notify_query_assignment(db, qid)
 
     if approval_status == 'pending':
         flash(f'Query {ref} logged and sent for manager approval.', 'success')
@@ -1342,6 +1349,13 @@ def update(qid):
         new_dept = qry['department']
     if new_assigned and not new_assigned.isdigit():
         new_assigned = None
+    from .query_routing import route
+    routing = route(db, qry['category'], qry['query_type'])
+    was_escalated = qry['status'] == 'escalated' or bool(db.execute(
+        "SELECT 1 FROM query_notes WHERE query_id=? AND action_type='escalated' LIMIT 1", (qid,)).fetchone())
+    if routing and not was_escalated:
+        new_assigned = str(routing['assigned_to']) if routing['assigned_to'] else None
+        new_dept = routing['department']
 
     db.execute("""
         UPDATE queries SET status=?, priority=?, assigned_to=?, department=?,
@@ -1363,7 +1377,15 @@ def update(qid):
                   f"Assigned to {user['full_name'] if user else 'unknown'}",
                   'assignment')
     db.commit()
+    if str(new_assigned or '') != str(qry['assigned_to'] or '') or new_dept != qry['department']:
+        _notify_query_assignment(db, qid, escalated=was_escalated)
     return back
+
+
+def _notify_query_assignment(db, qid, escalated=False):
+    from .query_routing import notify_assignment
+    if notify_assignment(db, qid, escalated=escalated) is False:
+        flash('Query saved, but assignment email could not be delivered. Check staff email and mail settings.', 'warning')
 
 
 def _closing_blocker(db, qry, owing_ack):
@@ -1441,7 +1463,10 @@ def escalate(qid):
         WHERE id=?
     """, (date.today().isoformat(), qid))
     _log_note(db, qid, f"Escalated to management. Reason: {reason}", 'escalated')
+    from .notifications import sync_notifications
+    sync_notifications(db)
     db.commit()
+    _notify_query_assignment(db, qid, escalated=True)
     flash('Query escalated to management.', 'success')
     return redirect(url_for('queries.detail', qid=qid))
 

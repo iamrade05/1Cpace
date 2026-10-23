@@ -25,9 +25,12 @@
     {% if statement_blockers and not mandate.imported_from_nupay and mandate.status != 'active' %}
       <div role="alert"><strong>DebitCheck requirements outstanding</strong>{% for reason in statement_blockers %}<p>{{ reason }}</p>{% endfor %}</div>
     {% endif %}
+    {% if mandate_field_errors and not mandate.imported_from_nupay and mandate.status != 'active' %}
+      <div role="alert"><strong>Change the mandate details before submitting</strong>{% for reason in mandate_field_errors %}<p>{{ reason }}</p>{% endfor %}</div>
+    {% endif %}
     {% if mandate.status == 'reviewing' %}
       <span class="btn btn-ghost" style="cursor:default;">⏳ Waiting for you to finish in the NuPay browser window</span>
-    {% elif has_perm('new_debicheck') and mandate.status != 'active' and not mandate.imported_from_nupay and statement_months_ready and (not statement_blockers or session.get('role') == 'admin') %}
+    {% elif has_perm('new_debicheck') and mandate.status != 'active' and not mandate.imported_from_nupay and not mandate_field_errors and statement_months_ready and (not statement_blockers or session.get('role') == 'admin') %}
       <form method="post" action="{{ url_for('debicheck.review_on_nupay', mandate_id=mandate.id) }}">
         {% if session.get('role') == 'admin' %}<label><input type="checkbox" name="override" value="1"> Admin override (audited)</label>{% endif %}
         <button class="btn btn-primary">Review &amp; Submit on NuPay</button>

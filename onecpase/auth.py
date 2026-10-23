@@ -145,6 +145,16 @@ def permission_required(perm: str):
             if session.get("must_change_password") and request.endpoint != "auth.change_password":
                 flash("You must change your password before continuing.", "warning")
                 return redirect(url_for("auth.change_password"))
+            from .hr_access import OPEN_HR_PERMISSIONS, can_access_payroll
+            if perm == 'hr_payroll':
+                if can_access_payroll():
+                    return view(**kwargs)
+                if request.is_json:
+                    return jsonify(ok=False, error="Payroll access is restricted to Mvuleni and Ayrton"), 403
+                flash('Payroll access is restricted to Mvuleni and Ayrton.', 'warning')
+                return redirect(url_for('hr.staff_index'))
+            if perm in OPEN_HR_PERMISSIONS:
+                return view(**kwargs)
             if session.get("role") == "admin":
                 return view(**kwargs)
             if perm not in session.get("permissions", []):
@@ -419,6 +429,12 @@ def resend_otp():
     return redirect(url_for("auth.verify_otp"))
 
 
+def _default_staff_password() -> str:
+    # Imported lazily: admin imports this module.
+    from .admin import DEFAULT_STAFF_PASSWORD
+    return DEFAULT_STAFF_PASSWORD
+
+
 @auth_bp.route("/change-password", methods=["GET", "POST"])
 def change_password():
     if not session.get("user_id"):
@@ -440,6 +456,8 @@ def change_password():
             flash("Passwords do not match.", "error")
         elif new_pw == current_pw:
             flash("New password must differ from the current password.", "error")
+        elif new_pw.casefold() == _default_staff_password().casefold():
+            flash("That is the standard starting password and cannot be used. Choose your own.", "error")
         else:
             db.execute(
                 "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
@@ -451,6 +469,144 @@ def change_password():
             return redirect(url_for("dashboard.dashboard"))
 
     return render_template("auth/change_password.html")
+
+
+
+
+# ── Forgotten password ────────────────────────────────────────────────────────
+# Same proof of identity as sign-in: a code emailed to the address on the
+# account. Reset challenges live in the same table under an "r:" prefix and use
+# their own session key, so a reset code can never complete a login (or the
+# reverse).
+
+_RESET_PREFIX = "r:"
+_RESET_COOLDOWN = 60  # seconds between codes for one account
+
+
+def _reset_challenge_hash(challenge_id: str) -> str:
+    return _RESET_PREFIX + _challenge_hash(challenge_id)
+
+
+def _send_reset_email(to_email: str, full_name: str, code: str) -> bool:
+    if not current_app.config.get("MAIL_USERNAME"):
+        return False
+    tenant_name = g.tenant["name"] if g.get("tenant") else "1Cpace"
+    try:
+        msg = Message(subject=f"{tenant_name} — Reset your password", recipients=[to_email])
+        minutes = current_app.config["OTP_TTL"] // 60
+        msg.html = (
+            f'<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;">'
+            f'<h2 style="margin:0 0 12px;">{tenant_name}</h2>'
+            f'<p>Hi <strong>{full_name}</strong>, use this code to reset your password. '
+            f'It expires in <strong>{minutes} minutes</strong>.</p>'
+            f'<p style="font-size:2rem;font-weight:800;letter-spacing:10px;text-align:center;">{code}</p>'
+            f"<p style='color:#6b7280;font-size:0.8rem;'>If you did not ask for this, ignore this email — "
+            f"your password has not changed.</p></div>"
+        )
+        mail.send(msg)
+        return True
+    except Exception as exc:
+        current_app.logger.error("Password reset email failed: %s", exc)
+        return False
+
+
+@auth_bp.route("/forgot-password", methods=["GET", "POST"])
+@limiter.limit("5 per minute")
+def forgot_password():
+    if g.tenant is None:
+        return redirect(url_for("tenants.welcome"))
+    if request.method == "POST":
+        username = str(request.form.get("username", "")).strip().lower()
+        db = get_db()
+        challenge_id = secrets.token_urlsafe(32)
+        user = db.execute(
+            """SELECT * FROM users WHERE lower(username) = ? AND active = 1
+                 AND COALESCE(is_platform_user, 0) = 0""",
+            (username,),
+        ).fetchone()
+        if user and valid_email_address(user["email"]):
+            now = time.time()
+            ttl = current_app.config["OTP_TTL"]
+            db.execute("DELETE FROM login_otp_challenges WHERE expires_at <= ?", (now,))
+            recent = db.execute(
+                """SELECT 1 FROM login_otp_challenges
+                   WHERE user_id = ? AND challenge_hash LIKE ? AND expires_at > ?""",
+                (user["id"], _RESET_PREFIX + "%", now + ttl - _RESET_COOLDOWN),
+            ).fetchone()
+            if recent:
+                # A code went out moments ago; keep the browser tied to it.
+                challenge_id = session.get("_reset_challenge") or challenge_id
+            else:
+                code = _generate_otp()
+                reset_hash = _reset_challenge_hash(challenge_id)
+                db.execute("DELETE FROM login_otp_challenges WHERE user_id = ? AND challenge_hash LIKE ?",
+                           (user["id"], _RESET_PREFIX + "%"))
+                db.execute(
+                    """INSERT INTO login_otp_challenges
+                       (challenge_hash, user_id, code_hash, expires_at, attempts)
+                       VALUES (?, ?, ?, ?, 0)""",
+                    (reset_hash, user["id"], _otp_hash(reset_hash, code), now + ttl),
+                )
+                db.commit()
+                if not _send_reset_email(user["email"], user["full_name"], code):
+                    db.execute("DELETE FROM login_otp_challenges WHERE challenge_hash = ?", (reset_hash,))
+                    db.commit()
+        # Same answer whether or not the account exists, so this page cannot be
+        # used to find out who has an account.
+        session["_reset_challenge"] = challenge_id
+        flash("If that username has an email address on file, we have sent it a 6-digit code.", "info")
+        return redirect(url_for("auth.reset_password"))
+    return render_template("auth/forgot_password.html", tenant=g.tenant)
+
+
+@auth_bp.route("/reset-password", methods=["GET", "POST"])
+@limiter.limit("15 per minute")
+def reset_password():
+    if g.tenant is None:
+        return redirect(url_for("tenants.welcome"))
+    challenge_id = session.get("_reset_challenge")
+    if not challenge_id:
+        return redirect(url_for("auth.forgot_password"))
+    if request.method == "POST":
+        db = get_db()
+        reset_hash = _reset_challenge_hash(challenge_id)
+        entered = "".join(str(request.form.get("code", "")).split())
+        new_pw = str(request.form.get("new_password", "")).strip()
+        confirm_pw = str(request.form.get("confirm_password", "")).strip()
+        claimed = db.execute(
+            """UPDATE login_otp_challenges SET attempts = attempts + 1
+               WHERE challenge_hash = ? AND expires_at > ? AND attempts < ?""",
+            (reset_hash, time.time(), _OTP_MAX_ATTEMPTS),
+        )
+        db.commit()
+        row = db.execute("SELECT * FROM login_otp_challenges WHERE challenge_hash = ?", (reset_hash,)).fetchone()
+        if claimed.rowcount != 1 or not row or not hmac.compare_digest(
+                _otp_hash(reset_hash, entered), row["code_hash"]):
+            flash("That code is incorrect or has expired. Request a new one if needed.", "error")
+        elif len(new_pw) < 8:
+            flash("New password must be at least 8 characters.", "error")
+        elif new_pw != confirm_pw:
+            flash("Passwords do not match.", "error")
+        elif new_pw.casefold() == _default_staff_password().casefold():
+            flash("That is the standard starting password and cannot be used. Choose your own.", "error")
+        else:
+            user = db.execute(
+                """SELECT id FROM users WHERE id = ? AND active = 1
+                     AND COALESCE(is_platform_user, 0) = 0""",
+                (row["user_id"],),
+            ).fetchone()
+            db.execute("DELETE FROM login_otp_challenges WHERE challenge_hash = ?", (reset_hash,))
+            if user:
+                db.execute(
+                    "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
+                    (generate_password_hash(new_pw), user["id"]),
+                )
+            db.commit()
+            session.pop("_reset_challenge", None)
+            flash("Password updated. Sign in with your new password.", "success")
+            return redirect(url_for("auth.login"))
+    return render_template("auth/reset_password.html", tenant=g.tenant)
+
 
 
 @auth_bp.get("/logout")

@@ -25,11 +25,13 @@ import os
 import posixpath
 import shlex
 import socket
+import subprocess
 import sys
 import time
 import tarfile
 import tempfile
 import uuid
+import json
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -48,7 +50,7 @@ APP_DIR = "/opt/onecpase"
 SERVICE = "onecpase"
 OWNER = "onecpase:onecpase"
 BACKUP_DIR = "/opt/onecpase-backups"
-KEEP_BACKUPS = 3
+KEEP_BACKUPS = 5
 BACKUP_EXCLUDES = (
     "./venv",
     "./.release-*",
@@ -147,6 +149,18 @@ def validate_release(paths: list[Path]) -> None:
     print(f"Local validation passed ({checked} Python files, {len(paths)} files total).")
 
 
+def run_release_tests() -> None:
+    """The required suite must pass before connecting for a deployment."""
+    with tempfile.TemporaryDirectory(prefix="onecpase-release-") as tmp:
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "--basetemp", str(Path(tmp) / "tests")],
+            cwd=ROOT,
+            check=False,
+        )
+    if result.returncode != 0:
+        raise SystemExit("Release tests failed; deployment was not started.")
+
+
 def build_archive(paths: list[Path], directory: Path) -> Path:
     archive = directory / "onecpase-release.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
@@ -225,11 +239,11 @@ def report(client: paramiko.SSHClient, args: argparse.Namespace) -> None:
 
 
 def prune_backups(client: paramiko.SSHClient) -> None:
-    """Keep only the newest KEEP_BACKUPS of each kind; the disk filled once."""
-    for prefix in ("onecpase_", "data_"):
-        run(client, f"cd {shlex.quote(BACKUP_DIR)} && ls -1 {prefix}*.tar.gz 2>/dev/null "
-                    f"| sort | head -n -{KEEP_BACKUPS} | xargs -r rm -f", check=False)
-    print(f"Pruned {BACKUP_DIR} to the newest {KEEP_BACKUPS} of each backup kind.")
+    """Retain five database snapshots and five dated deployment rollback sets."""
+    run(client, '/opt/onecpase/venv/bin/python -I /opt/onecpase/onecpase/backup_retention.py '
+        '--database-dir /opt/onecpase/backups --deployment-dir /opt/onecpase-backups '
+        '--apply --minimum-age-seconds 0')
+    print(f"Kept the newest {KEEP_BACKUPS} backups per type.")
 
 
 def deploy(client: paramiko.SSHClient, archive: Path, args: argparse.Namespace) -> None:
@@ -291,27 +305,35 @@ def deploy(client: paramiko.SSHClient, archive: Path, args: argparse.Namespace) 
         )
 
 
-def check_public_health() -> None:
+def check_public_health() -> bool:
     try:
         with urlopen(PUBLIC_HEALTH_URL, timeout=30) as response:
-            print(f"{PUBLIC_HEALTH_URL} -> HTTP {response.status}: "
-                  f"{response.read().decode(errors='replace')[:200]}")
-    except URLError as exc:
+            payload = json.loads(response.read().decode())
+            if not isinstance(payload, dict):
+                print(f"{PUBLIC_HEALTH_URL} returned an invalid readiness response.")
+                return False
+            healthy = response.status == 200 and payload.get("status") == "ok"
+            print(f"{PUBLIC_HEALTH_URL} -> HTTP {response.status}, status={payload.get('status')}")
+            return healthy
+    except (URLError, ValueError, TimeoutError, OSError) as exc:
         print(f"Health check could not reach {PUBLIC_HEALTH_URL}: {exc}")
+        return False
 
 
 def main() -> int:
     args = parse_args()
     paths = release_paths()
     validate_release(paths)
+    if not args.check_only:
+        run_release_tests()
 
     client = connect(args)
     try:
         report(client, args)
         if args.check_only:
-            check_public_health()
+            healthy = check_public_health()
             print("Check-only: nothing was changed.")
-            return 0
+            return 0 if healthy else 1
 
         if not args.yes:
             print(f"\nAbout to replace {args.app_dir} on {args.host} with "
@@ -325,8 +347,7 @@ def main() -> int:
     finally:
         client.close()
 
-    check_public_health()
-    return 0
+    return 0 if check_public_health() else 1
 
 
 if __name__ == "__main__":

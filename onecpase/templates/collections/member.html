@@ -34,6 +34,57 @@
   {% endif %}
 </div>
 
+{% set a = p.account %}
+{% if a %}
+{% include 'collections/_account_summary.html' %}
+{% call section('account', 'Collection Details') %}
+<table class="table"><tbody>
+  <tr><th>Owing</th><td>{% if a.owing > 0 %}<span class="badge badge-danger">R{{ '%.2f'|format(a.owing) }}</span>{% else %}<span class="badge badge-success">Zero balance</span>{% endif %}</td></tr>
+  <tr><th>Monthly instalment</th><td>R{{ '%.2f'|format(a.installment) }}{% if a.installments_owed is not none and a.owing > 0 %} · {{ a.installments_owed }} instalment(s) owed{% endif %}</td></tr>
+  <tr><th>Call status</th><td><span class="badge {{ 'badge-warning' if a.below_installment else 'badge-success' }}">{{ 'Do not call' if a.below_installment else 'Can call' }}</span> {{ a.call_note }}</td></tr>
+  <tr><th>Failed debits</th><td>{{ a.failed_debits }}{% if a.last_failed %} · last {{ a.last_failed }}{% endif %}</td></tr>
+  <tr><th>Last payment</th><td>{% if a.last_payment %}R{{ '%.2f'|format(a.last_payment.amount_paid) }} on {{ a.last_payment.collection_date }}{% else %}None on record{% endif %}</td></tr>
+  <tr><th>Receiving money</th><td>{{ 'Yes — an arrangement needs one debit order' if a.paying else 'No — an arrangement needs 2 debit orders' }}</td></tr>
+  <tr><th>Debit order</th><td>{{ a.payment_type }}{% if a.mandate_status %} · mandate {{ a.mandate_status }}{% endif %}{% if a.debit_order_date %} · day {{ a.debit_order_date }}{% endif %}</td></tr>
+  <tr><th>Open PTP</th><td>{% if a.open_ptp_id %}#{{ a.open_ptp_id }} ({{ a.open_ptp_status }}){% else %}None{% endif %}</td></tr>
+  <tr><th>Last call</th><td>{% if a.last_call %}{{ (a.last_call.outcome or 'logged')|replace('_',' ') }} · {{ a.last_call.at }}{% else %}Never called{% endif %}</td></tr>
+  {% if a.owing > 0 %}
+  <tr><th>Category</th><td>{{ a.offer_no_upfront.category }} · {{ a.months_owing }} month(s) owing{% if a.months_owing < 3 %} · no discount under 3 months{% endif %}</td></tr>
+  <tr><th>Proposed: no upfront</th><td>Discount R{{ '%.2f'|format(a.offer_no_upfront.discount_amount) }} · PTP balance R{{ '%.2f'|format(a.offer_no_upfront.ptp_balance) }}</td></tr>
+  <tr><th>Proposed: 50% upfront (R{{ '%.2f'|format(a.offer_half_upfront.upfront) }})</th><td>Discount R{{ '%.2f'|format(a.offer_half_upfront.discount_amount) }} · PTP balance R{{ '%.2f'|format(a.offer_half_upfront.ptp_balance) }}</td></tr>
+  {% endif %}
+</tbody></table>
+{% endcall %}
+{% set t = a.ptp %}
+{% if t %}
+{% call section('ptp-arrangement', 'PTP Arrangement') %}
+<table class="table"><tbody>
+  <tr><th>Status</th><td><span class="badge {{ 'badge-success' if t.grant_status == 'granted' else ('badge-danger' if t.grant_status == 'declined' else 'badge-warning') }}">{{ 'Granted' if t.grant_status == 'granted' else ('Declined' if t.grant_status == 'declined' else (t.grant_status|replace('_',' ')|title ~ ' — not granted')) }}</span>{% if t.granted_at %} on {{ t.granted_at }}{% endif %}{% if t.reference %} · ref {{ t.reference }}{% endif %}</td></tr>
+  <tr><th>Original arrears</th><td>R{{ '%.2f'|format(t.arrears) }}{% if t.category %} · category {{ t.category }}{% endif %}</td></tr>
+  <tr><th>Upfront payment</th><td>R{{ '%.2f'|format(t.upfront) }} agreed · R{{ '%.2f'|format(t.upfront_paid) }} paid{% if t.upfront_due %} · R{{ '%.2f'|format(t.upfront_due) }} still due{% endif %}</td></tr>
+  <tr><th>Proposed discount</th><td>R{{ '%.2f'|format(t.discount) }}</td></tr>
+  <tr><th>PTP balance</th><td>R{{ '%.2f'|format(t.balance) }}{% if t.payments %} · {{ t.payments }} payment(s) of R{{ '%.2f'|format(t.installment) }}{% endif %}{% if t.first_date %} from {{ t.first_date }}{% endif %}</td></tr>
+  {% for m in t.mandates %}<tr><th>{{ m.purpose }} mandate</th><td>R{{ '%.2f'|format(m.amount) }} · {{ m.status }}</td></tr>{% endfor %}
+  <tr><th>Manager clearance</th><td>{{ (t.manager or 'not required')|replace('_',' ')|title }}</td></tr>
+  <tr><th>Next action</th><td>{{ t.next_action }}</td></tr>
+</tbody></table>
+{% if t.can_record_upfront %}
+<form method="post" class="form-card" action="{{ url_for('ptp.ptp_record_upfront', mid=p.member.id, ptp_id=t.id) }}">
+  <strong>Record upfront payment</strong>
+  <p class="text-muted">Only after the client has paid. This updates their payment profile.</p>
+  <input class="form-control" type="number" name="amount_paid" step="0.01" min="0.01" max="{{ '%.2f'|format(t.upfront_due) }}" placeholder="Amount paid" required>
+  <select class="form-control" name="payment_method" required aria-label="Payment method">
+    <option value="">How was it paid?</option>
+    {% for m in ('cash','card','eft','snapscan','other') %}<option value="{{ m }}">{{ m|upper if m == 'eft' else m|title }}</option>{% endfor %}
+  </select>
+  <input class="form-control" name="reference" placeholder="Reference (optional)" maxlength="80">
+  <button class="btn btn-sm btn-primary" type="submit">Record payment</button>
+</form>
+{% endif %}
+{% endcall %}
+{% endif %}
+{% endif %}
+
 <p style="margin-top:16px;">
   <a href="#timeline">Timeline</a> · <a href="#contacts">Contacts</a> · <a href="#ptp">PTP</a> ·
   <a href="#payments">Payments</a> · <a href="#notes">Notes</a> · <a href="#approvals">Approvals</a> · <a href="#access">Access</a> · <a href="#history">History</a>

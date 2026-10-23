@@ -4,6 +4,7 @@
 
 {% block content %}
 <header class="page-header"><div><h1>Timesheets</h1></div></header>
+<p><a class="btn btn-secondary" href="{{ url_for('hr.access_attendance', week=week_start) }}">View Access Card Attendance</a></p>
 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
   <div style="display:flex; gap:8px;">
     <a href="{{ url_for('hr.timesheets_index', week=prev_week) }}" class="btn btn-ghost btn-sm">&larr; Prev Week</a>

@@ -4,11 +4,11 @@
 
 {% block content %}
 <header class="page-header"><div><h1>Fitness Classes</h1></div></header>
-<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
-  <form method="get" style="display:flex; gap:8px;">
+<div class="list-toolbar">
+  <form method="get" class="list-filters">
     <input name="q" value="{{ search }}" placeholder="Search classes or instructor…"
-           style="padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; font-size:0.875rem; width:260px;">
-    <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;color:#6b7280;">
+           class="form-control list-search" aria-label="Search classes or instructor">
+    <label class="filter-toggle">
       <input type="checkbox" name="inactive" value="1" {% if show_inactive %}checked{% endif %}
              onchange="this.form.submit()"> Show inactive
     </label>
@@ -36,25 +36,25 @@
       <tbody>
         {% for c in classes %}
         <tr>
-          <td style="font-weight:600;">{{ c.name }}</td>
-          <td style="color:#6b7280;">{{ c.instructor_name or '—' }}</td>
-          <td style="color:#6b7280; font-size:0.82rem;">
+          <td class="text-semibold">{{ c.name }}</td>
+          <td class="text-muted">{{ c.instructor_name or '—' }}</td>
+          <td class="text-muted">
             {% if c.schedule_day %}{{ c.schedule_day }}{% endif %}
             {% if c.schedule_time %} @ {{ c.schedule_time }}{% endif %}
             {% if not c.schedule_day and not c.schedule_time %}—{% endif %}
           </td>
-          <td style="text-align:center;">{{ c.capacity }}</td>
-          <td style="text-align:center;">
-            <span style="font-weight:600; color:{% if c.booking_count >= c.capacity %}#ef4444{% else %}#10b981{% endif %};">
+          <td class="text-center">{{ c.capacity }}</td>
+          <td class="text-center">
+            <span class="badge {{ 'badge-warning' if c.booking_count >= c.capacity else 'badge-success' }}">
               {{ c.booking_count }}
             </span>
-            <span style="color:#9ca3af; font-size:0.8rem;"> / {{ c.capacity }}</span>
+            <span class="text-muted"> / {{ c.capacity }}</span>
           </td>
           <td>
             {% if c.active %}<span class="badge badge-success">Active</span>
             {% else %}<span class="badge badge-gray">Inactive</span>{% endif %}
           </td>
-          <td style="white-space:nowrap;">
+          <td class="table-actions">
             <a href="{{ url_for('fitness.fitness_bookings', fid=c.id) }}" class="btn btn-ghost btn-sm">Bookings</a>
             <a href="{{ url_for('fitness.fitness_edit', fid=c.id) }}" class="btn btn-secondary btn-sm">Edit</a>
           </td>

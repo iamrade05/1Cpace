@@ -1,0 +1,11 @@
+{% if error %}<div class="card"><p role="alert">{{ error }}</p><a href="{{ url_for('onboarding.today_list') }}">Reset filters</a></div>{% else %}
+<form class="card fit-filters" method="get">
+<label>Full cycle<select name="cycle">{% for key, start, end in cycle_options %}<option value="{{ key }}" {% if key == cycle %}selected{% endif %}>{{ start.strftime('%d %B %Y') }} ? {{ end.strftime('%d %B %Y') }}</option>{% endfor %}</select></label><button class="btn">Choose cycle</button></form>
+<form class="card fit-filters" method="get"><input type="hidden" name="cycle" value="{{ cycle }}">
+<label>Joined from<input type="date" name="from" value="{{ from_day }}" min="{{ cycle_start }}" max="{{ cycle_end }}" required></label>
+<label>Joined through<input type="date" name="to" value="{{ to_day }}" min="{{ cycle_start }}" max="{{ cycle_end }}" required></label><button class="btn btn-primary">Show members</button>
+<a class="btn" href="{{ url_for('onboarding.today_list', cycle=cycle, from=cycle_start.isoformat(), to=cycle_end.isoformat()) }}">Show full cycle</a>
+</form>
+<div class="card"><h2>{{ cycle_start.strftime('%d %B') }} ? {{ cycle_end.strftime('%d %B %Y') }}</h2><p><strong>{{ members|length }}</strong> joined {{ from_day.strftime('%d %B') }}?{{ to_day.strftime('%d %B %Y') }} ? <strong>{{ full_count }}</strong> joined in the full cycle.</p><p>Based on recorded joining dates, including members whose status has since changed.</p>
+<div class="fit-table"><table class="table"><thead><tr><th>Member</th><th>Joined</th><th>Package</th><th>Fitness</th></tr></thead><tbody>{% for member in members %}<tr><td><a href="{{ url_for('members.member_detail', mid=member.id) }}">{{ member.first_name }} {{ member.last_name }}</a></td><td>{{ member.join_date }}</td><td>{{ member.package or '?' }}</td><td><a href="{{ url_for('fitness.anatomy', member_id=member.id) }}">Anatomy & exercises</a></td></tr>{% else %}<tr><td colspan="4">No members have a recorded joining date in this period.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endif %}

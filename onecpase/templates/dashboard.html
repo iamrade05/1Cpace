@@ -92,7 +92,7 @@
       <span class="fd-panel-tag">Synced {{ itensity_snapshot.fetched_at }}</span>
     </div>
     <div class="fd-legend" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;">
-      {% for label, value, color in [('Active', itensity_snapshot.active_count, '#55e6ad'), ('Blocked', itensity_snapshot.blocked_count, '#ff718a'), ('Unverified', itensity_snapshot.unverified_count, '#ffad66'), ('Inactive', itensity_snapshot.inactive_count, '#9aa8bd'), ('Total', itensity_snapshot.total_count, '#55dcff')] %}
+      {% for label, value, color in [('Active', itensity_snapshot.active_count, 'var(--ok)'), ('Blocked', itensity_snapshot.blocked_count, 'var(--err)'), ('Unverified', itensity_snapshot.unverified_count, 'var(--warn)'), ('Inactive', itensity_snapshot.inactive_count, 'var(--dash-3)'), ('Total', itensity_snapshot.total_count, 'var(--dash-2)')] %}
       <div class="fd-legend-row"><span class="fd-legend-label"><i class="fd-legend-dot" style="color:{{ color }};background:{{ color }}"></i>{{ label }}</span><strong>{{ "{:,}".format(value) }}</strong></div>
       {% endfor %}
     </div>
@@ -118,7 +118,7 @@
         <div class="fd-donut-center"><strong>{{ "{:,}".format(total_status) }}</strong><span>records</span></div>
       </div>
       <div class="fd-legend">
-        {% for label, val, color in [('Paid', payment_status_values[0], '#55e6ad'), ('Partial', payment_status_values[1], '#ffad66'), ('Pending', payment_status_values[2], '#ff718a')] %}
+        {% for label, val, color in [('Paid', payment_status_values[0], 'var(--ok)'), ('Partial', payment_status_values[1], 'var(--warn)'), ('Pending', payment_status_values[2], 'var(--err)')] %}
         <div class="fd-legend-row"><span class="fd-legend-label"><i class="fd-legend-dot" style="color:{{ color }};background:{{ color }}"></i>{{ label }}</span><strong>{{ "{:,}".format(val) }} · {{ ((val / total_status * 100)|round(0)|int) if total_status else 0 }}%</strong></div>
         {% endfor %}
       </div>
@@ -182,8 +182,8 @@
   const initialRange = {{ selected_range | tojson }};
   const token = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const colors = {
-    cyan: token('--info'), green: token('--ok'), gold: token('--red'),
-    orange: token('--warn'), red: token('--err'), purple: token('--info'),
+    cyan: token('--dash-2'), green: token('--ok'), gold: token('--dash-gold'),
+    orange: token('--warn'), red: token('--err'), purple: token('--dash-3'),
     grid: token('--b1'), ticks: token('--t2'), panel: token('--s1')
   };
   const money = new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', maximumFractionDigits: 0 });
@@ -199,10 +199,10 @@
     ticks: { color: colors.ticks, font: { size: 10 }, padding: 9, maxRotation: 0, autoSkip: true }
   };
   const tooltipBase = {
-    backgroundColor: '#102a39',
+    backgroundColor: '#001e2d',
     titleColor: '#effbff',
     bodyColor: '#a9c3cf',
-    borderColor: 'rgba(85,220,255,.18)',
+    borderColor: 'rgba(220,199,158,.35)',
     borderWidth: 1,
     padding: 11,
     cornerRadius: 9,
@@ -214,11 +214,11 @@
     data: { labels: rangeData[initialRange].labels, datasets: [{
       data: rangeData[initialRange].revenue.values,
       borderColor: colors.cyan,
-      backgroundColor: 'rgba(85,220,255,.10)',
+      backgroundColor: 'rgba(63,107,130,.14)',
       borderWidth: 2.3,
       pointRadius: 0,
       pointHoverRadius: 4,
-      pointHoverBackgroundColor: '#dffaff',
+      pointHoverBackgroundColor: '#ffffff',
       pointHoverBorderColor: colors.cyan,
       pointHoverBorderWidth: 3,
       tension: .38,
@@ -238,8 +238,8 @@
     type: 'bar',
     data: { labels: rangeData[initialRange].labels, datasets: [{
       data: rangeData[initialRange].members.values,
-      backgroundColor: 'rgba(85,230,173,.18)',
-      borderColor: colors.green,
+      backgroundColor: 'rgba(63,107,130,.22)',
+      borderColor: colors.cyan,
       borderWidth: 1.4,
       borderRadius: 5,
       borderSkipped: false,
@@ -269,7 +269,7 @@
     type: 'bar',
     data: { labels: {{ package_labels | tojson }}, datasets: [{
       data: {{ package_values | tojson }},
-      backgroundColor: ['rgba(85,220,255,.72)','rgba(85,230,173,.68)','rgba(215,173,83,.68)','rgba(170,140,255,.68)','rgba(255,173,102,.68)','rgba(106,143,158,.68)'],
+      backgroundColor: ['rgba(0,46,69,.85)','rgba(63,107,130,.85)','rgba(138,158,150,.85)','rgba(220,199,158,.9)','rgba(176,132,45,.85)','rgba(106,143,158,.7)'],
       borderRadius: 6, borderSkipped: false, maxBarThickness: 18
     }]},
     options: {
@@ -283,7 +283,7 @@
     type: 'doughnut',
     data: { labels: {{ method_labels | tojson }}, datasets: [{
       data: {{ method_values | tojson }},
-      backgroundColor: [colors.cyan, colors.green, colors.gold, colors.purple, colors.orange, '#63899b', colors.red],
+      backgroundColor: [colors.cyan, colors.green, colors.gold, colors.purple, colors.orange, '#c4ced4', colors.red],
       borderColor: colors.panel, borderWidth: 4, hoverOffset: 4
     }]},
     options: {

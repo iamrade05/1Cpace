@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Fitness intake | 1Cpace{% endblock %}
+{% block page_title %}Fitness intake{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static',filename='css/fitness-journey.css') }}"><div class="fitness-journey">
+<header class="page-header"><div><h1>{{ member.first_name }} {{ member.last_name }} — Fitness intake</h1><p>10 calendar days from the first session. Missed days do not extend the window.</p></div></header>
+<a class="btn" href="{{ url_for('members.member_detail',mid=member.id) }}">Client profile</a> <a class="btn" href="{{ url_for('fitness.body_matrix_member',mid=member.id) }}">Body Matrix</a> <a class="btn" href="{{ url_for('onboarding.today_list') }}">Fitness onboarding</a>
+<div class="card"><div class="card-body"><p>Welcome message: <strong>{{ intake.welcome_status|replace('_',' ') }}</strong></p>
+{% if intake.welcome_status in ('historical','failed','invalid_number','pending') %}
+{% if welcome_eligible %}<form method="post" action="{{ url_for('fitness_journey.send_welcome',mid=member.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary">Send welcome from Reception</button></form>
+{% else %}<p>Welcome sending requires a joined client with an Active or Unverified membership status. Check the client profile.</p>{% endif %}
+{% endif %}
+{% if onboarding %}<p>First assisted session: {{ intake.started_on or 'Not started' }}{% if onboarding_end %} · Last onboarding day: {{ onboarding_end }}{% endif %} · Status: {{ onboarding.status }} · Actual arrivals: {{ onboarding.visits_recorded }}</p>{% endif %}
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label for="interest">Introductory support interest</label><select id="interest" name="interest" class="form-control">{% for code,label in [('awaiting_reply','Awaiting reply'),('interested','Interested'),('declined','Not interested')] %}<option value="{{ code }}" {% if intake.interest==code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+<label for="times">Preferred attendance days and times</label><input id="times" class="form-control" name="preferred_times" value="{{ intake.preferred_times or '' }}" placeholder="e.g. Monday and Wednesday at 17:00">
+<label for="instructor">Allocated instructor</label><select id="instructor" name="instructor_id" class="form-control"><option value="">Not allocated</option>{% for i in staff %}<option value="{{ i.id }}" {% if intake.assigned_instructor_id==i.id %}selected{% endif %}>{{ i.full_name }}</option>{% endfor %}</select>
+<label for="goal">Client goal</label><textarea id="goal" class="form-control" name="goal">{{ member.fitness_goal or '' }}</textarea>
+<label for="notes">Follow-up and allocation notes</label><textarea id="notes" class="form-control" name="notes">{{ intake.notes or '' }}</textarea>
+<button class="btn btn-primary">Save preferences and allocation</button></form></div></div>
+<div class="card" style="margin-top:18px;"><div class="card-header"><h2>Session register</h2></div><div class="table-wrap"><table class="table"><thead><tr><th>Date</th><th>Instructor</th><th>Assistance</th><th>Client acknowledgement</th><th></th></tr></thead><tbody>
+{% for v in visits %}<tr><td>{{ v.visit_date }}</td><td>{{ v.instructor_name or 'Not assigned' }}</td><td>{{ (v.outcome or 'Not attended to yet')|replace('_',' ') }}</td><td>{{ v.client_name or 'Not signed' }}{% if v.signed_label %}<br>{{ v.signed_label }}{% endif %}</td><td><a href="{{ url_for('onboarding.record_visit',vid=v.id) }}">Open session</a></td></tr>{% else %}<tr><td colspan="5">No sessions recorded yet.</td></tr>{% endfor %}
+</tbody></table></div></div>
+</div>{% endblock %}

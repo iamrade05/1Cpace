@@ -91,7 +91,17 @@ def _meta_post(url: str, payload: dict, token: str) -> dict:
 def send_whatsapp_message(phone_number_id: str, to: str, text: str) -> dict:
     token = current_app.config.get("WA_TOKEN", "")
     if not token or not phone_number_id:
-        return {"error": "WhatsApp API not configured"}
+        from . import whatsapp_web
+        if (current_app.config.get('WHATSAPP_WEB_ENABLED')
+                and g.get('tenant_slug') == current_app.config.get('WHATSAPP_WEB_TENANT', 'elev8')):
+            if not whatsapp_web.normalise_phone(to) or not text:
+                return {'error':'A valid recipient and message are required'}
+            status = whatsapp_web.get_status()
+            if not status.get('started') or not status.get('logged_in'):
+                return {'error':'Link WhatsApp Web in Admin before sending'}
+            whatsapp_web.queue_message(to, text)
+            return {'queued':True, 'transport':'whatsapp_web'}
+        return {'error':'WhatsApp API not configured'}
     to_clean = "".join(ch for ch in to if ch.isdigit())
     return _meta_post(
         f"https://graph.facebook.com/v19.0/{phone_number_id}/messages",
@@ -357,7 +367,8 @@ def whatsapp_inbox(number: str):
     db = get_db()
     conversations = db.execute(
         """
-        SELECT c.*, MAX(m.content) AS last_content
+        SELECT c.*, (SELECT recent.content FROM wa_messages recent
+                     WHERE recent.conversation_id=c.id ORDER BY recent.timestamp DESC, recent.id DESC LIMIT 1) AS last_content
         FROM wa_conversations c
         LEFT JOIN wa_messages m ON m.conversation_id = c.id
         WHERE c.wa_number = ?
@@ -368,12 +379,71 @@ def whatsapp_inbox(number: str):
     ).fetchall()
     display_key = "WA_RECEPTION_DISPLAY" if number == "reception" else "WA_SALES_DISPLAY"
     wa_phone = current_app.config.get(display_key, "")
+    from .whatsapp_contacts import identify_conversations
+    conversations = identify_conversations(db, conversations)
     return render_template(
         "communications/whatsapp_inbox.html",
         conversations=conversations,
         number=number,
         wa_phone=wa_phone,
     )
+
+
+@comms_bp.route("/whatsapp/<number>/new", methods=["GET", "POST"])
+def whatsapp_new_message(number: str):
+    if number not in ("reception", "sales"):
+        return redirect(url_for("comms.communications_index"))
+    # Use the same tenant/session and inbox permission checks as other staff actions.
+    return permission_required(_wa_permission(number))(_whatsapp_compose)(number=number)
+
+
+def _whatsapp_compose(number: str):
+    from .whatsapp_web import normalise_phone
+
+    phone = request.form.get("phone", "").strip()
+    text = request.form.get("message", "").strip()
+    if request.method == "POST":
+        normalized = normalise_phone(phone)
+        if not normalized:
+            flash("Enter a valid recipient number, including its country code.", "error")
+        elif not text or len(text) > 4096:
+            flash("Enter a message between 1 and 4096 characters.", "error")
+        else:
+            db = get_db()
+            db.execute(
+                "INSERT OR IGNORE INTO wa_conversations (wa_number, contact_phone) VALUES (?, ?)",
+                (number, normalized),
+            )
+            conv = db.execute(
+                "SELECT id FROM wa_conversations WHERE wa_number=? AND contact_phone=?",
+                (number, normalized),
+            ).fetchone()
+            db.commit()
+            _send_staff_whatsapp(db, number, conv["id"], normalized, text)
+            return redirect(url_for("comms.whatsapp_conversation", number=number, conv_id=conv["id"]))
+    return render_template("communications/whatsapp_compose.html", number=number, phone=phone, message=text)
+
+
+def _send_staff_whatsapp(db, number, conv_id, phone, text):
+    phone_key = "WA_RECEPTION_PHONE_ID" if number == "reception" else "WA_SALES_PHONE_ID"
+    result = send_whatsapp_message(current_app.config.get(phone_key, ""), phone, text)
+    messages = result.get("messages") or []
+    wa_msg_id = messages[0].get("id") if isinstance(messages, list) and messages else None
+    status = "failed" if "error" in result else "queued" if result.get("queued") else "sent" if wa_msg_id else "failed"
+    ts = datetime.now().isoformat()
+    message_cursor = db.execute(
+        "INSERT INTO wa_messages (conversation_id, wa_message_id, direction, message_type, content, status, sent_by_user_id, timestamp) VALUES (?,?,'outbound','text',?,?,?,?)",
+        (conv_id, wa_msg_id, text, status, session.get("user_id"), ts),
+    )
+    db.execute("UPDATE wa_conversations SET last_message_at=? WHERE id=?", (ts, conv_id))
+    db.commit()
+    if status == "failed":
+        flash(f"Message saved but send failed: {result.get('error', 'The sender did not confirm acceptance.')}", "warning")
+    elif status == "queued":
+        flash("Message queued for WhatsApp Web; delivery is not yet confirmed.", "info")
+    else:
+        flash("Message accepted by WhatsApp; delivery is not yet confirmed.", "success")
+    return {'id': message_cursor.lastrowid, 'status': status}
 
 
 @comms_bp.route("/whatsapp/<number>/chat/<int:conv_id>", methods=["GET", "POST"])
@@ -392,19 +462,10 @@ def whatsapp_conversation(number: str, conv_id: int):
     if request.method == "POST":
         text = request.form.get("message", "").strip()
         if text:
-            phone_key = "WA_RECEPTION_PHONE_ID" if number == "reception" else "WA_SALES_PHONE_ID"
-            phone_id = current_app.config.get(phone_key, "")
-            result = send_whatsapp_message(phone_id, conv["contact_phone"], text)
-            ts = datetime.now().isoformat()
-            wa_msg_id = result.get("messages", [{}])[0].get("id") if isinstance(result.get("messages"), list) else None
-            db.execute(
-                "INSERT INTO wa_messages (conversation_id, wa_message_id, direction, message_type, content, status, sent_by_user_id, timestamp) VALUES (?,?,?, 'text',?,'sent',?,?)",
-                (conv_id, wa_msg_id, "outbound", text, session.get("user_id"), ts),
-            )
-            db.execute("UPDATE wa_conversations SET last_message_at=? WHERE id=?", (ts, conv_id))
-            db.commit()
-            if "error" in result:
-                flash(f"Message saved but send failed: {result['error']}", "warning")
+            if len(text) > 4096:
+                flash("Messages must be at most 4096 characters.", "error")
+            else:
+                _send_staff_whatsapp(db, number, conv_id, conv["contact_phone"], text)
         return redirect(url_for("comms.whatsapp_conversation", number=number, conv_id=conv_id))
 
     db.execute("UPDATE wa_conversations SET unread_count=0 WHERE id=?", (conv_id,))
@@ -413,6 +474,8 @@ def whatsapp_conversation(number: str, conv_id: int):
         "SELECT * FROM wa_messages WHERE conversation_id=? ORDER BY timestamp ASC, id ASC",
         (conv_id,),
     ).fetchall()
+    from .whatsapp_contacts import identify_conversations
+    conv = identify_conversations(db, [conv])[0]
     return render_template("communications/whatsapp_conversation.html", conv=conv, messages=messages, number=number)
 
 
@@ -432,6 +495,10 @@ def whatsapp_link_lead(number: str, conv_id: int):
     if request.method == "POST":
         lead_id = request.form.get("lead_id") or None
         member_id = request.form.get("member_id") or None
+        if ((lead_id and not db.execute('SELECT id FROM leads WHERE id=?', (lead_id,)).fetchone())
+                or (member_id and not db.execute('SELECT id FROM members WHERE id=?', (member_id,)).fetchone())):
+            flash('Select an existing client or lead from this gym.', 'error')
+            return redirect(url_for('comms.whatsapp_link_lead', number=number, conv_id=conv_id))
         db.execute(
             "UPDATE wa_conversations SET linked_lead_id=?, linked_member_id=? WHERE id=? AND wa_number=?",
             (lead_id, member_id, conv_id, number),

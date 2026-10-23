@@ -1,0 +1,9 @@
+.fitness-journey .card{margin-top:18px}
+.fitness-journey .card-body{padding:20px}
+.fitness-journey label{display:block;margin-top:12px;margin-bottom:5px}
+.fitness-journey p{margin:0 0 12px;line-height:1.5}
+.fitness-journey .form-control{margin-bottom:8px}
+.fitness-journey form>.btn{margin-top:14px}
+.fitness-journey .table{min-width:650px}
+.fitness-journey .table-wrap{overflow-x:auto}
+@media(max-width:600px){.fitness-journey .card-body{padding:16px}}

@@ -27,7 +27,6 @@ CLOSED_AT_PHASE_ONE = (
     "queries.index",
     "fitness.fitness_index",
     "reports.index",
-    "hr.staff_index",
     "operations.equipment_index",
     "access_report.index",
 )
@@ -37,6 +36,7 @@ OPEN_AT_PHASE_ONE = (
     "leads.leads_index",
     "members.members_index",
     "debicheck.index",
+    "hr.staff_index",  # HR is available to every signed-in staff member
     "turnstile.index",  # always on, even before Phase 7
 )
 
@@ -140,7 +140,7 @@ def test_earlier_phases_stay_open_as_later_ones_arrive():
     assert {"leads", "members", "debicheck"} <= at_three   # phase 1
     assert {"collections", "ptp"} <= at_three              # phase 2
     assert "queries" in at_three                           # phase 3
-    assert "hr" not in at_three                            # phase 6, not yet
+    assert "hr" in at_three                                # HR is always open
 
 
 def test_unknown_blueprint_is_refused_rather_than_waved_through():

@@ -30,6 +30,12 @@
   {% else %}
   <p class="empty-state">No gyms are set up on this platform yet.</p>
   {% endif %}
+  {% for tenant in tenants if tenant.slug == 'elev8' %}
+  <div class="switch-tenant">
+    <a class="btn btn-secondary" href="{{ url_for('static', filename='downloads/1Cpace-Android-1.0.0.apk') }}" download>Download Elev8 Android app</a>
+    <p><small>Version 1.0.0 · Android 7+ · 64-bit ARM · 25 MB</small></p>
+  </div>
+  {% endfor %}
   <a class="power-user-link" href="{{ url_for('platform.login') }}">1Cpace Power User sign in</a>
 </div>
 {% endblock %}

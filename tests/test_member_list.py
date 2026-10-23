@@ -54,8 +54,8 @@ def test_conversion_marks_sales_lead_joined_after_member_is_created(app, client)
 
     _login_admin(client)
     response = client.post(
-        f"/leads/{lead_id}/convert",
-        data={"package": "Premium 12", "id_number": "9001015009087"},
+        f"/members/add?lead_id={lead_id}",
+        data={"first_name": "Converted", "last_name": "Prospect", "id_number": "9001015009087", "contact": "0800000000", "payment_type": "Cash", "package": "Premium 12"},
         follow_redirects=False,
     )
 

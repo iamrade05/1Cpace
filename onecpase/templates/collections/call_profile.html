@@ -46,6 +46,7 @@
     <div style="padding:10px;background:var(--s2);border-radius:8px;margin-bottom:12px;">
       <div class="kpi-label">Last Gym Visit</div>
       {% if last_gym_visit %}<strong>{{ last_gym_visit.last_visited }}</strong><div style="color:var(--t2);font-size:.78rem;">{{ last_gym_visit.days_ago }} days ago · {{ last_gym_visit.shift }} · {{ last_gym_visit.source }}</div>{% else %}<strong>No visit found</strong>{% endif %}
+      <div class="u-d02a9dfb"><span class="badge {{ {'active':'badge-success','recent':'badge-success','slipping':'badge-warning','inactive':'badge-danger'}.get(visit_approach.band,'badge-gray') }}">{{ visit_approach.label }}</span> {{ visit_approach.approach }}</div>
     </div>
     <div><strong>{{ queries|length }} recent quer{{ 'y' if queries|length == 1 else 'ies' }}</strong></div>
     {% for query in queries %}<div style="border-top:1px solid var(--b1);padding:8px 0;font-size:.8rem;"><span class="badge badge-gray">{{ query.status|replace('_',' ')|title }}</span> <strong>{{ query.category|replace('_',' ')|title }}</strong> — {{ query.query_type or query.description }}<br><small style="color:var(--t2);">{{ query.reference or ('Query #' ~ query.id) }} · {{ query.created_at }}</small></div>{% else %}<p style="color:var(--t2);font-size:.82rem;">No query has been logged for this client.</p>{% endfor %}
@@ -103,6 +104,7 @@
 
 <section class="form-card" style="border-left:4px solid var(--info);">
   <h3 style="margin-bottom:6px;">Record Today’s Call</h3>
+  <div class="u-9b7ee8be"><span class="badge {{ {'active':'badge-success','recent':'badge-success','slipping':'badge-warning','inactive':'badge-danger'}.get(visit_approach.band,'badge-gray') }}">{{ visit_approach.label }}</span> {{ visit_approach.approach }}</div>
   {% if task.status == 'completed' %}
   <div class="alert alert-success"><strong>Completed:</strong> {{ task.outcome|replace('_',' ')|title }}{% if task.notes %} — {{ task.notes }}{% endif %}</div>
   {% if task.outcome in ('no_answer', 'busy', 'voicemail', 'wrong_number') %}
@@ -110,12 +112,14 @@
     <div style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#059669;margin-bottom:8px;">Escalation — WhatsApp Template</div>
     <div id="wa-template" style="font-size:0.82rem;color:#374151;line-height:1.6;white-space:pre-wrap;background:#fff;border:1px solid #d1fae5;border-radius:6px;padding:12px 14px;">{{ whatsapp_message }}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-      <button type="button" onclick="copyWaTemplate()" class="btn btn-ghost btn-sm" style="border-color:#059669;color:#059669;">Copy Message</button>
-      <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
-        <input type="hidden" name="channel" value="whatsapp">
-        <input type="hidden" name="result" value="sent">
-        <button type="submit" class="btn btn-ghost btn-sm" {% if task.whatsapp_sent %}disabled{% endif %}>{% if task.whatsapp_sent %} WhatsApp sent{% else %}Mark WhatsApp sent{% endif %}</button>
+      {% if whatsapp_status %}<span class="badge badge-gray">WhatsApp: {{ whatsapp_status.status }}</span>{% elif task.whatsapp_sent %}<span class="badge badge-gray">WhatsApp previously marked sent</span>{% endif %}
+      {% if whatsapp_available %}
+      <form method="post" action="{{ url_for('collections.send_collection_whatsapp',kind='task',record_id=task.id) }}" style="margin:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="message" value="{{ whatsapp_message }}">
+        <button type="submit" class="btn btn-primary btn-sm" {% if whatsapp_status and whatsapp_status.status != 'failed' %}disabled{% endif %}>{{ 'Retry WhatsApp from Reception' if whatsapp_status and whatsapp_status.status == 'failed' else 'Send WhatsApp from Reception' }}</button>
       </form>
+      {% endif %}
       {% if task.whatsapp_sent and task.next_channel == 'WHATSAPP' %}
       <form method="post" action="{{ url_for('collections.toggle_escalation', task_id=task.id) }}" style="margin:0;">
         <input type="hidden" name="channel" value="whatsapp">
@@ -146,6 +150,15 @@
       <label class="form-label" id="detail-label"></label>
       <select name="detail" id="detail-select" class="form-control" onchange="detailChanged()"></select>
     </div>
+    <div id="reactivate-panel" class="u-69b4607a">
+      <div class="u-f743ba59">Owing <strong id="react-owed">R0.00</strong>. An owing client must pay upfront before reactivating.</div>
+      <div class="form-grid-2">
+        <div class="form-group"><label class="form-label">Premium</label><select name="same_premium" id="react-same" class="form-control"><option value="yes">Same premium (50% of arrears)</option><option value="no">Changed premium (any amount)</option></select></div>
+        <div class="form-group"><label class="form-label">Upfront paid (R) *</label><input type="number" name="reactivation_upfront" id="react-upfront" class="form-control" min="0" step="0.01"></div>
+      </div>
+      {% if session.get('role') == 'admin' %}<label class="u-a391a0bb"><input type="checkbox" name="sales_campaign" id="react-campaign" value="1"> Sales campaign (no 50% rule)</label>{% endif %}
+      <div id="react-required" class="u-92a85abb"></div>
+    </div>
     <div class="form-grid-2" id="callback-group" style="display:none;">
       <div class="form-group"><label class="form-label">Callback date *</label><input type="date" name="callback_date" id="callback-date-input" class="form-control"></div>
       <div class="form-group"><label class="form-label">Callback time *</label><input type="time" name="callback_time" id="callback-time-input" class="form-control"></div>
@@ -157,15 +170,34 @@
       </div>
       <div class="form-grid-2">
         <div class="form-group"><label class="form-label">Client wants to</label>
-          <select name="intention" id="offer-intention" class="form-control"><option value="instalments">Pay upfront, then instalments</option><option value="settle">Settle in full</option></select></div>
-        <div class="form-group"><label class="form-label">Upfront the client can pay now (R)</label>
-          <input type="number" min="0" step="0.01" name="upfront_offered" id="offer-upfront" class="form-control" placeholder="0.00"></div>
+          <select name="intention" id="offer-intention" class="form-control"><option value="instalments">Pay upfront, then instalments</option><option value="settle">Settle in full</option><option value="instalments_only">Instalments only (no upfront)</option></select></div>
+        <div class="form-group" id="offer-upfront-group"><label class="form-label">Upfront paid by the client (R)</label>
+          <input type="number" min="0" step="0.01" name="upfront_offered" id="offer-upfront" class="form-control" placeholder="0.00"><div class="u-4573ea24">Only enter this once the client has actually paid it.</div></div>
       </div>
+      <div class="form-grid-2">
+        <div class="form-group"><label class="form-label">How much can the client afford to pay above the normal instalment (R)</label>
+          <input type="number" min="0" step="0.01" name="monthly_affordable" id="offer-affordable" class="form-control" placeholder="0.00"></div>
+        <div class="form-group"><label class="form-label">Number of instalments (from the remaining balance and the extra amount)</label>
+          <input type="text" id="offer-count" class="form-control" readonly placeholder="0"></div>
+        <div class="form-group"><label class="form-label">DebiCheck on NuPay</label>
+          <button type="button" class="btn btn-sm" id="offer-nupay-btn">Run NuPay check</button>
+          <div id="offer-mandate-line"></div>
+          <label class="form-label u-726e8b31">Last payment date</label>
+          <input type="text" id="offer-last-payment" class="form-control" readonly placeholder="No payment on record"></div>
+      </div>
+      {% set upload_member_id = task.member_id %}
+      {% set upload_url = url_for('collections.upload_documents', task_id=task.id) %}
+      {% include 'debicheck/_document_upload.html' %}
       <label style="display:flex;gap:8px;align-items:center;font-size:.85rem;margin-bottom:8px;"><input type="checkbox" name="upfront_verified" id="offer-verified" value="1"> Upfront payment received and verified</label>
       <label style="display:flex;gap:8px;align-items:center;font-size:.85rem;margin-bottom:8px;"><input type="checkbox" name="returning_member" id="offer-returning" value="1"> Client wants to return as a member</label>
       <div class="form-group" id="offer-bank-group" style="display:none;"><label class="form-label">Bank statement review</label>
         <select name="bank_statement_status" id="offer-bank" class="form-control"><option value="">Not reviewed</option><option value="pending">Sent for review</option><option value="reviewed">Reviewed</option></select></div>
       <div id="offer-figures" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;"></div>
+      <div id="offer-arrangement"></div>
+      <div id="offer-copy" class="u-41d48e79">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="copyOffer('whatsapp', this)">Copy WhatsApp</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="copyOffer('sms', this)">Copy SMS</button>
+      </div>
       <ul id="offer-conditions" style="margin:0 0 8px 18px;font-size:.82rem;"></ul>
       <div id="offer-reasons" style="color:var(--t2);font-size:.78rem;"></div>
       <div style="color:var(--t2);font-size:.78rem;margin-top:8px;">
@@ -174,11 +206,30 @@
       <div style="color:var(--t2);font-size:.74rem;margin-top:6px;">Preview only: the promise records this offer in the call notes. No discount is applied and no balance changes until the agreed conditions are met.</div>
     </div>
     <div class="form-group"><label class="form-label" id="notes-label">Notes</label><textarea name="notes" id="notes-input" class="form-control" rows="3" placeholder="Record what the client said"></textarea></div>
-    <button class="btn btn-primary" type="submit">Save Call Result</button>
+    <button class="btn btn-primary" type="submit" id="save-result-btn">Save Call Result</button>
   </form>
   <script>
   var OUTCOME_FOLLOW_UPS = {{ outcome_follow_ups|tojson }};
+  var OWED = {{ (arrears.total_arrears if arrears else 0)|tojson }};
+  function updateReactivation() {
+    var owing = document.getElementById('outcome-select').value === 'want_to_reactivate'
+      && document.getElementById('detail-select').value.indexOf('Owing') === 0;
+    document.getElementById('reactivate-panel').style.display = owing ? 'block' : 'none';
+    var up = document.getElementById('react-upfront');
+    up.required = owing;
+    if (!owing) return;
+    var camp = document.getElementById('react-campaign');
+    var strict = document.getElementById('react-same').value === 'yes' && !(camp && camp.checked);
+    var need = strict ? Math.round(OWED * 50) / 100 : 0.01;
+    document.getElementById('react-owed').textContent = rand(OWED);
+    document.getElementById('react-required').textContent = 'Minimum upfront: ' + (strict ? rand(need) : 'any amount above R0');
+    up.min = need;
+  }
+  ['react-same', 'react-upfront', 'react-campaign'].forEach(function (id) {
+    var el = document.getElementById(id); if (el) el.addEventListener('change', updateReactivation);
+  });
   function outcomeChanged() {
+    setTimeout(updateReactivation, 0);
     var outcome = document.getElementById('outcome-select').value;
     var followUp = OUTCOME_FOLLOW_UPS[outcome];
     var detailGroup = document.getElementById('detail-group');
@@ -200,6 +251,7 @@
     var showOffer = outcome === 'promised_to_pay';
     document.getElementById('offer-panel').style.display = showOffer ? 'block' : 'none';
     if (showOffer) { renderOffer(INITIAL_OFFER); refreshOffer(); }
+    syncOfferForm();
     var showCallback = outcome === 'asked_callback';
     document.getElementById('callback-group').style.display = showCallback ? 'grid' : 'none';
     document.getElementById('callback-date-input').required = showCallback;
@@ -208,9 +260,21 @@
   }
   var INITIAL_OFFER = {{ initial_offer|tojson }};
   var OFFER_URL = {{ url_for('collections.offer_preview', task_id=task.id)|tojson }};
+  var NUPAY_URL = {{ url_for('collections.nupay_check', task_id=task.id)|tojson }};
   var offerTimer = null;
   function rand(v) { return 'R' + Number(v || 0).toLocaleString('en-ZA', {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+  var lastOffer = null;
+  function copyOffer(channel, btn) {
+    var text = lastOffer && lastOffer.messages && lastOffer.messages[channel];
+    if (!text) return;
+    var done = function () { var old = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = old; }, 1500); };
+    if (navigator.clipboard) { navigator.clipboard.writeText(text).then(done); return; }
+    var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta); done();
+  }
   function renderOffer(o) {
+    lastOffer = o;
+    document.getElementById('offer-copy').style.display = o.messages ? 'flex' : 'none';
     var tone = {eligible: 'badge-success', conditions_outstanding: 'badge-warning', manager_review: 'badge-danger', no_discount: 'badge-gray', no_balance: 'badge-gray'}[o.decision] || 'badge-gray';
     var badge = document.getElementById('offer-decision');
     badge.className = 'badge ' + tone; badge.textContent = o.decision_label;
@@ -224,9 +288,12 @@
     document.getElementById('offer-figures').innerHTML = figures.map(function (f) {
       return '<div><div style="font-size:.66rem;color:var(--t2);text-transform:uppercase;">' + f[0] + '</div><div style="font-weight:800;">' + f[1] + '</div></div>';
     }).join('');
+    document.getElementById("offer-count").value = o.arrangement ? o.arrangement.payments : "";
+    document.getElementById("offer-last-payment").value = o.last_payment_date || "";
     var list = document.getElementById('offer-conditions'); list.innerHTML = '';
     var ownerName = {client: 'Client', receptionist: 'You', manager: 'Manager'};
     o.checklist.forEach(function (c) {
+      if (c.key === "debicheck" && c.action === "Set up DebiCheck") return;
       var li = document.createElement('li');
       li.style.cssText = 'list-style:none;margin:0 0 6px -18px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;';
       var mark = document.createElement('span');
@@ -248,8 +315,53 @@
       list.appendChild(li);
     });
     document.getElementById('offer-reasons').textContent = o.reasons.join(' ');
+    // The arrangement amount, and the mandates that will be loaded for it.
+    var plan = o.arrangement, parts = [];
+    if (plan) {
+      parts.push('<strong>Arrangement:</strong> ' + plan.payments + ' monthly payment(s) of ' + rand(plan.monthly_arrears) +
+        (plan.payments > 1 ? ' (last ' + rand(plan.final_payment) + ')' : '') +
+        ' plus the normal instalment of ' + rand(plan.normal_instalment) + ' = ' + rand(plan.total_monthly) + ' a month.');
+    } else if (o.ptp_balance > 0 && o.intention !== 'settle') {
+      parts.push('<strong>Arrangement:</strong> enter what the client can afford each month to work out the payments.');
+    } else if (o.ptp_balance === 0) {
+      parts.push('<strong>Arrangement:</strong> nothing left to pay after the upfront.');
+    }
+    var states = {active: 'Active mandate found: only the arrangement mandate is loaded.',
+      none: 'No mandate on NuPay: load 2 mandates (normal instalment and arrangement).',
+      inactive: 'A mandate exists but is not active: load 2 mandates (normal instalment and arrangement).',
+      unknown: 'Run the NuPay check to see whether the client already has a mandate.'};
+    document.getElementById('offer-mandate-line').textContent = states[o.mandate_state] || '';
+    if (o.mandates_to_load && o.mandates_to_load.length && o.mandate_state !== 'unknown') {
+      parts.push('<strong>Mandates to load:</strong> ' + o.mandates_to_load.map(function (m) { return m.purpose + ' ' + rand(m.amount); }).join(', ') + '.');
+    }
+    parts.push('The client must send a bank statement for the arrangement.');
+    document.getElementById('offer-arrangement').innerHTML = parts.map(function (p) { return '<div>' + p + '</div>'; }).join('');
+  }
+  function runNupayCheck() {
+    var btn = document.getElementById('offer-nupay-btn');
+    btn.disabled = true; btn.textContent = 'Checking NuPay…';
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    fetch(NUPAY_URL, {method: 'POST', credentials: 'same-origin',
+                      headers: {'X-CSRFToken': meta ? meta.content : ''}})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        document.getElementById('offer-mandate-line').textContent = d.message || '';
+        refreshOffer();
+      })
+      .catch(function () { document.getElementById('offer-mandate-line').textContent = 'The NuPay check could not be run.'; })
+      .then(function () { btn.disabled = false; btn.textContent = 'Run NuPay check'; });
+  }
+  document.getElementById('offer-nupay-btn').addEventListener('click', runNupayCheck);
+
+  document.addEventListener('documents:uploaded', refreshOffer);
+  function syncOfferForm() {
+    var mode = document.getElementById("offer-intention").value;
+    var ptp = document.getElementById("outcome-select").value === "promised_to_pay";
+    document.getElementById("offer-upfront-group").style.display = mode === "instalments" ? "block" : "none";
+    document.getElementById("save-result-btn").textContent = ptp && mode !== "settle" ? "Save call and open DebiCheck" : "Save Call Result";
   }
   function refreshOffer() {
+    syncOfferForm();
     clearTimeout(offerTimer);
     offerTimer = setTimeout(function () {
       var returning = document.getElementById('offer-returning').checked;
@@ -257,6 +369,7 @@
       var params = new URLSearchParams({
         intention: document.getElementById('offer-intention').value,
         upfront_offered: document.getElementById('offer-upfront').value || '0',
+        monthly_affordable: document.getElementById('offer-affordable').value || '0',
         upfront_verified: document.getElementById('offer-verified').checked ? '1' : '',
         returning_member: returning ? '1' : '',
         bank_statement_status: document.getElementById('offer-bank').value
@@ -265,11 +378,12 @@
         .then(function (r) { return r.json(); }).then(renderOffer).catch(function () {});
     }, 250);
   }
-  ['offer-intention', 'offer-upfront', 'offer-verified', 'offer-returning', 'offer-bank'].forEach(function (id) {
+  ['offer-intention', 'offer-upfront', 'offer-affordable', 'offer-verified', 'offer-returning', 'offer-bank'].forEach(function (id) {
     var el = document.getElementById(id);
     el.addEventListener(el.type === 'number' ? 'input' : 'change', refreshOffer);
   });
   function detailChanged() {
+    updateReactivation();
     var other = document.getElementById('detail-select').value === 'Other';
     document.getElementById('notes-input').required = other;
     document.getElementById('notes-label').textContent = other ? 'Notes — describe it *' : 'Notes';
@@ -304,8 +418,4 @@ async function startCollectionPbxCall(phone, taskId) {
   } catch (e) { showUiMessage('The call could not start. Please try again or ask an admin to check the phone connection.', 'error'); }
 }
 </script>
-
-{% set upload_member_id = task.member_id %}
-{% set upload_url = url_for('collections.upload_documents', task_id=task.id) %}
-{% include 'debicheck/_document_upload.html' %}
 {% endblock %}

@@ -326,6 +326,15 @@ def sync_source_members(db, source_members: list[dict[str, Any]], tenant_name: s
             )
         updated += 1
 
+    # Who sold the membership. Kept out of the change detection above so it is
+    # filled in for existing members too, without counting as a roster change.
+    for src in source_members:
+        if src.get("soldby"):
+            db.execute(
+                "UPDATE members SET sold_by=? WHERE itensity_ref=? AND COALESCE(sold_by,'')<>?",
+                (src["soldby"], src["unique_ref"], src["soldby"]),
+            )
+
     return {
         "source_total": len(source_members),
         "inserted": inserted,

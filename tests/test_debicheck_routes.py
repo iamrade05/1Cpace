@@ -1,7 +1,4 @@
-"""NuPay push must not run ahead of Itensity: client_ref1 is derived from the
-member's Itensity reference, so pushing before that reference exists would
-submit a mandate NuPay and Itensity can never reconcile against each other.
-"""
+"""NuPay uses the member ID and requires documents and qualifying analysis."""
 
 from onecpase.database import get_db
 
@@ -35,22 +32,25 @@ def _member_and_mandate(db, *, itensity_ref=None):
             account_number, branch_code, frequency, no_installments, tracking, submit_date,
             id_type, id_number, instalment_rands, instalment_cents, instalment_amount,
             payer_type, status)
-           VALUES (?, 'M1', 'FIT-1', '1234', 'Test Member', '1', '123456', '123456', '3', 12,
-                   '14', '2026-09-20', '0', '9001015009087', 500, 0, 500.0, 'self', 'pending')""",
+           VALUES (?, 'M1', 'FIT-1', '1234', 'T Member', '1', '123456', '123456', '3', 12,
+                   '14', '2099-01-01', '0', '9001015009087', 500, 0, 500.0, 'self', 'pending')""",
         (member_id,),
     ).lastrowid
     db.commit()
     return member_id, mandate_id
 
 
-def test_nupay_push_is_blocked_without_an_itensity_reference(client):
+def test_nupay_push_is_blocked_without_application_evidence(client, monkeypatch):
+    import onecpase.debicheck_routes as routes
+    monkeypatch.setattr(routes, "push_mandate_to_nupay", lambda mandate: (_ for _ in ()).throw(AssertionError("Must not submit")))
     _login(client)
     with client.application.app_context():
         db = get_db()
         _member_id, mandate_id = _member_and_mandate(db)
 
     response = client.post(f"/debicheck/{mandate_id}/push", follow_redirects=True)
-    assert b"hasn" in response.data and b"Itensity" in response.data
+    assert b"NuPay submission blocked" in response.data
+    assert b"Upload a bank statement" in response.data
     with client.application.app_context():
         row = get_db().execute(
             "SELECT status FROM debicheck_mandates WHERE id=?", (mandate_id,)
@@ -58,14 +58,17 @@ def test_nupay_push_is_blocked_without_an_itensity_reference(client):
     assert row["status"] == "pending"  # unchanged - never reached the NuPay driver
 
 
-def test_nupay_manual_review_is_blocked_without_an_itensity_reference(client):
+def test_nupay_manual_review_is_blocked_without_application_evidence(client, monkeypatch):
+    import onecpase.debicheck_routes as routes
+    monkeypatch.setattr(routes, "push_mandate_to_nupay_manual_review", lambda mandate: (_ for _ in ()).throw(AssertionError("Must not submit")))
     _login(client)
     with client.application.app_context():
         db = get_db()
         _member_id, mandate_id = _member_and_mandate(db)
 
     response = client.post(f"/debicheck/{mandate_id}/review-on-nupay", follow_redirects=True)
-    assert b"hasn" in response.data and b"Itensity" in response.data
+    assert b"NuPay submission blocked" in response.data
+    assert b"Upload a bank statement" in response.data
     with client.application.app_context():
         row = get_db().execute(
             "SELECT status FROM debicheck_mandates WHERE id=?", (mandate_id,)
@@ -73,20 +76,33 @@ def test_nupay_manual_review_is_blocked_without_an_itensity_reference(client):
     assert row["status"] == "pending"  # never flipped to 'reviewing'
 
 
-def test_nupay_push_proceeds_once_a_real_itensity_reference_exists(client, monkeypatch):
+def test_nupay_push_uses_member_id_after_evidence_gate_passes(client, monkeypatch):
     _login(client)
     with client.application.app_context():
         db = get_db()
-        _member_id, mandate_id = _member_and_mandate(db, itensity_ref="EHF002160994")
+        member_id, mandate_id = _member_and_mandate(db)
+        aid = db.execute("INSERT INTO membership_applications (member_id) VALUES (?)", (member_id,)).lastrowid
+        db.execute("INSERT INTO compliance_checklists (application_id, id_copy_status, bank_statement_status) VALUES (?, 'not_uploaded', 'analysed')", (aid,))
+        db.execute("INSERT INTO statement_analyses (application_id, verification_qualified) VALUES (?, 1)", (aid,))
+        for kind in ('Bank Statement',):
+            db.execute("INSERT INTO member_documents (member_id, document_type, original_name, stored_name) VALUES (?, ?, 'test.pdf', 'test.pdf')", (member_id, kind))
+        db.execute("UPDATE member_documents SET analysis_json=? WHERE member_id=? AND document_type='Bank Statement'", ('{"estimated_income":10000,"rating":"good","verification_qualified":true,"cashflow":{"months":2,"enough_months":true}}', member_id))
+        db.commit()
 
     import onecpase.debicheck_routes as debicheck_routes
+    submitted = []
+    def accept(mandate):
+        submitted.append(mandate)
+        return True, "Mandate accepted"
     monkeypatch.setattr(
         debicheck_routes, "push_mandate_to_nupay",
-        lambda mandate: (True, "Mandate accepted"),
+        accept,
     )
 
     response = client.post(f"/debicheck/{mandate_id}/push", follow_redirects=True)
     assert b"Mandate sent to NuPay" in response.data
+    assert len(submitted) == 1
+    assert submitted[0]['client_ref1'] == '9001015009087'
     with client.application.app_context():
         row = get_db().execute(
             "SELECT status FROM debicheck_mandates WHERE id=?", (mandate_id,)
@@ -160,3 +176,86 @@ def test_coverage_requires_the_debicheck_permission(client):
         session["permissions"] = []
     response = client.get("/debicheck/coverage", follow_redirects=True)
     assert b"don&#39;t have permission" in response.data or b"don't have permission" in response.data
+
+
+def test_admin_can_override_other_evidence_after_two_month_analysis(client,monkeypatch):
+    import onecpase.debicheck_routes as routes
+    _login(client,'admin')
+    with client.application.app_context():
+        db = get_db()
+        member_id,mandate_id=_member_and_mandate(db)
+        db.execute("INSERT INTO member_documents(member_id,document_type,original_name,stored_name,analysis_json) VALUES(?,'Bank Statement','two.pdf','two.pdf',?)", (member_id,'{"estimated_income":10000,"rating":"good","avg_balance":1000,"max_balance":2000,"returned_debits":0,"cashflow":{"months":2,"enough_months":true}}'))
+        db.commit()
+    calls=[]
+    monkeypatch.setattr(routes,'push_mandate_to_nupay',lambda mandate:(calls.append(mandate) or True,'Accepted'))
+    # Being admin alone does not bypass the requirement.
+    client.post(f'/debicheck/{mandate_id}/push')
+    assert not calls
+    response=client.post(f'/debicheck/{mandate_id}/push',data={'override':'1'},follow_redirects=True)
+    assert len(calls)==1
+    with client.application.app_context():
+        assert get_db().execute("SELECT COUNT(*) FROM audit_logs WHERE action='nupay_admin_override'").fetchone()[0]==1
+
+
+# Two-month coverage is a mandatory submission prerequisite, even with override.
+import pytest
+import json
+
+@pytest.mark.parametrize('path', ['push', 'review-on-nupay'])
+@pytest.mark.parametrize('months', [0, 1, 2])
+def test_two_month_gate_for_all_submission_paths(client, monkeypatch, path, months):
+    _login(client, role='admin')
+    with client.application.app_context():
+        db = get_db()
+        member_id, mandate_id = _member_and_mandate(db)
+        result = {'estimated_income': 10000, 'rating': 'good', 'cashflow': {'months': months, 'enough_months': months >= 2}}
+        db.execute("INSERT INTO member_documents(member_id,document_type,original_name,stored_name,analysis_json) VALUES(?,'Bank Statement','statement.pdf','statement.pdf',?)", (member_id,json.dumps(result)))
+        db.commit()
+        from onecpase.applications import nupay_submission_blockers, authorize_nupay_override, STATEMENT_MONTHS_BLOCKER
+        blockers = nupay_submission_blockers(db,member_id)
+        assert (STATEMENT_MONTHS_BLOCKER in blockers) == (months < 2)
+    if months >= 2:
+        return
+    import onecpase.debicheck_routes as routes
+    def forbidden(*args, **kwargs):
+        pytest.fail('Must not reach NuPay with fewer than two months')
+    monkeypatch.setattr(routes,'push_mandate_to_nupay',forbidden)
+    monkeypatch.setattr(routes,'push_mandate_to_nupay_manual_review',forbidden)
+    response=client.post(f'/debicheck/{mandate_id}/{path}',data={'override':'1'},follow_redirects=True)
+    assert b'NuPay submission blocked' in response.data
+    assert b'At least two statement months' in response.data
+    with client.application.app_context():
+        assert get_db().execute('SELECT status FROM debicheck_mandates WHERE id=?',(mandate_id,)).fetchone()['status']=='pending'
+
+
+def test_checklist_shows_every_requirement_on_both_screens(client):
+    _login(client)
+    with client.application.app_context():
+        member_id,mandate_id=_member_and_mandate(get_db())
+    for url in [f'/debicheck/add?member_id={member_id}', f'/debicheck/{mandate_id}']:
+        response=client.get(url)
+        assert response.status_code==200
+        assert b'ID copy uploaded or verified' not in response.data
+        for label in [b'NuPay submission checklist',b'At least two statement months analysed',b'Qualifying affordability analysis']:
+            assert label in response.data
+    response=client.get(f'/debicheck/requirements/{member_id}')
+    assert response.status_code==200
+    assert not response.json['months_ready']
+    assert not response.json['ready']
+
+
+
+def test_nupay_evidence_requires_only_bank_statement_not_id_or_application(client):
+    import json
+    from onecpase.applications import nupay_submission_blockers, nupay_submission_checklist
+    with client.application.app_context():
+        db = get_db()
+        member_id, _ = _member_and_mandate(db)
+        result = {'estimated_income':10000, 'rating':'good', 'verification_qualified':True,
+                  'cashflow':{'months':2,'enough_months':True}}
+        db.execute("INSERT INTO member_documents(member_id,document_type,original_name,stored_name,analysis_json) VALUES(?,'Bank Statement','bank.pdf','bank.pdf',?)",(member_id,json.dumps(result)))
+        assert nupay_submission_blockers(db,member_id) == []
+        checklist = nupay_submission_checklist(db,member_id)
+        assert len(checklist) == 4
+        assert all(item['complete'] for item in checklist)
+        assert not any('ID' in item['label'] for item in checklist)

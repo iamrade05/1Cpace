@@ -40,45 +40,54 @@ Redis is already running as **valkey** on `127.0.0.1:6379`.
 `deploy_beta.py` ships `onecpase/`, `scripts/`, `run.py`, `gunicorn.conf.py`,
 `requirements.txt` and `seed_platform_admin.py`. It:
 
-1. compiles every Python file locally and refuses to ship a `.env` or database;
+1. compiles every Python file locally, refuses to ship a `.env` or database,
+   and requires the full pytest suite to pass before opening a deployment connection;
 2. backs up the current tree **and** `/var/data/onecpase` into `/opt/onecpase-backups/`;
 3. stages the new tree, then **replaces the `onecpase` package outright** so
    modules deleted upstream don't linger — the old one is kept as
    `onecpase.previous`;
 4. installs `requirements.txt`, reinstalls the unit, restarts, and reports
-   `journalctl` if the service doesn't come back.
+   `journalctl` if the service doesn't come back. An unavailable or degraded
+   public health endpoint returns a failing exit code.
 
 It refuses any target that isn't `/opt/onecpase`.
 
 ## Configuration
 
 `/opt/onecpase/.env` is the one file that exists only on the server — the
-deploy never writes it. Current keys: `SECRET_KEY`, `ENCRYPTION_KEY`,
-`DATABASE_PATH`, `PLATFORM_DATABASE_PATH`, `TENANTS_DIR`, `UPLOAD_FOLDER`,
-`SCHEDULER_ENABLED=0`, `TURNSTILE_ENABLED`, `ACTIVE_PHASE`.
+deploy never writes it. The read-only check on 9 October 2026 found
+`ACTIVE_PHASE=2`, `SCHEDULER_ENABLED=1`, and a healthy public endpoint.
+Database and upload paths remain outside the release tree.
 
 **`ACTIVE_PHASE`** decides what is reachable — see `onecpase/phases.py`. A
 closed phase is hidden from the nav *and* refused by URL.
 `1`=Sales `2`=Collections+PTP `3`=Queries `4`=Fitness `5`=Reports `6`=HR
 `7`=Operations, or `all`. Unset defaults to `1`.
 
-### Things beta is deliberately without
+### Full-release configuration still required
 
 - **`APP_ENV` is unset**, so the app runs in development mode. Setting
   `APP_ENV=production` turns on HSTS, CSP and `SESSION_COOKIE_SECURE`, but it
-  also **fails closed** — it will refuse to boot without `PBX_WEBHOOK_SECRET`
+  also **fails closed** — it will refuse to boot without `PBX_WEBHOOK_SECRET`, `FB_APP_SECRET`
   and a non-`memory://` `RATELIMIT_STORAGE_URL` (valkey is already there:
-  `redis://localhost:6379/1`). Worth doing; it needs those two keys added in
+  `redis://localhost:6379/1`). It needs all three settings added in
   the same edit or beta stops.
-- **NuPay and Itensity credentials are absent.** A beta carrying live NuPay
-  credentials creates **real mandates** on the merchant portal the moment
-  someone clicks through DebiCheck. Leave them out.
+- **NuPay login/TOTP settings are present as of 9 October 2026.** This differs
+  from the earlier beta configuration. Provider submission acceptance must use
+  the intended merchant environment. Itensity's `RADEPULSE_PATH` is unset;
+  both browser drivers are absent at `/opt/radepulse`. Install them and configure
+  their credentials before accepting member/payment pushes on the target.
 - **`pyodbc` is not installed**, and should not be. Beta has no route to the
   Elev8 SQL Server, so `get_elev8_member_count()` returns `None` instantly and
   the member count falls back to local data. With pyodbc installed but no
   route, every dashboard and members-list render would block for its
   8-second connect timeout instead. See `requirements-optional.txt`.
-- **`SCHEDULER_ENABLED=0`**, so the nightly Itensity jobs don't run here.
+- **`SCHEDULER_ENABLED=1`** as of the read-only check. Keep one Gunicorn worker
+  and verify that the target's import jobs can reach their configured sources.
+
+- **`ACTIVE_PHASE=2`** currently opens Sales and Collections. A full release
+  requires `ACTIVE_PHASE=all` after the remaining acceptance checks in
+  `RELEASE_REVIEW.md` are complete.
 
 ## Operating it
 

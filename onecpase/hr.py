@@ -1,20 +1,38 @@
 from datetime import date, timedelta
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, redirect, render_template, request, session, url_for, current_app, g, abort
 from werkzeug.security import generate_password_hash
 from .auth import login_required, permission_required, valid_email_address
 from .database import get_db
 from .permissions import MODULE_PERMISSIONS, ALL_PERMISSIONS
+from .hr_access import can_access_payroll
 
 hr_bp = Blueprint("hr", __name__, url_prefix="/hr")
 
 ROLES = ["admin", "manager", "staff", "trainer", "receptionist"]
-DEPARTMENTS = ["Management", "Training", "Reception", "Finance", "Maintenance", "General"]
+DEPARTMENTS = ["Management", "Sales", "Fitness", "Training", "Reception", "Cleaner", "Group Instructors", "Finance", "Maintenance", "General"]
 LEAVE_TYPES = ["annual", "sick", "family", "unpaid", "study"]
 EMPLOYEE_ROLES = ["Personal Trainer", "Head Trainer", "Receptionist", "Nutritionist", "Maintenance", "Manager", "Other"]
 STAFF_LEAVE_TYPES = [
     "Annual Leave", "Sick Leave", "Family Responsibility", "Study Leave", "Maternity Leave", "Unpaid Leave"
 ]
+
+
+@hr_bp.before_request
+def protect_legacy_hr():
+    """Legacy permission labels grant navigation, never broad HR mutation rights."""
+    from .hr_workforce import actor, is_admin
+    from .auth import session_tenant_ok
+    if not session.get('user_id') or not session_tenant_ok():
+        return None
+    db = get_db()
+    user = actor(db)
+    if not user or user['is_platform_user']:
+        abort(403)
+    sensitive = {'hr.employee_add','hr.employee_edit','hr.employee_detail',
+                 'hr.attendance_log','hr.employee_index','hr.access_attendance'}
+    if request.endpoint in sensitive and not is_admin(db):
+        abort(403)
 
 
 # ── Small helpers ─────────────────────────────────────────────────────────────
@@ -26,10 +44,6 @@ def as_float(value, default: float = 0.0):
         return float(value)
     except (TypeError, ValueError):
         return default
-
-
-def can_access_payroll():
-    return session.get('role') == 'admin' or 'hr_payroll' in session.get('permissions', [])
 
 
 def parse_date_value(value, fallback: date | None = None) -> date:
@@ -207,76 +221,30 @@ def staff_edit(uid: int):
 @hr_bp.route("/leave")
 @login_required
 def leave_index():
-    db = get_db()
-    status_filter = request.args.get("status", "").strip()
-    query = """
-        SELECT l.*, u.full_name, u.department,
-               a.full_name AS approver_name
-        FROM leave_requests l
-        JOIN users u ON l.user_id = u.id
-        LEFT JOIN users a ON l.approved_by = a.id
-        WHERE 1=1
-    """
-    params = []
-    if status_filter:
-        query += " AND l.status = ?"
-        params.append(status_filter)
-    query += " ORDER BY l.created_at DESC"
-    leaves = db.execute(query, params).fetchall()
-    return render_template("hr/leave.html", leaves=leaves, status_filter=status_filter)
+    from .hr_workforce_routes import leave_list
+    return leave_list()
 
 
 @hr_bp.route("/leave/request", methods=["GET", "POST"])
 @login_required
 def leave_request():
-    db = get_db()
-    if request.method == "POST":
-        leave_type = request.form.get("leave_type", "annual")
-        start_date = request.form.get("start_date", "")
-        end_date = request.form.get("end_date", "")
-        days = request.form.get("days", "1")
-        reason = request.form.get("reason", "").strip()
-        try:
-            db.execute(
-                """INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, days, reason)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (session["user_id"], leave_type, start_date, end_date, int(days or 1), reason),
-            )
-            db.commit()
-            flash("Leave request submitted.", "success")
-            return redirect(url_for("hr.leave_index"))
-        except Exception as e:
-            flash(f"Error: {e}", "error")
-    return render_template("hr/leave_request.html", leave_types=LEAVE_TYPES)
+    from .hr_workforce_routes import request_leave
+    return request_leave()
 
 
 @hr_bp.post("/leave/<int:lid>/approve")
 @permission_required("hr_module")
 def leave_approve(lid: int):
-    db = get_db()
-    db.execute(
-        "UPDATE leave_requests SET status='approved', approved_by=?, approved_at=datetime('now') WHERE id=?",
-        (session["user_id"], lid),
-    )
-    db.commit()
-    flash("Leave request approved.", "success")
-    return redirect(url_for("hr.leave_index"))
+    from .hr_workforce_routes import leave_decision
+    return leave_decision(lid=lid, action='approve')
 
 
 @hr_bp.post("/leave/<int:lid>/reject")
 @permission_required("hr_module")
 def leave_reject(lid: int):
-    db = get_db()
-    db.execute(
-        "UPDATE leave_requests SET status='rejected', approved_by=?, approved_at=datetime('now') WHERE id=?",
-        (session["user_id"], lid),
-    )
-    db.commit()
-    flash("Leave request rejected.", "info")
-    return redirect(url_for("hr.leave_index"))
+    from .hr_workforce_routes import leave_decision
+    return leave_decision(lid=lid, action='reject')
 
-
-# ── Employee register ────────────────────────────────────────────────────────
 
 @hr_bp.route("/employees")
 @permission_required("hr_staff")
@@ -436,34 +404,12 @@ def attendance_log():
 @hr_bp.route("/employees/<int:sid>/leave/add", methods=["GET", "POST"])
 @permission_required("hr_leave")
 def staff_leave_add(sid: int):
-    db = get_db()
-    employee = db.execute("SELECT * FROM staff WHERE id = ?", (sid,)).fetchone()
-    if employee is None:
-        flash("Staff member not found.", "warning")
-        return redirect(url_for("hr.employee_index"))
+    from .hr_workforce import is_admin
+    if not is_admin(get_db()):
+        abort(403)
+    flash('Employees must sign and submit their own leave request from My HR.', 'info')
+    return redirect(url_for('workforce.dashboard'))
 
-    if request.method == "POST":
-        db.execute(
-            """
-            INSERT INTO leave_requests (staff_id, leave_type, start_date, end_date, reason, status)
-            VALUES (?, ?, ?, ?, ?, 'pending')
-            """,
-            (
-                sid,
-                str(request.form.get("leave_type", "Annual Leave")).strip() or "Annual Leave",
-                str(request.form.get("start_date", "")).strip() or None,
-                str(request.form.get("end_date", "")).strip() or None,
-                str(request.form.get("reason", "")).strip() or None,
-            ),
-        )
-        db.commit()
-        flash("Leave request logged.", "success")
-        return redirect(url_for("hr.employee_detail", sid=sid))
-
-    return render_template("hr/employee_leave_form.html", s=employee, leave_types=STAFF_LEAVE_TYPES)
-
-
-# ── Payroll ───────────────────────────────────────────────────────────────────
 
 @hr_bp.get("/payroll")
 @permission_required("hr_payroll")
@@ -501,120 +447,54 @@ def payroll_pay(pid: int):
 
 # ── Timesheets ────────────────────────────────────────────────────────────────
 
+@hr_bp.get("/access-attendance")
+@permission_required("hr_timesheets")
+def access_attendance():
+    import json
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from .staff_attendance import build_week
+
+    allowed_slug=current_app.config.get('ACCESS_REPORT_TENANT_SLUG','elev8')
+    tenant_slug=g.get('tenant_slug') or dict(g.get('tenant') or {}).get('slug')
+    if tenant_slug and tenant_slug!=allowed_slug:
+        abort(404)
+    today=datetime.now(timezone(timedelta(hours=2))).date()
+    week=week_bounds(parse_date_value(request.args.get('week'),today))[0]
+    path=Path(current_app.config.get('STAFF_ACCESS_SNAPSHOT') or
+              Path(current_app.config['UPLOAD_FOLDER']).parent/'staff-access'/'current.json')
+    archived=path.parent/(week.isoformat()+'.json')
+    if not current_app.config.get('STAFF_ACCESS_SNAPSHOT') and archived.is_file():
+        path=archived
+    report=None
+    error=None
+    try:
+        snapshot=json.loads(path.read_text(encoding='utf-8'))
+        if snapshot.get('tenant_slug')!=allowed_slug:
+            abort(404)
+        report=build_week(snapshot,week)
+    except (OSError,ValueError,KeyError,TypeError):
+        error='No usable staff access import is available. Refresh the gym access snapshot to view attendance.'
+    return render_template('hr/access_attendance.html',report=report,error=error)
+
+
 @hr_bp.get("/timesheets")
 @permission_required("hr_timesheets")
 def timesheets_index():
-    requested_week = parse_date_value(request.args.get("week"))
-    week_start, week_end = week_bounds(requested_week)
-    week = [week_start + timedelta(days=offset) for offset in range(7)]
-    rows = get_db().execute(
-        "SELECT * FROM timesheets WHERE work_date >= ? AND work_date <= ?",
-        (week_start.isoformat(), week_end.isoformat()),
-    ).fetchall()
-    ts_map = {(row["staff_id"], row["work_date"]): row for row in rows}
-    totals = {}
-    for row in rows:
-        totals[row["staff_id"]] = round(totals.get(row["staff_id"], 0.0) + as_float(row["hours_worked"]), 2)
-
-    return render_template(
-        "hr/timesheets.html",
-        staff=get_db().execute("SELECT * FROM staff ORDER BY first_name, last_name").fetchall(),
-        week=week,
-        week_start=week_start.isoformat(),
-        week_end=week_end.isoformat(),
-        prev_week=(week_start - timedelta(days=7)).isoformat(),
-        next_week=(week_start + timedelta(days=7)).isoformat(),
-        ts_map=ts_map,
-        totals=totals,
-    )
+    return redirect(url_for('workforce.weeks', week=request.args.get('week')))
 
 
 @hr_bp.post("/timesheets/save")
 @permission_required("hr_timesheets")
 def timesheets_save():
-    db = get_db()
-    staff_id = request.form.get("staff_id")
-    if not staff_id:
-        flash("Please select a staff member.", "error")
-        return redirect(url_for("hr.timesheets_index"))
-
-    week_start = parse_date_value(request.form.get("week_start"))
-    captured_by = str(request.form.get("captured_by", "")).strip() or session.get("full_name")
-
-    for offset in range(7):
-        current_day = week_start + timedelta(days=offset)
-        ds = current_day.isoformat()
-        time_in = str(request.form.get(f"ti_{ds}", "")).strip() or None
-        lunch_out = str(request.form.get(f"lo_{ds}", "")).strip() or None
-        lunch_in = str(request.form.get(f"li_{ds}", "")).strip() or None
-        time_out = str(request.form.get(f"to_{ds}", "")).strip() or None
-        notes = str(request.form.get(f"note_{ds}", "")).strip() or None
-        existing = db.execute(
-            "SELECT id FROM timesheets WHERE staff_id = ? AND work_date = ? ORDER BY id DESC LIMIT 1",
-            (staff_id, ds),
-        ).fetchone()
-
-        if not any([time_in, lunch_out, lunch_in, time_out, notes]):
-            if existing:
-                db.execute("DELETE FROM timesheets WHERE id = ?", (existing["id"],))
-            continue
-
-        hours_worked = calculate_hours_worked(time_in, lunch_out, lunch_in, time_out)
-        if existing:
-            db.execute(
-                """
-                UPDATE timesheets
-                SET time_in = ?, lunch_out = ?, lunch_in = ?, time_out = ?,
-                    hours_worked = ?, notes = ?, captured_by = ?
-                WHERE id = ?
-                """,
-                (time_in, lunch_out, lunch_in, time_out, hours_worked, notes, captured_by, existing["id"]),
-            )
-        else:
-            db.execute(
-                """
-                INSERT INTO timesheets (
-                    staff_id, work_date, time_in, lunch_out, lunch_in, time_out,
-                    hours_worked, notes, captured_by
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (staff_id, ds, time_in, lunch_out, lunch_in, time_out, hours_worked, notes, captured_by),
-            )
-
-    db.commit()
-    flash("Timesheet saved.", "success")
-    return redirect(url_for("hr.timesheets_index", week=week_start.isoformat()))
+    abort(409, description='Use the versioned weekly timesheet to save and sign your hours.')
 
 
 @hr_bp.get("/timesheets/<int:sid>")
 @permission_required("hr_timesheets")
 def timesheet_staff_week(sid: int):
-    db = get_db()
-    employee = db.execute("SELECT * FROM staff WHERE id = ?", (sid,)).fetchone()
-    if employee is None:
-        flash("Staff member not found.", "warning")
-        return redirect(url_for("hr.timesheets_index"))
-
-    requested_week = parse_date_value(request.args.get("week"))
-    week_start, _week_end = week_bounds(requested_week)
-    week = [week_start + timedelta(days=offset) for offset in range(7)]
-    rows = db.execute(
-        "SELECT * FROM timesheets WHERE staff_id = ? AND work_date >= ? AND work_date <= ? ORDER BY work_date",
-        (sid, week_start.isoformat(), (week_start + timedelta(days=6)).isoformat()),
-    ).fetchall()
-    ts_map = {row["work_date"]: row for row in rows}
-    total_hrs = round(sum(as_float(row["hours_worked"]) for row in rows), 1)
-    overtime = round(max(total_hrs - 45, 0), 1)
-
-    return render_template(
-        "hr/timesheet_staff.html",
-        s=employee,
-        week=week,
-        week_start=week_start.isoformat(),
-        prev_week=(week_start - timedelta(days=7)).isoformat(),
-        next_week=(week_start + timedelta(days=7)).isoformat(),
-        ts_map=ts_map,
-        total_hrs=total_hrs,
-        overtime=overtime,
-    )
+    from .hr_workforce import is_admin, visible_ids
+    p = get_db().execute('SELECT user_id FROM hr_profiles WHERE staff_id=?', (sid,)).fetchone()
+    if not p or p['user_id'] not in visible_ids(get_db()):
+        abort(403)
+    return redirect(url_for('workforce.weeks', user_id=p['user_id'], week=request.args.get('week')))

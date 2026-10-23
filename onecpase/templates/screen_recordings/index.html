@@ -26,6 +26,12 @@
       <button id="stopRecording" class="btn btn-danger" type="button" disabled>■ Stop &amp; save</button>
       <span id="recordingStatus" aria-live="polite" style="font-size:.85rem;color:#4b5563;">Ready to record.</span>
     </div>
+    <div class="form-group" style="margin-top:20px;max-width:520px;">
+      <label for="recordingFile">Upload a recording from your phone or computer</label>
+      <input id="recordingFile" class="form-control" type="file" accept="video/mp4,video/webm,.mp4,.webm">
+      <p><small>On Android, use your phone’s screen recorder, then choose the saved MP4 here.</small></p>
+      <button id="uploadRecording" class="btn btn-secondary" type="button" disabled>Upload recording</button>
+    </div>
     <p style="margin-top:14px;color:#6b7280;font-size:.78rem;">Maximum upload size: 15 MB. Record only authorised sessions and avoid member passwords or payment details.</p>
   </div>
 </div>
@@ -138,6 +144,43 @@
     stopButton.addEventListener('click', () => {
       if (recorder?.state === 'recording') recorder.stop();
     });
+
+    const recordingFile = document.getElementById('recordingFile');
+    const uploadButton = document.getElementById('uploadRecording');
+    recordingFile.addEventListener('change', () => { uploadButton.disabled = !recordingFile.files.length; });
+    uploadButton.addEventListener('click', async () => {
+      const file = recordingFile.files[0];
+      if (!file) return;
+      if (!file.size || file.size > 15 * 1024 * 1024) {
+        setStatus('Choose a non-empty recording smaller than 15 MB.', true);
+        return;
+      }
+      if (!/\.(mp4|webm)$/i.test(file.name)) {
+        setStatus('Choose an MP4 or WebM recording.', true);
+        return;
+      }
+      const formData = new FormData();
+      formData.append('title', title.value.trim());
+      formData.append('recording', file, file.name);
+      formData.append('csrf_token', csrfToken || '');
+      uploadButton.disabled = true;
+      setStatus('Uploading recording…');
+      try {
+        const response = await fetch('{{ url_for("screen_recordings.upload") }}', {
+          method: 'POST', body: formData, credentials: 'same-origin'
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not upload recording.');
+        window.location.reload();
+      } catch (error) {
+        uploadButton.disabled = false;
+        setStatus(error.message || 'Could not upload recording.', true);
+      }
+    });
+    if (!navigator.mediaDevices?.getDisplayMedia || !window.MediaRecorder) {
+      startButton.disabled = true;
+      setStatus('Use your device’s screen recorder, then upload the saved recording below.');
+    }
   })();
 </script>
 {% endblock %}

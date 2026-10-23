@@ -244,6 +244,144 @@ def required_upfront_amount(arrears, percent) -> Decimal:
     return money(money(arrears) * money(percent) / Decimal("100"))
 
 
+SETTLEMENT_DISCOUNT_PERCENT = Decimal("50")
+
+
+def ptp_settlement_offer(balance, upfront=0):
+    """The arrangement rule for a client who owes ``balance``.
+
+    * Upfront of at least half the balance settles the account: the rest is
+      written off and nothing is left to debit.
+    * Otherwise the upfront is deducted first and half of what remains is
+      discounted. The other half is paid by debit order only.
+    """
+    balance = money(balance)
+    upfront = money(upfront)
+    if balance < 0 or upfront < 0:
+        raise ValueError("balance and upfront cannot be negative")
+    half = money(balance * SETTLEMENT_DISCOUNT_PERCENT / Decimal("100"))
+    if upfront >= half:
+        return {
+            "balance": balance, "upfront": upfront, "settled_by_upfront": True,
+            "discount_amount": money(max(balance - upfront, Decimal("0"))),
+            "debit_order_amount": Decimal("0.00"), "total_payable": upfront,
+            "needs_debit_order": False,
+        }
+    remainder = money(balance - upfront)
+    discount = money(remainder * SETTLEMENT_DISCOUNT_PERCENT / Decimal("100"))
+    debit = money(remainder - discount)
+    return {
+        "balance": balance, "upfront": upfront, "settled_by_upfront": False,
+        "discount_amount": discount, "debit_order_amount": debit,
+        "total_payable": money(upfront + debit), "needs_debit_order": debit > 0,
+    }
+
+
+PTP_RULE_VERSION = "category-v2-2026-10"
+CATEGORY_1_MAX = Decimal("1500.00")
+CATEGORY_2_MAX = Decimal("2499.99")
+# Category 3 (R2 500 and above): any upfront earns this discount on the whole arrears.
+CATEGORY_3_UPFRONT_PERCENT = Decimal("50")
+MIN_MONTHS_FOR_DISCOUNT = 3
+# Discount on the remainder, by category: (with at least 50% upfront, without).
+CATEGORY_DISCOUNTS = {
+    1: (Decimal("50"), Decimal("25")),
+    2: (Decimal("65"), Decimal("35")),
+    3: (Decimal("100"), Decimal("30")),
+}
+
+
+def arrears_category(arrears) -> int:
+    """Category from the original arrears, before any payment is deducted."""
+    arrears = money(arrears)
+    if arrears <= CATEGORY_1_MAX:
+        return 1
+    if arrears <= CATEGORY_2_MAX:
+        return 2
+    return 3
+
+
+def category_offer(arrears, upfront=0, months_owing=0, discount_override=None):
+    """The proposed arrangement for a client who owes ``arrears``.
+
+    The discount applies to what is left after the upfront payment. It is only
+    a proposal: nothing is granted until the required DebiCheck mandates are
+    approved. Under three months owing there is no discount.
+    """
+    arrears = money(arrears)
+    upfront = min(money(upfront), arrears)
+    if arrears < 0 or upfront < 0:
+        raise ValueError("arrears and upfront cannot be negative")
+    category = arrears_category(arrears)
+    remainder = money(arrears - upfront)
+    half_upfront = arrears > 0 and upfront >= money(arrears / 2)
+    discounted = int(months_owing or 0) >= MIN_MONTHS_FOR_DISCOUNT
+    pct = CATEGORY_DISCOUNTS[category][0 if half_upfront else 1] if discounted else Decimal("0")
+    if discount_override is not None:
+        # A discount a manager has already approved replaces the category rate.
+        pct = money(discount_override)
+    discount = money(remainder * pct / Decimal("100"))
+    if category == 3 and discounted and upfront > 0 and discount_override is None:
+        pct = CATEGORY_3_UPFRONT_PERCENT
+        discount = min(money(arrears * pct / Decimal("100")), remainder)
+    return {
+        "rule_version": PTP_RULE_VERSION, "category": category,
+        "arrears": arrears, "upfront": upfront, "half_upfront": half_upfront,
+        "discount_percent": pct, "discount_amount": discount,
+        "ptp_balance": money(remainder - discount),
+        "discount_status": "proposed" if discount > 0 else "none",
+    }
+
+
+def repayment_schedule(balance, payments, first_date):
+    """Equal monthly payments in cents, with a smaller final payment.
+
+    Returns (due_date, amount) pairs whose amounts add up to ``balance``.
+    """
+    from datetime import date as _date
+    import calendar
+
+    balance = money(balance)
+    payments = int(payments or 0)
+    if balance <= 0 or payments <= 0:
+        return []
+    payments = min(payments, int(balance * 100))
+    if isinstance(first_date, str):
+        first_date = _date.fromisoformat(first_date)
+    regular = money((balance / payments).quantize(Decimal("0.01"), rounding=ROUND_CEILING))
+    rows, paid = [], Decimal("0.00")
+    for n in range(payments):
+        month = first_date.month - 1 + n
+        year, month = first_date.year + month // 12, month % 12 + 1
+        day = min(first_date.day, calendar.monthrange(year, month)[1])
+        amount = regular if n < payments - 1 else money(balance - paid)
+        rows.append((_date(year, month, day).isoformat(), amount))
+        paid += amount
+    return rows
+
+
+def ptp_debit_orders_needed(db, member_id, ptp_amount, normal_installment, *, months=3, today=None):
+    """Debit orders a new arrangement needs, as (purpose, amount) pairs.
+
+    A client we are still receiving money from keeps their existing debit
+    order, so only the arrangement amount is added. Otherwise there is no
+    working debit order, so the normal instalment needs one as well.
+    """
+    from datetime import date, timedelta
+
+    since = ((today or date.today()) - timedelta(days=30 * months)).isoformat()
+    paying = db.execute(
+        "SELECT 1 FROM collections WHERE member_id=? AND COALESCE(amount_paid,0)>0 "
+        "AND status IN ('paid','partial') AND collection_date>=? LIMIT 1",
+        (member_id, since),
+    ).fetchone() is not None
+    orders = []
+    if not paying and float(normal_installment or 0) > 0:
+        orders.append(("Normal instalment", float(normal_installment)))
+    orders.append(("Arrangement (PTP)", float(ptp_amount)))
+    return orders, paying
+
+
 def calculate_realistic_recovery_plan(
     arrears,
     normal_installment,
@@ -901,12 +1039,13 @@ def talk_seconds_sql(alias: str = "t") -> str:
     )
 
 
-def reached_sql(min_talk_seconds: int, alias: str = "t") -> str:
-    """SQL condition: the client was genuinely reached.
+def reached_sql(alias: str = "t") -> str:
+    """SQL condition: a completed call with a saved contact outcome."""
+    return f"({alias}.status = 'completed' AND {alias}.successful_contact = 1)"
 
-    A contact outcome alone is not enough - the call must also have run for at
-    least min_talk_seconds of real conversation.
-    """
+
+def verified_sql(min_talk_seconds: int, alias: str = "t") -> str:
+    """A reached client with the configured minimum PBX talk time."""
     return f"({alias}.successful_contact = 1 AND {talk_seconds_sql(alias)} >= {int(min_talk_seconds)})"
 
 
@@ -1527,3 +1666,37 @@ def return_collection_exception(db, exception_id, decided_by, notes):
     if row["ptp_id"]:
         return_discount_request(db, row["ptp_id"], decided_by, notes)
     return row
+
+REACTIVATION_SAME_PREMIUM_PERCENT = 50
+
+
+def reactivation_upfront_required(arrears, same_premium=True, campaign=False):
+    """Minimum upfront payment before an owing client may reactivate.
+
+    Any owing client must pay something. Staying on the same premium needs half
+    the arrears, unless a sales campaign is running.
+    """
+    arrears = round(max(float(arrears or 0), 0.0), 2)
+    if arrears <= 0:
+        return 0.0
+    if same_premium and not campaign:
+        return round(arrears * REACTIVATION_SAME_PREMIUM_PERCENT / 100, 2)
+    return 0.01
+
+
+def visit_call_approach(days_ago):
+    """Call approach from days since the client last visited the gym."""
+    if days_ago is None:
+        return {"band": "unknown", "label": "No visit record",
+                "approach": "Visit history unknown. Ask whether they still use the gym before discussing the balance."}
+    if days_ago <= 14:
+        return {"band": "active", "label": "Still training",
+                "approach": "Client is using the gym. Firm and direct: the debit failed, ask for the arrears or a debit date today."}
+    if days_ago <= 30:
+        return {"band": "recent", "label": "Recently active",
+                "approach": "Friendly reminder. Mention they trained recently and ask what stopped the payment."}
+    if days_ago <= 90:
+        return {"band": "slipping", "label": "Stopped coming",
+                "approach": "Ask why they stopped training. Offer the discount to settle and the option to return or cancel."}
+    return {"band": "inactive", "label": "Not seen for 3+ months",
+            "approach": "Client has left in practice. Lead with the settlement discount, and offer a clean exit or a fresh start."}

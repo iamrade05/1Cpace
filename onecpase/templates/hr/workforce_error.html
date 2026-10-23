@@ -1,0 +1,3 @@
+{% extends 'base.html' %}
+{% block page_title %}HR action needs attention{% endblock %}
+{% block content %}{% include 'hr/_workforce_nav.html' %}<div class="card"><div class="card-body"><h1>Action needs attention</h1><p role="alert">{{ message }}</p><p>Return to the relevant HR screen, refresh the record and correct the details.</p></div></div>{% endblock %}

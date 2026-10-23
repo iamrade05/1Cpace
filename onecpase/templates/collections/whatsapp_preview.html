@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Collections WhatsApp | 1Cpace{% endblock %}
+{% block page_title %}Collections WhatsApp{% endblock %}
+{% block content %}
+<header class="page-header"><div><h1>Send collections WhatsApp</h1><p>From Reception to {{ member.first_name }} {{ member.last_name }} · {{ phone or 'No valid contact number' }}</p></div></header>
+<div class="card" style="max-width:720px;"><div class="card-body">
+{% if previous %}<div class="alert alert-info">Recorded status: {{ previous.status }}. Queued messages have not yet been confirmed as sent or delivered.</div>{% endif %}
+<form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<label for="collection-message">Message</label><textarea id="collection-message" name="message" class="form-control" rows="7" maxlength="4096" required>{{ message }}</textarea>
+<button class="btn btn-primary" type="submit" {% if not phone or (previous and previous.status != 'failed') %}disabled{% endif %}>{{ 'Retry from Reception' if previous and previous.status == 'failed' else 'Send from Reception' }}</button>
+<a class="btn btn-ghost" href="{{ url_for('collections.call_profile',task_id=record_id) if kind=='task' else url_for('collections.call_queue') }}">Back to Collections</a>
+</form></div></div>
+{% endblock %}

@@ -72,6 +72,9 @@ def test_application_active_sync_advances_joined_without_request_session(app):
         lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
         assert current_sales_stage(lead) == "APPLICATION_SUBMITTED"
 
+        # Activation sync cannot manufacture the persisted activation evidence.
+        assert not _sync_sales_stage_for_application(db, aid, "active", actor_id=user_id)
+        db.execute("UPDATE membership_applications SET application_status='active' WHERE id=?", (aid,))
         _sync_sales_stage_for_application(db, aid, "active", actor_id=user_id)
 
         lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
@@ -200,14 +203,11 @@ def test_ready_to_push_requires_qualified_statement_analysis(app):
         assert _derive_status(cl, analysis) == "ready_to_push"
 
 
-# ── Itensity push no longer waits on DebiCheck, ID, or the registration fee ──
-# DebiCheck in particular needs the Itensity client reference the push itself
-# returns, so requiring DebiCheck approval before that push was unreachable.
-# Contract + a qualified bank statement (+ guardian/manager approval where
-# applicable) are now the only gate; DebiCheck/ID/reg-fee are tracked as
-# parallel follow-ups instead - see _outstanding_followups.
+# Activation requires DebiCheck and ID evidence under the current Sales
+# workflow. Contract and registration-fee evidence additionally govern sales
+# credit through the separate compliance-completion gate.
 
-def test_itensity_push_is_ready_with_only_contract_and_statement_done(app):
+def test_itensity_push_requires_debicheck_and_id_evidence(app):
     from onecpase.applications import _is_ready_to_push, _missing_requirements
 
     with app.app_context():
@@ -225,8 +225,8 @@ def test_itensity_push_is_ready_with_only_contract_and_statement_done(app):
         cl = db.execute("SELECT * FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
         analysis = {"verification_qualified": 1}
 
-        assert _is_ready_to_push(cl, analysis)
-        assert _missing_requirements(cl, analysis) == []
+        assert not _is_ready_to_push(cl, analysis)
+        assert _missing_requirements(cl, analysis) == ["DebiCheck approval not confirmed", "ID copy not uploaded"]
 
 
 def test_itensity_push_still_requires_the_contract_and_statement_themselves(app):

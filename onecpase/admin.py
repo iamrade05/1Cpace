@@ -5,6 +5,7 @@ from werkzeug.security import generate_password_hash
 from .auth import login_required, session_tenant_ok, valid_email_address
 from .database import default_sections_config, default_terms_parts_config, get_db
 from .permissions import MODULE_PERMISSIONS, ALL_PERMISSIONS
+from .notifications import validate_supervisor
 from .reports import AGG_FUNCS, FILTER_OPS, REPORT_TABLES
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -15,6 +16,19 @@ _VALID_ROLES = {"admin", "manager", "staff", "trainer", "reception"}
 # path that sets it also sets must_change_password, so it survives only until
 # that person's next sign-in and is never what they actually log in with twice.
 DEFAULT_STAFF_PASSWORD = "Staff@123"
+
+
+def _email_in_use(db, email: str, exclude_id: int | None = None) -> bool:
+    """True when another account already uses this sign-in email.
+
+    The OTP email is what proves the right person is signing in, so one mailbox
+    must never be shared between two staff accounts.
+    """
+    row = db.execute(
+        "SELECT id FROM users WHERE lower(trim(email)) = ? AND id != ? LIMIT 1",
+        (str(email or "").strip().lower(), exclude_id or 0),
+    ).fetchone()
+    return row is not None
 
 # Accounts that a default-password reset must never touch. The owner account
 # has to stay reachable even if a bulk reset is run by mistake.
@@ -633,8 +647,16 @@ def user_add():
             sales_rotation_order = -1
         disqualification_category, skip_remaining = _sales_disqualification(request.form)
 
+        try:
+            supervisor_id = validate_supervisor(get_db(), None, request.form.get("supervisor_id"))
+            supervisor_error = None
+        except ValueError as exc:
+            supervisor_error = str(exc)
+
         # Validate role against known values
-        if role not in _VALID_ROLES:
+        if supervisor_error:
+            flash(supervisor_error, "error")
+        elif role not in _VALID_ROLES:
             flash("Invalid role selected.", "error")
         elif not valid_email_address(email):
             flash("Enter a valid email address. Staff accounts need one for OTP sign-in.", "error")
@@ -646,6 +668,8 @@ def user_add():
             flash("Sales consultants require a rotation position of 1 or higher.", "error")
         elif disqualification_category not in _SALES_SKIP_COUNTS:
             flash("Invalid lead disqualification category.", "error")
+        elif _email_in_use(get_db(), email):
+            flash("That email address already belongs to another account. Each person needs their own, because the sign-in code is sent to it.", "error")
         elif is_sales_consultant and get_db().execute(
             "SELECT id FROM users WHERE is_sales_consultant=1 AND sales_rotation_order=?",
             (sales_rotation_order,),
@@ -660,14 +684,14 @@ def user_add():
                         password_hash, must_change_password, is_sales_consultant,
                         sales_available, sales_rotation_order,
                         sales_disqualification_category, sales_skip_remaining,
-                        is_collections_caller, pbx_extension)
-                       VALUES (?,?,?,?,?,?,?,1,?,?,?,?,?,?,?)""",
+                        is_collections_caller, pbx_extension, supervisor_id)
+                       VALUES (?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?)""",
                     (username, full_name, email, contact, role, dept,
                      generate_password_hash(password), is_sales_consultant,
                      sales_available, sales_rotation_order,
                      disqualification_category if is_sales_consultant else 0,
                      skip_remaining if is_sales_consultant else 0,
-                     is_collections_caller, pbx_extension or None)
+                     is_collections_caller, pbx_extension or None, supervisor_id)
                 )
                 db.commit()
                 flash(f"User '{username}' created. They must change password on first login.", "success")
@@ -676,7 +700,7 @@ def user_add():
                 current_app.logger.exception("Failed to create user '%s'", username)
                 flash("Failed to create user. Username may already exist.", "error")
     return render_template("admin/user_form.html", user=None,
-                           roles=sorted(_VALID_ROLES))
+                           roles=sorted(_VALID_ROLES), supervisors=get_db().execute("SELECT id, full_name FROM users WHERE active=1 AND COALESCE(is_platform_user,0)=0 ORDER BY full_name").fetchall())
 
 
 @admin_bp.route("/users/<int:uid>/edit", methods=["GET", "POST"])
@@ -718,11 +742,19 @@ def user_edit(uid: int):
             user["sales_skip_remaining"] or 0,
         )
 
+        try:
+            supervisor_id = validate_supervisor(db, uid, request.form.get("supervisor_id", user["supervisor_id"]))
+            supervisor_error = None
+        except ValueError as exc:
+            supervisor_error = str(exc)
+
         # Validate and sanitise permissions — only accept known permission strings
         submitted_perms = set(request.form.getlist("permissions"))
         selected_perms  = submitted_perms & ALL_PERMISSIONS  # discard unknowns
 
-        if role not in _VALID_ROLES:
+        if supervisor_error:
+            flash(supervisor_error, "error")
+        elif role not in _VALID_ROLES:
             flash("Invalid role selected.", "error")
         elif not valid_email_address(email):
             flash("Enter a valid email address. Staff accounts need one for OTP sign-in.", "error")
@@ -732,6 +764,8 @@ def user_edit(uid: int):
             flash("Sales consultants require a rotation position of 1 or higher.", "error")
         elif disqualification_category not in _SALES_SKIP_COUNTS:
             flash("Invalid lead disqualification category.", "error")
+        elif _email_in_use(db, email, uid):
+            flash("That email address already belongs to another account. Each person needs their own, because the sign-in code is sent to it.", "error")
         elif is_sales_consultant and db.execute(
             """SELECT id FROM users WHERE is_sales_consultant=1
                AND sales_rotation_order=? AND id != ?""",
@@ -746,26 +780,26 @@ def user_edit(uid: int):
                            department=?, active=?, is_sales_consultant=?, sales_available=?,
                            sales_rotation_order=?, sales_disqualification_category=?,
                            sales_skip_remaining=?, is_collections_caller=?, pbx_extension=?,
-                           password_hash=?, must_change_password=1
+                           password_hash=?, must_change_password=1, supervisor_id=?
                            WHERE id=?""",
                         (full_name, email, contact, role, dept, active,
                          is_sales_consultant, sales_available, sales_rotation_order,
                          disqualification_category if is_sales_consultant else 0,
                          skip_remaining if is_sales_consultant else 0,
                          is_collections_caller, pbx_extension or None,
-                         generate_password_hash(new_pass), uid)
+                         generate_password_hash(new_pass), supervisor_id, uid)
                     )
                 else:
                     db.execute(
                         """UPDATE users SET full_name=?, email=?, contact=?, role=?,
                            department=?, active=?, is_sales_consultant=?, sales_available=?,
                            sales_rotation_order=?, sales_disqualification_category=?,
-                           sales_skip_remaining=?, is_collections_caller=?, pbx_extension=? WHERE id=?""",
+                           sales_skip_remaining=?, is_collections_caller=?, pbx_extension=?, supervisor_id=? WHERE id=?""",
                         (full_name, email, contact, role, dept, active,
                          is_sales_consultant, sales_available, sales_rotation_order,
                          disqualification_category if is_sales_consultant else 0,
                          skip_remaining if is_sales_consultant else 0,
-                         is_collections_caller, pbx_extension or None, uid)
+                         is_collections_caller, pbx_extension or None, supervisor_id, uid)
                     )
                 db.execute("DELETE FROM user_permissions WHERE user_id=?", (uid,))
                 for perm in selected_perms:
@@ -781,7 +815,7 @@ def user_edit(uid: int):
                 flash("Failed to update user. Please try again.", "error")
 
     return render_template("admin/user_form.html", user=user,
-                           roles=sorted(_VALID_ROLES),
+                           roles=sorted(_VALID_ROLES), supervisors=db.execute("SELECT id, full_name FROM users WHERE active=1 AND COALESCE(is_platform_user,0)=0 AND id<>? ORDER BY full_name", (uid,)).fetchall(),
                            all_perms=all_perms, user_perms=user_perms,
                            module_permissions=MODULE_PERMISSIONS)
 

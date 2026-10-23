@@ -5,13 +5,15 @@
 
 {% block content %}
 <header class="page-header"><div><h1>HR & Staff</h1></div></header>
+{% include 'hr/_workforce_nav.html' %}
 <div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
   {% if has_perm('user_management') %}<a href="{{ url_for('hr.staff_add') }}" class="btn btn-primary">+ Add Staff</a>{% endif %}
   <a href="{{ url_for('hr.leave_index') }}" class="btn btn-secondary">Leave Requests</a>
   <a href="{{ url_for('hr.leave_request') }}" class="btn btn-ghost">Request Leave</a>
-  {% if has_perm('hr_staff') %}<a href="{{ url_for('hr.employee_index') }}" class="btn btn-ghost">Employee Register</a>{% endif %}
+  {% if hr_can_manage %}<a href="{{ url_for('workforce.setup') }}" class="btn btn-ghost">Employee setup & balances</a><a href="{{ url_for('hr.employee_index') }}" class="btn btn-ghost">Employee Register</a>{% endif %}
   {% if has_perm('hr_payroll') %}<a href="{{ url_for('hr.payroll_index') }}" class="btn btn-ghost">Payroll</a>{% endif %}
   {% if has_perm('hr_timesheets') %}<a href="{{ url_for('hr.timesheets_index') }}" class="btn btn-ghost">Timesheets</a>{% endif %}
+  {% if hr_can_manage %}<a href="{{ url_for('hr.access_attendance') }}" class="btn btn-secondary">Access Card Attendance</a>{% endif %}
 </div>
 
 <div class="card">

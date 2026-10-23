@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Membership report | 1Cpace{% endblock %}
+{% block page_title %}Membership report{% endblock %}
+{% block content %}
+{% set s = summary %}
+<header class="page-header">
+  <div>
+    <h1>Membership report</h1>
+    <p class="card-note">Every member in one place: who they are, who signed them, when they last trained, what they pay and whether a mandate is in place.</p>
+  </div>
+  <a class="btn btn-secondary" href="{{ url_for('reports.membership_report', status=status, q=search, segment=segment, format='csv') }}">Download CSV</a>
+</header>
+
+{% if visit_error and not s.has_visit_data %}
+<div class="reg-callout" role="status">
+  <strong>Gym visit data is not available right now.</strong> Last visit and "not attending" are blank until the Elev8 server can be reached from this computer. Nothing on this page is estimated.
+</div>
+{% endif %}
+
+<section class="fd-kpi-grid reg-kpis" aria-label="Membership summary">
+  <article class="fd-kpi is-slate"><div class="fd-kpi-label">Members</div><div class="fd-kpi-value">{{ "{:,}".format(s.total) }}</div><div class="fd-kpi-foot"><span>{{ s.by_status['Active'] }} active</span></div></article>
+  <article class="fd-kpi is-gold"><div class="fd-kpi-label">Monthly premium, active</div><div class="fd-kpi-value">R{{ "{:,.0f}".format(s.premium_active) }}</div><div class="fd-kpi-foot"><span>What active members should pay</span></div></article>
+  <article class="fd-kpi is-red"><div class="fd-kpi-label">Owing</div><div class="fd-kpi-value">{{ "{:,}".format(s.owing) }}</div><div class="fd-kpi-foot"><span>R{{ "{:,.0f}".format(s.owing_total) }} outstanding</span></div></article>
+  <article class="fd-kpi is-amber"><div class="fd-kpi-label">Not attending</div><div class="fd-kpi-value">{% if s.has_visit_data %}{{ "{:,}".format(s.not_attending) }}{% else %}&mdash;{% endif %}</div><div class="fd-kpi-foot"><span>Active, no visit in {{ not_attending_days }} days</span></div></article>
+  <article class="fd-kpi is-sage"><div class="fd-kpi-label">Active, no mandate</div><div class="fd-kpi-value">{{ "{:,}".format(s.no_mandate) }}</div><div class="fd-kpi-foot"><span>Pay by debit order, none on file</span></div></article>
+  <article class="fd-kpi is-sand"><div class="fd-kpi-label">To win back</div><div class="fd-kpi-value">{{ "{:,}".format(s.reactivate) }}</div><div class="fd-kpi-foot"><span>Inactive or blocked</span></div></article>
+</section>
+
+<section class="card reg-section">
+  <div class="card-header"><h2>Joins and revenue by month</h2></div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Month</th><th class="text-right">Joined</th><th class="text-right">Still active</th><th class="text-right">Premium they add</th><th class="text-right">Collected that month</th></tr></thead>
+    <tbody>
+    {% for j in joins_by_month %}
+      <tr><td>{{ j.month }}</td><td class="text-right"><strong>{{ j.joined }}</strong></td><td class="text-right">{{ j.still_active }}</td><td class="text-right">R{{ "{:,.2f}".format(j.premium) }}</td><td class="text-right">R{{ "{:,.2f}".format(j.collected) }}</td></tr>
+    {% else %}<tr><td colspan="5" class="text-center text-muted">No joins in the last 12 months.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <p class="card-note reg-note">Premium is the monthly fee of the members who joined that month. Collected is all money received in that month, from every member.</p>
+</section>
+
+<form method="get" class="list-filters reg-filters">
+  <label>Search<input class="form-control" name="q" value="{{ search }}" placeholder="Name, cell number or member ref"></label>
+  <label>Status<select class="form-control" name="status"><option value="">All</option>{% for st in statuses %}<option value="{{ st }}" {% if st == status %}selected{% endif %}>{{ st }}</option>{% endfor %}</select></label>
+  <label>Show<select class="form-control" name="segment">
+    <option value="">Everyone</option>
+    <option value="not_attending" {% if segment == 'not_attending' %}selected{% endif %}>Not attending</option>
+    <option value="owing" {% if segment == 'owing' %}selected{% endif %}>Owing</option>
+    <option value="no_mandate" {% if segment == 'no_mandate' %}selected{% endif %}>Active, no mandate</option>
+    <option value="reactivate" {% if segment == 'reactivate' %}selected{% endif %}>To win back</option>
+  </select></label>
+  <button class="btn btn-primary" type="submit">Update</button>
+  {% if status or search or segment %}<a class="btn btn-ghost" href="{{ url_for('reports.membership_report') }}">Clear</a>{% endif %}
+</form>
+
+<section class="card">
+  <div class="card-header"><h2>{{ "{:,}".format(register|length) }} member{{ '' if register|length == 1 else 's' }}</h2></div>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th>Member</th><th>ID number</th><th class="text-right">Premium</th><th>Signed by</th><th>Last visit</th><th>Package</th><th>Status</th><th>Last paid</th><th class="text-right">Owing</th><th>Mandate</th></tr></thead>
+    <tbody>
+    {% for d in register %}
+      <tr>
+        <td><a href="{{ url_for('members.member_detail', mid=d.id) }}"><strong>{{ d.name or '—' }}</strong></a><div class="card-note">{{ d.member_ref or '' }}</div></td>
+        <td class="mono-cell">{{ d.id_masked or '—' }}</td>
+        <td class="text-right mono-cell">R{{ "{:,.2f}".format(d.monthly_installment or 0) }}</td>
+        <td>{{ d.signed_by or '—' }}</td>
+        <td>{% if d.last_visit %}{{ d.last_visit }}<div class="card-note">{{ d.days_since_visit }} day{{ '' if d.days_since_visit == 1 else 's' }} ago</div>{% else %}—{% endif %}</td>
+        <td>{{ d.package or '—' }}</td>
+        <td><span class="badge {% if d.member_status == 'Active' %}badge-success{% elif d.member_status == 'Unverified' %}badge-info{% elif d.member_status == 'Blocked' %}badge-danger{% else %}badge-gray{% endif %}">{{ d.member_status }}</span></td>
+        <td>{{ d.last_paid or '—' }}</td>
+        <td class="text-right mono-cell{% if d.owing > 0 %} is-owing{% endif %}">{% if d.owing > 0 %}R{{ "{:,.2f}".format(d.owing) }}{% else %}—{% endif %}</td>
+        <td><span class="badge {% if d.mandate_ok %}badge-success{% elif d.mandate_ok is none %}badge-gray{% else %}badge-danger{% endif %}">{{ d.mandate }}</span></td>
+      </tr>
+    {% else %}<tr><td colspan="10" class="text-center text-muted">No members match.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endblock %}

@@ -221,8 +221,8 @@ def test_conversion_links_prospect_application_and_member(app):
         transition_sales_stage(db, prospect["id"], "APPOINTMENT_BOOKED", 1)
         transition_sales_stage(db, prospect["id"], "SHOW", 1, reason="Prospect attended a visit", commit=True)
         response = client.post(
-            f"/leads/{prospect['id']}/convert",
-            data={"package": "Premium 12", "id_number": "9001015009087"},
+            f"/members/add?lead_id={prospect['id']}",
+            data={"first_name": "Converted", "last_name": "Prospect", "id_number": "9001015009087", "contact": "0800000000", "payment_type": "Cash", "package": "Premium 12"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -270,7 +270,8 @@ def test_sales_process_feeds_sales_kpi_report(app):
         response = client.get("/sales-dashboard?from=2000-01-01&to=2099-12-31")
         assert response.status_code == 200
         assert b"Shows" in response.data
-        assert b"Joined" in response.data
+        assert b"Activated" in response.data
+        assert b"Monthly Credited Sales" in response.data
 
 
 def test_leads_pipeline_does_not_show_removed_kpi_blocks(app):
@@ -373,7 +374,7 @@ def test_guided_referral_contact_to_appointment_to_membership_journey(app):
         # the second question: did they actually join?
         page = client.get(f"/leads/{lid}")
         assert b"Client Attendance Result" in page.data
-        assert b"Client Joined" in page.data
+        assert b"Agreed to Join" in page.data
 
         response = client.post(
             f"/leads/{lid}/activities",
@@ -393,8 +394,8 @@ def test_guided_referral_contact_to_appointment_to_membership_journey(app):
         assert row["sales_stage"] == "SHOW"
 
         convert_response = client.post(
-            f"/leads/{lid}/convert",
-            data={"package": "Premium 12", "id_number": "9001015009087"},
+            f"/members/add?lead_id={lid}",
+            data={"first_name": "Converted", "last_name": "Prospect", "id_number": "9001015009087", "contact": "0800000000", "payment_type": "Cash", "package": "Premium 12"},
             follow_redirects=False,
         )
         assert convert_response.status_code == 302
@@ -685,13 +686,13 @@ def test_convert_resumes_from_a_stage_a_manager_already_advanced(client):
         db.commit()
 
     response = client.post(
-        f"/leads/{lead_id}/convert",
-        data={"package": "Premium 12", "id_number": "9001015009087"},
+        f"/members/add?lead_id={lead_id}",
+        data={"first_name": "Converted", "last_name": "Prospect", "id_number": "9001015009087", "contact": "0800000000", "payment_type": "Cash", "package": "Premium 12"},
         follow_redirects=False,
     )
     assert response.status_code == 302
-    # Lands straight on the new application's document-upload step, not the
-    # member edit form - that's the "next step" the consultant needs.
+    # The full member profile is captured first; saving then lands on the new
+    # application's document-upload step.
     assert "/applications/" in response.headers["Location"]
     application_page = client.get(response.headers["Location"])
     assert b"Documents" in application_page.data
@@ -704,6 +705,70 @@ def test_convert_resumes_from_a_stage_a_manager_already_advanced(client):
         assert application is not None
         lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
         assert lead["converted_member_id"] is not None
+
+
+def test_convert_opens_prefilled_add_member_form_before_documents(client):
+    """Start Membership Application captures the full member profile on the
+    Add Member form, prefilled from the prospect, before the document step."""
+    _login_admin(client)
+    _create_prospect(client, phone="082 999 3333", name="Thato Mokoena")
+    with client.application.app_context():
+        db = get_db()
+        lead_id = db.execute(
+            "SELECT id FROM leads WHERE full_name='Thato Mokoena'"
+        ).fetchone()[0]
+        db.execute(
+            """INSERT INTO lead_activities (lead_id, activity_type, outcome, status, occurred_at)
+               VALUES (?, 'visit', 'joined', 'completed', datetime('now'))""",
+            (lead_id,),
+        )
+        db.execute("UPDATE leads SET lead_status='joined', sales_stage='SHOW' WHERE id=?", (lead_id,))
+        db.commit()
+
+    response = client.get(f"/leads/{lead_id}/convert")
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith(f"/members/add?lead_id={lead_id}")
+    page = client.get(response.headers["Location"])
+    assert b"Prospect being converted: Thato Mokoena" in page.data
+    assert b'value="Thato"' in page.data
+    assert b'value="Mokoena"' in page.data
+    assert b"Payment &amp; Banking" in page.data
+
+    response = client.post(
+        f"/members/add?lead_id={lead_id}",
+        data={
+            "first_name": "Thato", "last_name": "Mokoena", "id_number": "0510040213083",
+            "contact": "0829993333", "payment_type": "Cash", "package": "Premium 12",
+            "street_name": "Main Road", "city": "Johannesburg",
+            "emergency_contact_name": "Lerato Mokoena", "source": "Forged source",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert "/applications/" in response.headers["Location"]
+    with client.application.app_context():
+        db = get_db()
+        lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
+        member = db.execute("SELECT * FROM members WHERE id=?", (lead["converted_member_id"],)).fetchone()
+        application = db.execute(
+            "SELECT * FROM membership_applications WHERE lead_id=?", (lead_id,)
+        ).fetchone()
+        checklist = db.execute(
+            "SELECT * FROM compliance_checklists WHERE application_id=?", (application["id"],)
+        ).fetchone()
+        assert lead["lead_status"] == "joined"
+        assert lead["sales_stage"] == "APPLICATION_STARTED"
+        assert application["member_id"] == member["id"]
+        assert member["street_name"] == "Main Road"
+        assert member["emergency_contact_name"] == "Lerato Mokoena"
+        assert member["entry_type"] == "lead"
+        assert member["source"] != "Forged source"
+        assert member["member_status"] == "Unverified"
+        assert checklist["age_category"] == "below_23"
+        assert checklist["guardian_required"] == "required"
+    assert client.get(f"/leads/{lead_id}/convert").headers["Location"].endswith(
+        f"/applications/{application['id']}"
+    )
 
 
 def test_pipeline_renders_as_a_vertical_accordion(client):

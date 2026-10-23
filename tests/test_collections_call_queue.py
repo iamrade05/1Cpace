@@ -9,21 +9,10 @@ from onecpase.collections import (
 from onecpase.database import get_db
 
 
-def _reminder_debit_day(today, reminder_offset=2):
-    """Find a debit day whose cycle puts *today* inside the reminder window.
-
-    The call-queue page always works off date.today(), so a test that loads it
-    has to anchor its seed to the real current date, not a fixed one."""
-    for month_offset in (0, 1):
-        month_index = today.year * 12 + today.month - 1 + month_offset
-        year, zero_month = divmod(month_index, 12)
-        for day in range(1, 29):
-            _, operational = _scheduled_and_operational_cycle(year, zero_month + 1, day)
-            if operational - timedelta(days=reminder_offset) <= today < operational:
-                return day
-    # Weekends and public holidays shift cycles earlier, so some calendar days
-    # have no reminder window at all. That is a gap in the scenario, not a bug.
-    pytest.skip("no debit day puts today inside a reminder window")
+@pytest.fixture(autouse=True)
+def queue_clock(monkeypatch):
+    from onecpase import collections
+    monkeypatch.setattr(collections, "_collections_today", lambda: date(2026, 8, 12))
 
 
 def _seed_callers_and_members(member_count=90, debit_day=15):
@@ -57,30 +46,27 @@ def _seed_callers_and_members(member_count=90, debit_day=15):
         # notes must carry the Itensity `type=` tag the reconciled balance
         # calculation (_build_payment_profile) keys off of — matches real
         # imported data shape, not a bare/untagged manual entry.
-        if number >= 85:
-            db.execute(
-                """INSERT INTO collections
-                   (member_id, outstanding_balance, amount_paid, collection_date, status, notes)
-                   VALUES (?, 350, 0, '2026-07-15', 'failed', 'type=Recurring Fee')""",
-                (cursor.lastrowid,),
-            )
-        else:
-            db.execute(
-                """INSERT INTO collections
-                   (member_id, outstanding_balance, amount_paid, collection_date, status, notes)
-                   VALUES (?, 250, 0, '2026-07-15', 'pending', 'type=Recurring Fee')""",
-                (cursor.lastrowid,),
-            )
+        db.execute(
+            """INSERT INTO collections
+               (member_id, outstanding_balance, amount_paid, collection_date, status, notes)
+               VALUES (?, ?, 0, '2026-07-15', 'failed', 'type=Recurring Fee')""",
+            (cursor.lastrowid, 350 if number >= 85 else 250),
+        )
     db.commit()
 
 
-def test_weekend_cycle_uses_friday_and_two_reminder_days(app):
+def test_weekend_reminders_use_contractual_due_date_and_stay_out_of_calls(app):
     with app.app_context():
         _seed_callers_and_members(2)
-        cycle = _active_debit_cycle(get_db(), date(2026, 8, 12))
+        db = get_db()
+        cycle = _ensure_daily_call_tasks(db, date(2026, 8, 13))
         assert cycle["scheduled"] == date(2026, 8, 15)
         assert cycle["operational"] == date(2026, 8, 14)
         assert cycle["phase"] == "reminder"
+        reminders = db.execute("SELECT due_date, reminder_date FROM collection_reminders").fetchall()
+        assert len(reminders) == 2
+        assert all(tuple(row) == ('2026-08-15', '2026-08-13') for row in reminders)
+        assert db.execute("SELECT COUNT(*) FROM collection_call_tasks").fetchone()[0] == 0
 
 
 def test_only_configured_callers_receive_100_daily_calls(app):
@@ -97,7 +83,7 @@ def test_only_configured_callers_receive_100_daily_calls(app):
             "SELECT COUNT(*) FROM collection_call_tasks WHERE assigned_to=12"
         ).fetchone()[0] == 0
         assert db.execute(
-            "SELECT COUNT(*) FROM collection_call_tasks WHERE queue_type='reminder'"
+            "SELECT COUNT(*) FROM collection_call_tasks WHERE queue_type='failed_debit'"
         ).fetchone()[0] == 200
 
 
@@ -132,9 +118,9 @@ def test_call_result_counts_attempt_and_successful_contact(app, outcome):
 
 
 def test_call_list_opens_client_brief_profile(app):
-    today = date.today()
+    today = date(2026, 8, 12)
     with app.app_context():
-        _seed_callers_and_members(2, debit_day=_reminder_debit_day(today))
+        _seed_callers_and_members(2)
         db = get_db()
         _ensure_daily_call_tasks(db, today)
         task = db.execute(

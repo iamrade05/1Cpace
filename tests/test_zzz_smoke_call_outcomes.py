@@ -224,7 +224,7 @@ def test_toggle_escalation_marks_whatsapp_sent(app):
         assert row["whatsapp_sent"] == 1
 
 
-def test_ptp_discount_with_mandate_auto_approves(app):
+def test_ptp_is_priced_by_the_category_rule_and_awaits_debicheck(app):
     with app.app_context():
         ctx = _seed(app)
         db = get_db()
@@ -259,11 +259,11 @@ def test_ptp_discount_with_mandate_auto_approves(app):
         assert resp.status_code == 302
     with app.app_context():
         row = get_db().execute(
-            "SELECT discount_basis, manager_approval_status FROM ptp_agreements WHERE member_id=? ORDER BY id DESC LIMIT 1",
+            "SELECT rule_version, grant_status FROM ptp_agreements WHERE member_id=? ORDER BY id DESC LIMIT 1",
             (ctx["mid_a"],),
         ).fetchone()
-        assert row["discount_basis"] == "debicheck_ptp"
-        assert row["manager_approval_status"] == "not_required"
+        assert row["rule_version"] == "category-v2-2026-10"
+        assert row["grant_status"] == "awaiting_debicheck"  # a mandate must be linked and approved
 
 
 def test_ptp_discount_without_mandate_forces_manager_approval(app):
@@ -288,7 +288,7 @@ def test_ptp_discount_without_mandate_forces_manager_approval(app):
         assert row["manager_approval_status"] == "pending"
 
 
-def test_ptp_cash_upfront_discount_auto_approves_up_to_50(app):
+def test_cash_upfront_alone_does_not_grant_a_ptp(app):
     with app.app_context():
         ctx = _seed(app)
     with app.test_client() as client:
@@ -303,12 +303,10 @@ def test_ptp_cash_upfront_discount_auto_approves_up_to_50(app):
         assert resp.status_code == 302
     with app.app_context():
         row = get_db().execute(
-            "SELECT discount_basis, manager_approval_status, discount_amount FROM ptp_agreements WHERE member_id=? ORDER BY id DESC LIMIT 1",
+            "SELECT grant_status FROM ptp_agreements WHERE member_id=? ORDER BY id DESC LIMIT 1",
             (ctx["mid_b"],),
         ).fetchone()
-        assert row["discount_basis"] == "cash_upfront"
-        assert row["manager_approval_status"] == "not_required"
-        assert row["discount_amount"] == 250.0
+        assert row["grant_status"] != "granted"
 
 
 def test_ptp_cash_discount_above_ceiling_forces_approval(app):

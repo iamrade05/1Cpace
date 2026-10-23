@@ -7,6 +7,7 @@ We use a 3-line look-ahead window and always take the FIRST large amount (deposi
 not the last (balance), because columns are: Payments | Deposits | Balance.
 """
 import re
+from datetime import date
 from collections import Counter
 from pathlib import Path
 
@@ -88,6 +89,8 @@ _ROW_RE = re.compile(
 )
 _BAL_CRDR_RE = re.compile(r'(\d{1,3}(?:,\d{3})*\.\d{2})\s*(Cr|Dr)\b', re.IGNORECASE)
 _PERIOD_END_RE = re.compile(r'Statement\s+(?:Period|Date)[^\n]*?(\d{1,2})\s+([A-Za-z]+)\s+(20\d{2})')
+_NUMERIC_ROW_RE = re.compile(r'^(\d{1,2})/(\d{1,2})/(20\d{2})\s+')
+_SIGNED_AMOUNT_RE = re.compile(r'(?<![\d.])[-+]?(?:R\s*)?\d+(?:[ ,]\d{3})*\.\d{2}(?!\d)')
 
 
 def _statement_end(text: str):
@@ -106,6 +109,23 @@ def _parse_tx_row(line: str, end):
     Handles rows with or without a year. FNB marks the balance with Cr/Dr and
     may add bank charges after it, so the last Cr/Dr amount is the balance.
     """
+    numeric = _NUMERIC_ROW_RE.match(line)
+    if numeric:
+        day, month, year = map(int, numeric.groups())
+        try:
+            date(year, month, day)
+        except ValueError:
+            return None
+        rest = line[numeric.end():]
+        # Capitec's fee summaries can contain another date or just one
+        # amount. Transaction rows contain an amount and a running balance.
+        if re.search(r'\b\d{1,2}/\d{1,2}/20\d{2}\b', rest):
+            return None
+        amounts = _SIGNED_AMOUNT_RE.findall(rest)
+        if len(amounts) < 2:
+            return None
+        balance = float(amounts[-1].replace('R', '').replace(' ', '').replace(',', ''))
+        return (year, month, day, balance)
     m = _ROW_RE.match(line)
     if not m:
         return None

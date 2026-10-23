@@ -30,6 +30,7 @@ except ImportError as exc:
     ) from exc
 
 from .playwright_lock import PLAYWRIGHT_LOCK
+from .debicheck_rules import account_holder_error, debit_date_error
 
 
 BASE = "https://merchant.nupay.co.za"
@@ -77,6 +78,10 @@ def _required(value: Any) -> str:
 
 def _validate_mandate(mandate: dict[str, Any]) -> list[str]:
     errors: list[str] = []
+    for error in (account_holder_error(mandate.get("account_name"), str(mandate.get("id_type")) == "4"),
+                  debit_date_error(mandate.get("submit_date"))):
+        if error:
+            errors.append(error)
     required_fields = {
         "merchant_id": "Merchant",
         "account_name": "Account name",

@@ -3,10 +3,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR.parent / ".env")
+if os.environ.get("PYTHON_DOTENV_DISABLED") != "1":
+    load_dotenv(BASE_DIR.parent / ".env")
 
 
 class Config:
+    MOBILE_API_ENABLED = os.environ.get('MOBILE_API_ENABLED', '0') == '1'
+    MOBILE_MEMBER_LOGIN_ENABLED = os.environ.get('MOBILE_MEMBER_LOGIN_ENABLED', '0') == '1'
     # Production must provide an explicit strong secret; see create_app().
     SECRET_KEY       = os.environ.get("SECRET_KEY", "change-me")
     ENVIRONMENT      = os.environ.get("APP_ENV", os.environ.get("FLASK_ENV", "development")).lower()
@@ -21,12 +24,13 @@ class Config:
     ENCRYPTION_KEY   = os.environ.get("ENCRYPTION_KEY", "")
     # Phased go-live: only the areas belonging to this phase and the ones
     # before it are reachable — see phases.py. "all" opens everything.
-    ACTIVE_PHASE     = os.environ.get("ACTIVE_PHASE", "1")
+    ACTIVE_PHASE     = os.environ.get("ACTIVE_PHASE", "4")
     # /access-report reads a hardcoded external SQL Server that only mirrors
     # this one tenant's data. Restrict the route to that tenant's slug so
     # other tenants get a 404 instead of an error (or a leak) — see
     # access_report.py.
     ACCESS_REPORT_TENANT_SLUG = os.environ.get("ACCESS_REPORT_TENANT_SLUG", "elev8")
+    HR_EXTRA_HOLIDAYS = tuple(day.strip() for day in os.environ.get('HR_EXTRA_HOLIDAYS','').split(',') if day.strip())
     UPLOAD_FOLDER        = os.environ.get("UPLOAD_FOLDER", str(BASE_DIR.parent / "uploads"))
     # Only needed if Tesseract isn't on PATH — call_list_parser.py falls back
     # to the default Windows install location otherwise.
@@ -90,6 +94,9 @@ class Config:
     # the QR code before this does anything, and it carries real risk to
     # whatever number gets linked (WhatsApp can rate-limit/ban numbers it
     # detects behaving like a bot) that the Cloud API doesn't have.
+    WHATSAPP_WEB_BROWSER = os.environ.get('WHATSAPP_WEB_BROWSER', 'playwright')
+    WHATSAPP_WEB_CHROME_BINARY = os.environ.get('WHATSAPP_WEB_CHROME_BINARY', '')
+    WHATSAPP_WEB_TENANT = os.environ.get('WHATSAPP_WEB_TENANT', 'elev8')
     WHATSAPP_WEB_ENABLED = os.environ.get("WHATSAPP_WEB_ENABLED", "0") == "1"
     # Deliberately NOT under onecpase/ - a deploy replaces that package
     # wholesale, which would silently log the linked phone back out.
@@ -137,7 +144,10 @@ class Config:
 
     # ── Rate limiting ─────────────────────────────────────────────────────────
     RATELIMIT_STORAGE_URL = os.environ.get("RATELIMIT_STORAGE_URL", "memory://")
+    # Flask-Limiter consumes STORAGE_URI; retain URL for existing deployments.
+    RATELIMIT_STORAGE_URI = RATELIMIT_STORAGE_URL
     RATELIMIT_HEADERS_ENABLED = True
+    RATELIMIT_KEY_PREFIX = os.environ.get("RATELIMIT_KEY_PREFIX", "onecpase")
     # Production must use shared limiter storage (for example Redis) rather
     # than process-local memory. Set the number of trusted reverse proxies
     # explicitly so get_remote_address sees the real client IP.
@@ -150,7 +160,9 @@ class Config:
     SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
     SECURITY_HSTS_ENABLED = os.environ.get("SECURITY_HSTS_ENABLED", "1" if ENVIRONMENT == "production" else "0") == "1"
     SECURITY_HSTS_MAX_AGE = int(os.environ.get("SECURITY_HSTS_MAX_AGE", "31536000"))
+    SECURITY_HSTS_INCLUDE_SUBDOMAINS = os.environ.get("SECURITY_HSTS_INCLUDE_SUBDOMAINS", "1") == "1"
     SECURITY_CSP_ENABLED = os.environ.get("SECURITY_CSP_ENABLED", "1" if ENVIRONMENT == "production" else "0") == "1"
+    SECURITY_CSP_REPORT_ONLY = os.environ.get("SECURITY_CSP_REPORT_ONLY", "0") == "1"
 
     # ── Inspect mode (dev tool) ────────────────────────────────────────────────
     # Click any part of a rendered page to see which template/block and which

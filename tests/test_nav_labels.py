@@ -24,3 +24,5 @@ def test_the_collections_menu_group_is_headed_collections(client):
     assert 'data-section="connections"' in html, "the menu group should be on the page for an admin"
     assert "<span>Collections</span>" in html
     assert "<span>Connections</span>" not in html
+    assert "<span>DebitCheck</span>" in html
+    assert "<span>Finance</span>" not in html

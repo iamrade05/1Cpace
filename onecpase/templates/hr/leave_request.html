@@ -7,6 +7,8 @@
 <header class="page-header"><div><h1>Request Leave</h1></div></header>
 <div class="form-card">
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="token" value="{{ token }}">
     <div class="form-row">
       <div class="form-group">
         <label for="leave_type">Leave Type</label>
@@ -19,9 +21,7 @@
         </select>
       </div>
       <div class="form-group">
-        <label for="days">Number of Days</label>
-        <input type="number" id="days" name="days" min="1"
-               value="{{ request.form.get('days', '1') }}">
+        <p>Working days are calculated from your confirmed working pattern, published shifts and applicable holidays. Your manager reviews entitlement and coverage before approval.</p>
       </div>
     </div>
 
@@ -44,6 +44,7 @@
     </div>
 
     <div class="form-actions">
+      <label><input type="checkbox" name="attest" value="yes" required> I confirm these dates and this leave request are correct.</label>
       <button type="submit" class="btn btn-primary">Submit Request</button>
       <a href="{{ url_for('hr.leave_index') }}" class="btn btn-ghost">Cancel</a>
     </div>

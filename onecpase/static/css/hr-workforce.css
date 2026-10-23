@@ -1,0 +1,28 @@
+.hr-workforce { line-height: 1.55; min-width: 0; }
+.hr-workforce h1 { margin: 0 0 16px; line-height: 1.2; }
+.hr-workforce h2 { margin: 0 0 14px; line-height: 1.3; }
+.hr-workforce h3 { margin: 20px 0 10px; }
+.hr-workforce p { margin: 12px 0; }
+.hr-workforce .card { margin: 20px 0; }
+.hr-workforce .card-body { padding: 20px; }
+.hr-workforce label { display: block; margin: 10px 0 6px; font-weight: 500; }
+.hr-workforce label > input:not([type=checkbox]),
+.hr-workforce label > select,
+.hr-workforce label > textarea { display: block; width: 100%; margin-top: 6px; }
+.hr-workforce input, .hr-workforce select, .hr-workforce textarea { max-width: 100%; }
+.hr-workforce textarea { min-height: 90px; }
+.hr-workforce fieldset { padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; margin: 16px 0; }
+.hr-workforce fieldset label { display: inline-flex !important; gap: 7px; align-items: center; }
+.hr-workforce form > button { margin: 12px 6px 8px 0; }
+.hr-workforce details { margin: 14px 0; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; }
+.hr-workforce summary { cursor: pointer; font-weight: 600; }
+.hr-workforce pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; }
+.hr-workforce .table-wrap { overflow-x: auto; max-width: 100%; }
+.hr-workforce .table input[type=time] { min-width: 106px; }
+.hr-workforce .table input[name^=notes_] { min-width: 180px; }
+@media (max-width: 600px) {
+  .hr-workforce .card-body { padding: 16px; }
+  .hr-workforce h1 { font-size: 1.65rem; }
+  .hr-workforce h2 { font-size: 1.3rem; }
+  .hr-workforce .form-row { gap: 8px; }
+}

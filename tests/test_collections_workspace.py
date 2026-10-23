@@ -145,6 +145,11 @@ def test_member_profile_page_renders_and_unknown_member_redirects(app, client):
     page = client.get(f"/collections/member/{mid}")
     assert page.status_code == 200
     assert b"Timeline" in page.data and b"R410.00" in page.data and b"Case opened" in page.data
+    assert b"Payment / Arrears Decision" in page.data
+    assert b"Wk T21" in page.data and b"Nomfundo" not in page.data
+    assert b"Bank statement" in page.data and b"Income verified" in page.data
+    assert b"Show banking" in page.data and b"Collection Details" in page.data
+    assert f'href="/members/{mid}"'.encode() in page.data
     assert client.get("/collections/member/99999").status_code == 302
 
 

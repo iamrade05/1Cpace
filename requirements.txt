@@ -23,3 +23,6 @@ APScheduler>=3.10,<4.0  # in-process nightly jobs — onecpase/scheduler.py
 redis>=5.0  # rate-limit storage. APP_ENV=production refuses to start on
             # memory:// storage (onecpase/__init__.py), so any served
             # instance needs a real backend and this client to reach it.
+pyodbc
+
+selenium>=4.26,<5  # Temporary WhatsApp Web browser fallback

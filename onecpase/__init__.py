@@ -18,6 +18,7 @@ from .hr import hr_bp
 from .reports import reports_bp
 from .fitness import fitness_bp
 from .onboarding import onboarding_bp, add_onboarding_columns
+from .fitness_journey import journey_bp
 from .operations import operations_bp
 from .leads import leads_bp
 from .public_leads import join_bp
@@ -41,6 +42,9 @@ from .tenants import tenants_bp, TENANT_COOKIE_NAME
 from .platform_admin import platform_bp
 from .screen_recordings import screen_recordings_bp
 from .first_month_collections import first_month_bp
+from .notifications import notifications_bp
+from .training import training_bp
+from .mobile_api import mobile_bp
 
 
 def create_app(test_config: dict | None = None) -> Flask:
@@ -88,33 +92,47 @@ def create_app(test_config: dict | None = None) -> Flask:
             raise RuntimeError("RATELIMIT_STORAGE_URL must use shared production storage; memory:// is not permitted in production.")
         if int(app.config.get("RATELIMIT_TRUSTED_PROXY_COUNT", 0) or 0) < 0:
             raise RuntimeError("RATELIMIT_TRUSTED_PROXY_COUNT cannot be negative.")
+        if not app.config.get("OTP_ENABLED", True):
+            raise RuntimeError("OTP_ENABLED cannot be turned off in production: the emailed code is what proves who is signing in.")
         if not app.config.get("PBX_WEBHOOK_SECRET"):
             raise RuntimeError("PBX_WEBHOOK_SECRET must be explicitly configured in production.")
-        if not app.config.get("FB_APP_SECRET") or not str(app.config.get("FB_APP_SECRET")).strip():
-            raise RuntimeError("FB_APP_SECRET must be explicitly configured in production for Meta webhook verification.")
+        meta_enabled = any(app.config.get(key) for key in (
+            "WA_TOKEN", "FB_PAGE_ACCESS_TOKEN", "WA_RECEPTION_PHONE_ID", "WA_SALES_PHONE_ID", "FB_PAGE_ID",
+        ))
+        if meta_enabled and not str(app.config.get("FB_APP_SECRET") or "").strip():
+            raise RuntimeError("FB_APP_SECRET must be explicitly configured in production when a Meta integration is configured.")
 
     # Validate an explicitly configured encryption key early. Do not silently
     # downgrade encryption because a malformed key was supplied.
     if app.config.get("ENCRYPTION_KEY"):
         from .encryption import _get_fernet
-        _get_fernet()
+        with app.app_context():
+            _get_fernet()
 
     # ── Initialize extensions ─────────────────────────────────────────────────
     cache.init_app(app)
     mail.init_app(app)
     csrf.init_app(app)
+    # Keep runtime/test overrides of the deployment's URL wired to the extension.
+    app.config["RATELIMIT_STORAGE_URI"] = app.config["RATELIMIT_STORAGE_URL"]
     limiter.init_app(app)
 
     # ── Register blueprints ───────────────────────────────────────────────────
     app.register_blueprint(auth_bp)
+    app.register_blueprint(notifications_bp)
+    app.register_blueprint(training_bp)
+    app.register_blueprint(mobile_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(health_bp)
     app.register_blueprint(members_bp)
     app.register_blueprint(collections_bp)
     app.register_blueprint(hr_bp)
+    from .hr_workforce_routes import workforce_bp
+    app.register_blueprint(workforce_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(fitness_bp)
     app.register_blueprint(onboarding_bp)
+    app.register_blueprint(journey_bp)
     app.register_blueprint(operations_bp)
     app.register_blueprint(leads_bp)
     app.register_blueprint(join_bp)
@@ -142,6 +160,10 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(first_month_bp)
 
     # ── Database ──────────────────────────────────────────────────────────────
+    # Startup opens connections too. Register cleanup before that context
+    # exits, otherwise those handles can outlive initialization on Windows.
+    app.teardown_appcontext(close_db)
+    app.teardown_appcontext(close_platform_db)
     with app.app_context():
         init_db()
         add_onboarding_columns()
@@ -156,9 +178,6 @@ def create_app(test_config: dict | None = None) -> Flask:
     from .whatsapp_web import init_whatsapp_web
     init_whatsapp_web(app)
 
-    app.teardown_appcontext(close_db)
-    app.teardown_appcontext(close_platform_db)
-
     # ── Tenant resolution ─────────────────────────────────────────────────────
     @app.before_request
     def _resolve_tenant():
@@ -168,7 +187,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         which isn't scoped to any one tenant."""
         g.tenant = None
         g.tenant_slug = None
-        if request.endpoint in (None, "static") or request.blueprint == "platform":
+        if request.endpoint in (None, "static") or request.blueprint in {"platform", "mobile"}:
             return
         if app.config.get("DATABASE_URL"):
             return  # legacy single-tenant Postgres mode — tenant system inert
@@ -191,6 +210,8 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.before_request
     def _enforce_staff_access():
+        if request.blueprint == 'mobile':
+            return None  # Native API uses tenant-bound bearer identity, never browser cookies.
         from .auth import _load_permissions, session_tenant_ok
         from .database import get_db
         from .permissions import staff_access_profile
@@ -211,10 +232,10 @@ def create_app(test_config: dict | None = None) -> Flask:
             return redirect(url_for('members.members_index' if profile == 'fitness' else 'leads.leads_index'))
         if request.blueprint == 'dashboard' and (profile == 'fitness' or request.endpoint != 'dashboard.sales_dashboard'):
             return jsonify(ok=False, error="You don't have permission to access that area."), 403
-        common = {'dashboard', 'members', 'queries', 'turnstile', 'hr', 'contracts', 'screen_recordings'}
-        allowed = common | ({'fitness', 'onboarding'} if profile == 'fitness' else {'leads', 'sales_pipeline', 'applications', 'call_list', 'first_month_collections', 'comms', 'internal_comms', 'pbx', 'debicheck'})
+        common = {'dashboard', 'members', 'queries', 'turnstile', 'hr', 'workforce', 'contracts', 'screen_recordings', 'notifications', 'training'}
+        allowed = common | ({'fitness', 'onboarding', 'fitness_journey'} if profile == 'fitness' else {'leads', 'sales_pipeline', 'applications', 'call_list', 'first_month_collections', 'comms', 'internal_comms', 'pbx', 'debicheck'})
         if profile == 'reception':
-            allowed |= {'collections', 'ptp', 'access_report'}
+            allowed |= {'collections', 'ptp', 'access_report', 'fitness_journey'}
         if request.blueprint not in allowed:
             return jsonify(ok=False, error="You don't have permission to access that area."), 403
 
@@ -273,14 +294,34 @@ def create_app(test_config: dict | None = None) -> Flask:
             return {"internal_unread": {"messages": 0, "announcements": 0, "total": 0}}
 
     @app.context_processor
+    def inject_notification_count():
+        from .auth import session_tenant_ok
+        if not session.get("user_id") or not session_tenant_ok():
+            return {"staff_notification_count": 0}
+        from .database import get_db
+        from .notifications import pending_count
+        return {"staff_notification_count": pending_count(get_db(), session["user_id"])}
+
+    @app.context_processor
     def inject_permissions():
         role = session.get("role", "")
         perms = set(session.get("permissions", []))
 
         def has_perm(perm: str) -> bool:
+            from .hr_access import OPEN_HR_PERMISSIONS, can_access_payroll
+            if perm == 'hr_payroll':
+                return can_access_payroll()
+            if perm in OPEN_HR_PERMISSIONS:
+                return bool(session.get('user_id'))
             return role == "admin" or perm in perms
 
-        return {"has_perm": has_perm, "module_permissions": MODULE_PERMISSIONS}
+        from .hr_workforce import is_admin as hr_is_admin, granted as hr_granted
+        from .database import get_db
+        hr_admin = bool(session.get('user_id')) and request.blueprint != 'platform' and hr_is_admin(get_db())
+        hr_calendar = hr_admin or (bool(session.get('user_id')) and request.blueprint != 'platform' and
+                                  (hr_granted(get_db(),'hr_leave_approve') or hr_granted(get_db(),'hr_timesheet_approve')))
+        return {"has_perm": has_perm, "module_permissions": MODULE_PERMISSIONS,
+                'hr_can_manage': hr_admin, 'hr_can_calendar': hr_calendar}
 
     @app.context_processor
     def inject_followups():
@@ -301,12 +342,16 @@ def create_app(test_config: dict | None = None) -> Flask:
     @app.after_request
     def _security_headers(response):
         if app.config.get("SECURITY_HSTS_ENABLED") and app.config.get("ENVIRONMENT") == "production":
-            response.headers.setdefault("Strict-Transport-Security", f"max-age={app.config.get('SECURITY_HSTS_MAX_AGE', 31536000)}; includeSubDomains")
+            hsts = f"max-age={app.config.get('SECURITY_HSTS_MAX_AGE', 31536000)}"
+            if app.config.get("SECURITY_HSTS_INCLUDE_SUBDOMAINS", True):
+                hsts += "; includeSubDomains"
+            response.headers.setdefault("Strict-Transport-Security", hsts)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         if app.config.get("SECURITY_CSP_ENABLED") and app.config.get("ENVIRONMENT") == "production":
-            response.headers.setdefault("Content-Security-Policy", "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+            header = "Content-Security-Policy-Report-Only" if app.config.get("SECURITY_CSP_REPORT_ONLY") else "Content-Security-Policy"
+            response.headers.setdefault(header, "default-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
         return response
 
     return app

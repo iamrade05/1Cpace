@@ -206,6 +206,68 @@ def _missing_requirements(cl, analysis=None) -> list[str]:
     return missing
 
 
+STATEMENT_MONTHS_BLOCKER = "At least two statement months must be automatically analysed before NuPay submission."
+
+
+def statement_months_analysed(db, member_id):
+    import json
+    document = db.execute(
+        "SELECT analysis_json FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone()
+    try:
+        result = json.loads(document['analysis_json'] or 'null') if document else None
+        cash = result.get('cashflow') if isinstance(result, dict) else None
+        if not isinstance(cash, dict) or result.get('error') or result.get('batch_error'):
+            return False
+        months = cash.get('months')
+        return isinstance(months, (int, float)) and not isinstance(months, bool) and months >= 2 and cash.get('enough_months') is True
+    except (TypeError, ValueError):
+        return False
+
+
+def bank_statement_qualified(db, member_id):
+    import json
+    document = db.execute(
+        "SELECT analysis_json FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone()
+    try:
+        result = json.loads(document['analysis_json'] or 'null') if document else None
+        return bool(isinstance(result, dict) and not result.get('error') and not result.get('batch_error') and result.get('verification_qualified') is True)
+    except (TypeError, ValueError):
+        return False
+
+
+def nupay_submission_checklist(db, member_id):
+    document = db.execute("SELECT id FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1", (member_id,)).fetchone()
+    return [
+        {'label': 'Bank statement uploaded', 'complete': bool(document)},
+        {'label': 'Latest bank statement automatically analysed', 'complete': not bank_statement_activation_blockers(db, member_id)},
+        {'label': 'At least two statement months analysed', 'complete': statement_months_analysed(db, member_id)},
+        {'label': 'Qualifying affordability analysis', 'complete': bank_statement_qualified(db, member_id)},
+    ]
+
+
+def bank_statement_activation_blockers(db, member_id):
+    """Statement evidence required unless an admin explicitly overrides."""
+    import json
+    document = db.execute(
+        "SELECT analysis_json FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone()
+    if not document:
+        return ['Upload a bank statement before activating DebitCheck.']
+    try:
+        result = json.loads(document['analysis_json'] or 'null')
+    except (TypeError, ValueError):
+        result = None
+    if (not isinstance(result, dict) or result.get('error') or result.get('batch_error')
+            or 'estimated_income' not in result or 'rating' not in result):
+        return ['The latest bank statement must complete automatic analysis before activating DebitCheck.']
+    return []
+
+
 def nupay_submission_blockers(db, member_id: int) -> list[str]:
     """Bank-statement evidence gates shared by every NuPay submission entry point."""
     missing = bank_statement_activation_blockers(db, member_id)
@@ -214,7 +276,6 @@ def nupay_submission_blockers(db, member_id: int) -> list[str]:
     if not bank_statement_qualified(db, member_id):
         missing.append("A qualifying bank-statement analysis is required; inform the client or escalate to a manager")
     return missing
-
 
 
 def authorize_nupay_override(db, member_id: int, blockers: list[str]) -> bool:
@@ -229,10 +290,13 @@ def authorize_nupay_override(db, member_id: int, blockers: list[str]) -> bool:
     return True
 
 
-
 def _itensity_hard_blockers(db, aid, member_id):
     """Evidence gates; only an explicit, audited admin override may bypass them."""
     missing = nupay_submission_blockers(db, member_id)
+    identity_checklist = db.execute("SELECT id_copy_status FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
+    identity_document = db.execute("SELECT id FROM member_documents WHERE member_id=? AND document_type='SA ID Copy' LIMIT 1", (member_id,)).fetchone()
+    if not identity_checklist or identity_checklist['id_copy_status'] not in ('uploaded', 'verified') or not identity_document:
+        missing.append("ID copy not uploaded")
     cl = db.execute("SELECT debit_check_status FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
     mandate = db.execute("SELECT status FROM debicheck_mandates WHERE member_id=? ORDER BY id DESC LIMIT 1", (member_id,)).fetchone()
     from .debicheck import normalise_debicheck_status
@@ -470,6 +534,14 @@ def application_detail(aid: int):
             row["analysis"] = _json.loads(d["analysis_json"]) if d["analysis_json"] else None
             documents.append(row)
 
+    intake_context = request.args.get("intake") == "1" and app["application_status"] != "active"
+    nupay_blockers = nupay_submission_blockers(db, app["member_id"]) if app["member_id"] else ["Create a member profile first"]
+    latest_mandate = db.execute("SELECT id, status FROM debicheck_mandates WHERE member_id=? ORDER BY id DESC LIMIT 1", (app["member_id"],)).fetchone()
+    if intake_context and not nupay_blockers and (session.get("role") == "admin" or "new_debicheck" in session.get("permissions", [])):
+        if latest_mandate:
+            return redirect(url_for("debicheck.detail", mandate_id=latest_mandate["id"]))
+        return redirect(url_for("debicheck.add", member_id=app["member_id"]))
+
     return render_template(
         "applications/detail.html",
         app=app,
@@ -485,8 +557,9 @@ def application_detail(aid: int):
         doc_types=["Signed Contract", "Bank Statement", "SA ID Copy"],
         is_manager=session.get("role") in MANAGER_ROLES,
         is_admin=session.get("role") == "admin",
-        nupay_blockers=nupay_submission_blockers(db, app["member_id"]) if app["member_id"] else ["Create a member profile first"],
-        latest_mandate=db.execute("SELECT id, status FROM debicheck_mandates WHERE member_id=? ORDER BY id DESC LIMIT 1", (app["member_id"],)).fetchone(),
+        intake_context=intake_context,
+        nupay_blockers=nupay_blockers,
+        latest_mandate=latest_mandate,
         contract_statuses=CONTRACT_STATUSES,
         debit_statuses=DEBIT_STATUSES,
         bank_statuses=BANK_STATUSES,
@@ -1027,67 +1100,3 @@ def decline_application(aid: int):
     db.commit()
     flash("Application declined.", "info")
     return redirect(url_for("applications.approvals_queue"))
-
-STATEMENT_MONTHS_BLOCKER = "At least two statement months must be automatically analysed before NuPay submission."
-
-
-def statement_months_analysed(db, member_id):
-    import json
-    document = db.execute(
-        "SELECT analysis_json FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
-        (member_id,),
-    ).fetchone()
-    try:
-        result = json.loads(document['analysis_json'] or 'null') if document else None
-        cash = result.get('cashflow') if isinstance(result, dict) else None
-        if not isinstance(cash, dict) or result.get('error') or result.get('batch_error'):
-            return False
-        months = cash.get('months')
-        return isinstance(months, (int, float)) and not isinstance(months, bool) and months >= 2 and cash.get('enough_months') is True
-    except (TypeError, ValueError):
-        return False
-
-
-
-def bank_statement_qualified(db, member_id):
-    import json
-    document = db.execute(
-        "SELECT analysis_json FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
-        (member_id,),
-    ).fetchone()
-    try:
-        result = json.loads(document['analysis_json'] or 'null') if document else None
-        return bool(isinstance(result, dict) and not result.get('error') and not result.get('batch_error') and result.get('verification_qualified') is True)
-    except (TypeError, ValueError):
-        return False
-
-
-
-def nupay_submission_checklist(db, member_id):
-    document = db.execute("SELECT id FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1", (member_id,)).fetchone()
-    return [
-        {'label': 'Bank statement uploaded', 'complete': bool(document)},
-        {'label': 'Latest bank statement automatically analysed', 'complete': not bank_statement_activation_blockers(db, member_id)},
-        {'label': 'At least two statement months analysed', 'complete': statement_months_analysed(db, member_id)},
-        {'label': 'Qualifying affordability analysis', 'complete': bank_statement_qualified(db, member_id)},
-    ]
-
-
-
-def bank_statement_activation_blockers(db, member_id):
-    """Statement evidence required unless an admin explicitly overrides."""
-    import json
-    document = db.execute(
-        "SELECT analysis_json FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
-        (member_id,),
-    ).fetchone()
-    if not document:
-        return ['Upload a bank statement before activating DebitCheck.']
-    try:
-        result = json.loads(document['analysis_json'] or 'null')
-    except (TypeError, ValueError):
-        result = None
-    if (not isinstance(result, dict) or result.get('error') or result.get('batch_error')
-            or 'estimated_income' not in result or 'rating' not in result):
-        return ['The latest bank statement must complete automatic analysis before activating DebitCheck.']
-    return []

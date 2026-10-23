@@ -789,6 +789,39 @@ def ptp_create(mid: int):
         flash("Amount, promise date, payment method, and notes are required.", "error")
         return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
 
+    # The category rules decide the discount, not the form: it depends on the
+    # original arrears, the upfront payment and months owing. It stays a
+    # proposal until the required DebiCheck mandates are approved.
+    from .collections_engine import (
+        category_offer, repayment_schedule, ptp_debit_orders_needed, PTP_RULE_VERSION,
+    )
+    try:
+        upfront_value = max(float((f.get("upfront_amount") or "0").strip() or 0), 0.0)
+        payment_count = max(int((f.get("payment_count") or "0").strip() or 0), 0)
+    except ValueError:
+        flash("Upfront amount and number of payments must be valid numbers.", "error")
+        return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
+    months_owing = int(bulk_member_arrears(db, [mid]).get(mid, {}).get("months_in_arrears", 0) or 0)
+    # A discount a manager approved on the originating query is honoured as is.
+    manager_pct = None
+    if from_query_id and discount_pct > 0:
+        from .queries import approved_discount_for
+        approved = approved_discount_for(db, from_query_id, mid)
+        if approved is not None and discount_pct <= approved + 0.005:
+            manager_pct = discount_pct
+    offer = category_offer(arrears_value, upfront_value, months_owing, manager_pct)
+    discount_pct = float(offer["discount_percent"])
+    first_collection = (f.get("first_collection_date") or promise_date).strip()
+    schedule = []
+    if payment_count and float(offer["ptp_balance"]) > 0:
+        try:
+            schedule = repayment_schedule(offer["ptp_balance"], payment_count, first_collection)
+        except ValueError:
+            flash("First collection date must be a valid date.", "error")
+            return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
+        promise_value = float(schedule[0][1])
+        promise_amount = f"{promise_value:.2f}"
+
     # A collector may approve automatically only within the proposed 50%
     # discount ceiling and minimum recoverable balance. The remaining
     # prerequisites are checked below and failures go to manager approval.
@@ -805,37 +838,23 @@ def ptp_create(mid: int):
     discount_query_approved = (
         query_approved_discount is not None and discount_pct <= query_approved_discount + 0.005
     )
-    if discount_pct > 0 and discount_query_approved:
-        discount_basis = "query_approval"
-    elif discount_pct > 0:
-        # The PTP half of "DebiCheck + PTP" is the record being created here, so
-        # the gate is a confirmed mandate. _has_qualifying_arrangement() also
-        # requires an already-saved pending PTP, which no first arrangement can
-        # satisfy — using it here made this tier unreachable.
-        if _has_submitted_mandate(db, mid) and discount_pct <= AUTO_SETTLEMENT_DISCOUNT_CEILING:
-            discount_basis = "debicheck_ptp"
-        elif is_cash_upfront and discount_pct <= AUTO_SETTLEMENT_DISCOUNT_CEILING:
-            discount_basis = "cash_upfront"
-        else:
-            discount_auto_approved = False
-        discount_amount = round(float(arrears_amount or 0) * discount_pct / 100, 2)
+    if discount_pct > 0:
+        # The category rule is the basis; it only becomes final once the
+        # required DebiCheck mandates are approved (see ptp_grant).
+        discount_basis = "query_approval" if manager_pct is not None else "category_rule"
+        discount_amount = float(offer["discount_amount"])
 
-    # A no-upfront arrangement has no assumed cash contribution: its full
-    # recoverable balance determines the term. A full cash settlement retains
-    # the legacy upfront calculation. Recovery uses the member's normal
-    # monthly instalment as the affordable arrears payment.
-    try:
-        recovery_plan = calculate_realistic_recovery_plan(
-            arrears_value,
-            float(member["monthly_installment"] or 0),
-            discount_pct,
-            UPFRONT_RECOVERY_PERCENT if is_cash_upfront else 0,
-        )
-    except (TypeError, ValueError):
-        recovery_plan = calculate_realistic_recovery_plan(
-            arrears_value, 0, discount_pct,
-            UPFRONT_RECOVERY_PERCENT if is_cash_upfront else 0,
-        )
+    # Figures come from the category offer: the upfront is deducted, the
+    # discount applies to what is left, and the rest is repaid over the
+    # agreed number of payments.
+    recovery_plan = {
+        "discounted_balance": offer["arrears"] - offer["discount_amount"],
+        "upfront_percent": (offer["upfront"] * 100 / offer["arrears"]) if offer["arrears"] else 0,
+        "upfront_amount": offer["upfront"],
+        "remaining_balance": offer["ptp_balance"],
+        "recovery_installment": schedule[0][1] if schedule else 0,
+        "recovery_months": len(schedule),
+    }
 
     # Evidence currently means a bank statement document is on the member
     # record. This does not claim that income was independently verified; where
@@ -856,22 +875,14 @@ def ptp_create(mid: int):
             has_bank_evidence = True
             break
     manager_reasons = []
-    minimum_recoverable = max(
-        MINIMUM_RECOVERABLE_BALANCE, round(arrears_value * 0.50, 2)
-    )
-    if discount_pct > AUTO_SETTLEMENT_DISCOUNT_CEILING and not discount_query_approved:
-        manager_reasons.append(f"discount exceeds {AUTO_SETTLEMENT_DISCOUNT_CEILING}%")
-    if not is_cash_upfront:
-        if float(recovery_plan["discounted_balance"]) < minimum_recoverable:
-            manager_reasons.append("recoverable balance is below the automatic minimum")
-        if not _has_submitted_mandate(db, mid):
-            manager_reasons.append("authenticated DebiCheck is not on file")
-        if not has_bank_evidence:
-            manager_reasons.append("bank statement evidence is not on file")
-        if float(member["monthly_installment"] or 0) < MINIMUM_RECOVERY_INSTALLMENT:
-            manager_reasons.append("monthly instalment is below R150")
-        if int(recovery_plan["recovery_months"]) > NORMAL_RECOVERY_TERM_MONTHS:
-            manager_reasons.append("term exceeds 12 months or needs a hardship exception")
+    # The category rules set the discount, and DebiCheck approval is enforced by
+    # the grant gate, so neither is a reason for a manager to step in.
+    if not has_bank_evidence:
+        manager_reasons.append("bank statement evidence is not on file")
+    if float(member["monthly_installment"] or 0) < MINIMUM_RECOVERY_INSTALLMENT:
+        manager_reasons.append("monthly instalment is below R150")
+    if int(recovery_plan["recovery_months"]) > NORMAL_RECOVERY_TERM_MONTHS:
+        manager_reasons.append("term exceeds 12 months or needs a hardship exception")
     if db.execute(
         "SELECT 1 FROM ptp_agreements WHERE member_id=? AND ptp_status='broken' LIMIT 1",
         (mid,),
@@ -909,6 +920,18 @@ def ptp_create(mid: int):
           float(recovery_plan["recovery_installment"]),
           int(recovery_plan["recovery_months"])))
     ptp_id = cursor.lastrowid
+    # Record the agreement against the rule that priced it, then list the
+    # DebiCheck mandates that must be approved before it can be granted.
+    from . import ptp_grant
+    db.execute(
+        """UPDATE ptp_agreements SET rule_version=?, arrears_category=?, months_owing=?,
+               payment_count=?, first_collection_date=? WHERE id=?""",
+        (PTP_RULE_VERSION, offer["category"], months_owing, len(schedule),
+         first_collection if schedule else None, ptp_id))
+    orders, paying = ptp_debit_orders_needed(
+        db, mid, promise_value, float(member["monthly_installment"] or 0))
+    ptp_grant.record_required(db, ptp_id, ptp_grant.required_mandates(
+        db, mid, offer["ptp_balance"], member["monthly_installment"], paying))
     supersede_open_ptps(db, mid, ptp_id)
     if from_query_id:
         from .queries import link_ptp
@@ -986,13 +1009,10 @@ def ptp_create(mid: int):
     access_granted = False
     if access_unblock == "yes":
         decision = policy
-        if decision.get("access") == "ALLOWED" and mgr_status in {"not_required", "approved"}:
-            db.execute(
-                "UPDATE members SET gym_access_status='temp_unblocked', access_blocked_until=?, access_block_reason=NULL WHERE id=?",
-                (unblock_until, mid),
-            )
-            access_granted = True
-        elif policy.get("status") != "THREE_PLUS_MANAGER_EXCEPTION":
+        # A PTP only grants access once it is granted, which needs its DebiCheck
+        # mandates approved (ptp_grant.evaluate_grant). Until then access stays
+        # as it was.
+        if policy.get("status") != "THREE_PLUS_MANAGER_EXCEPTION":
             # A live exception keeps the access the manager already approved;
             # only the new request waits for its own decision.
             db.execute(
@@ -1037,9 +1057,18 @@ def ptp_create(mid: int):
     # client (the receptionist edits it; nothing is typed from scratch). Skipped
     # when a usable mandate exists, or this user cannot create one.
     can_create_mandate = session.get("role") == "admin" or "new_debicheck" in (session.get("permissions") or [])
-    if can_create_mandate and not _has_usable_mandate(db, mid):
+    flash(
+        f"Category {offer['category']}: discount R{float(offer['discount_amount']):,.2f} proposed, "
+        f"PTP balance R{float(offer['ptp_balance']):,.2f}. The PTP is not granted until its "
+        "DebiCheck mandate is approved.", "info")
+    open_links = db.execute(
+        "SELECT purpose, amount FROM ptp_mandate_links WHERE ptp_id=? AND mandate_id IS NULL ORDER BY id",
+        (ptp_id,)).fetchall()
+    if can_create_mandate and open_links:
         flash("Now confirm the DebiCheck details below. They are filled in from the client's record.", "info")
-        return redirect(url_for("debicheck.add", member_id=mid, from_ptp=ptp_id))
+        return redirect(url_for(
+            "debicheck.add", member_id=mid, from_ptp=ptp_id,
+            orders="|".join(f"{r['purpose']}:{float(r['amount']):.2f}" for r in open_links)))
     return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
 
 
@@ -1136,6 +1165,95 @@ def ptp_upload_receipt(mid: int):
     return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
 
 
+def _apply_payment_to_ledger(db, mid: int, amount: float) -> None:
+    """Apply money to the oldest outstanding ledger rows first, which is what
+    updates the client's payment profile."""
+    remaining = amount
+    rows = db.execute(
+        """SELECT id, outstanding_balance, amount_paid FROM collections
+           WHERE member_id=? AND COALESCE(outstanding_balance,0)>COALESCE(amount_paid,0)
+           ORDER BY collection_date ASC, id ASC""", (mid,)
+    ).fetchall()
+    for row in rows:
+        if remaining <= 0:
+            break
+        open_amount = max(float(row["outstanding_balance"] or 0) - float(row["amount_paid"] or 0), 0)
+        applied = min(open_amount, remaining)
+        new_paid = float(row["amount_paid"] or 0) + applied
+        new_status = "paid" if new_paid >= float(row["outstanding_balance"] or 0) else "partial"
+        db.execute("UPDATE collections SET amount_paid=?, status=? WHERE id=?", (new_paid, new_status, row["id"]))
+        remaining -= applied
+
+
+# ── Record the upfront payment (reception) ─────────────────────────────────
+
+@ptp_bp.route("/members/<int:mid>/ptp/<int:ptp_id>/upfront", methods=["POST"])
+@permission_required("all_collections")
+def ptp_record_upfront(mid: int, ptp_id: int):
+    """Reception states how much the client has paid towards the agreed upfront.
+
+    It is entered only once the client has paid. The amount goes onto the
+    payment profile, and when the paid total covers the agreed upfront the PTP
+    is rechecked. It still needs its DebiCheck mandates approved.
+    """
+    from . import ptp_grant
+
+    db = get_db()
+    back = redirect(url_for("collections.member_profile", mid=mid) + "#ptp-arrangement")
+    ptp = db.execute(
+        "SELECT * FROM ptp_agreements WHERE id=? AND member_id=?", (ptp_id, mid)).fetchone()
+    if ptp is None:
+        abort(404)
+    if ptp["grant_status"] not in (
+            ptp_grant.AWAITING_PREREQUISITES, ptp_grant.AWAITING_DEBICHECK):
+        flash("This arrangement is not waiting for an upfront payment.", "warning")
+        return back
+    try:
+        amount = round(float((request.form.get("amount_paid") or "0").strip() or 0), 2)
+    except ValueError:
+        amount = 0
+    method = (request.form.get("payment_method") or "").strip().lower()
+    reference = (request.form.get("reference") or "").strip()
+    if amount <= 0 or not method:
+        flash("Enter how much the client paid and how.", "error")
+        return back
+    already = float(db.execute(
+        "SELECT COALESCE(SUM(amount_paid),0) AS t FROM ptp_receipts "
+        "WHERE ptp_id=? AND verification_status='verified'", (ptp_id,)).fetchone()["t"])
+    agreed = float(ptp["upfront_amount"] or 0)
+    if agreed <= 0:
+        flash("This arrangement has no upfront payment.", "warning")
+        return back
+    if amount > round(agreed - already, 2) + 0.005:
+        flash(f"Only R{max(agreed - already, 0):,.2f} of the agreed upfront is still due.", "error")
+        return back
+
+    today = date.today().isoformat()
+    user = session.get("user_id")
+    db.execute(
+        """INSERT INTO ptp_receipts
+               (ptp_id, member_id, original_name, stored_name, amount_paid, payment_date,
+                payment_method, reference, uploaded_by, verification_status, verified_by, verified_at)
+           VALUES (?,?,?,?,?,?,?,?,?,'verified',?,datetime('now','localtime'))""",
+        (ptp_id, mid, "Recorded by reception", "", amount, today, method, reference, user, user))
+    _apply_payment_to_ledger(db, mid, amount)
+    covered = round(already + amount, 2) + 0.005 >= agreed
+    if covered:
+        db.execute("UPDATE ptp_agreements SET upfront_verified=1 WHERE id=?", (ptp_id,))
+    status = ptp_grant.evaluate_grant(db, ptp_id)
+    refresh_member_cases(db, mid, changed_by=user, source="payment", reason="Upfront payment recorded")
+    reconcile_open_cases(db, [mid], changed_by=user)
+    member_activity(
+        db, mid,
+        f"Upfront payment of R{amount:,.2f} via {method} recorded for PTP #{ptp_id} "
+        f"(R{already + amount:,.2f} of R{agreed:,.2f}). PTP status: {status}.")
+    db.commit()
+    flash("Upfront payment recorded and the payment profile updated."
+          + ("" if status == ptp_grant.GRANTED else " The PTP is not granted until its DebiCheck mandate is approved."),
+          "success")
+    return back
+
+
 # ── Verify Receipt (admin) ─────────────────────────────────────────────────
 
 @ptp_bp.route("/members/<int:mid>/ptp/receipt/<int:rid>/verify", methods=["POST"])
@@ -1163,25 +1281,28 @@ def ptp_verify_receipt(mid: int, rid: int):
     )
 
     if decision == "verified":
-        amount = float(receipt["amount_paid"] or 0)
-        remaining = amount
-        # Apply verified money to oldest outstanding ledger rows first.
-        rows = db.execute(
-            """SELECT id, outstanding_balance, amount_paid FROM collections
-               WHERE member_id=? AND COALESCE(outstanding_balance,0)>COALESCE(amount_paid,0)
-               ORDER BY collection_date ASC, id ASC""", (mid,)
-        ).fetchall()
-        for row in rows:
-            if remaining <= 0:
-                break
-            open_amount = max(float(row["outstanding_balance"] or 0) - float(row["amount_paid"] or 0), 0)
-            applied = min(open_amount, remaining)
-            new_paid = float(row["amount_paid"] or 0) + applied
-            new_status = "paid" if new_paid >= float(row["outstanding_balance"] or 0) else "partial"
-            db.execute("UPDATE collections SET amount_paid=?, status=? WHERE id=?", (new_paid, new_status, row["id"]))
-            remaining -= applied
+        _apply_payment_to_ledger(db, mid, float(receipt["amount_paid"] or 0))
 
-        if receipt["ptp_id"]:
+        pre_grant = receipt["ptp_id"] and db.execute(
+            """SELECT upfront_amount, grant_status FROM ptp_agreements
+               WHERE id=? AND member_id=? AND grant_status IN
+               ('awaiting_prerequisites','awaiting_debicheck','declined')""",
+            (receipt["ptp_id"], mid)).fetchone()
+        if pre_grant:
+            # Before the PTP is granted a verified receipt is the client's
+            # upfront payment, not a repayment of the promise. It counts once
+            # the verified receipts cover the agreed upfront; the grant is then
+            # rechecked, and still needs the DebiCheck approvals.
+            from . import ptp_grant
+            verified_upfront = db.execute(
+                "SELECT COALESCE(SUM(amount_paid),0) AS total FROM ptp_receipts "
+                "WHERE ptp_id=? AND verification_status='verified'",
+                (receipt["ptp_id"],)).fetchone()["total"]
+            if float(verified_upfront) + 0.005 >= float(pre_grant["upfront_amount"] or 0):
+                db.execute("UPDATE ptp_agreements SET upfront_verified=1 WHERE id=?",
+                           (receipt["ptp_id"],))
+                ptp_grant.evaluate_grant(db, receipt["ptp_id"])
+        elif receipt["ptp_id"]:
             ptp = db.execute("SELECT promise_amount FROM ptp_agreements WHERE id=? AND member_id=?", (receipt["ptp_id"], mid)).fetchone()
             paid_for_ptp = db.execute(
                 "SELECT COALESCE(SUM(amount_paid),0) AS total FROM ptp_receipts WHERE ptp_id=? AND verification_status='verified'",

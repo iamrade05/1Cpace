@@ -607,11 +607,11 @@
             <span class="pbadge" style="background:{{ sc }}22;color:{{ sc }};">{{ status_label(qry.status) }}</span>
           </div>
         </div>
-        {% if qry.assigned_to_name %}
+        {% if qry.assigned_to_name or qry.department %}
         <div style="font-size:.75rem;margin-bottom:6px;">
           <span style="color:#9ca3af;font-weight:700;">ASSIGNED TO</span><br>
-          <span style="font-weight:700;color:#172033;">{{ qry.assigned_to_name }}</span>
-          {% if qry.department %}<span style="color:#9ca3af;"> &bull; {{ qry.department }}</span>{% endif %}
+          <span style="font-weight:700;color:#172033;">{{ qry.assigned_to_name or qry.department }}</span>
+          {% if qry.department and qry.assigned_to_name %}<span style="color:#9ca3af;"> &bull; {{ qry.department }}</span>{% endif %}
         </div>
         {% endif %}
         {% if qry.follow_up_date %}

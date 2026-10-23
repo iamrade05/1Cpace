@@ -31,11 +31,21 @@
     </div>
     <button type="submit" class="btn-login">Sign In</button>
   </form>
+  <div class="switch-tenant">
+    <a href="{{ url_for('auth.forgot_password') }}">Forgot password?</a>
+  </div>
 
   <div class="otp-note">
     <span class="icon"></span>
     <span>A one-time code will be sent to your email address after sign-in to verify your identity.</span>
   </div>
+
+  {% if tenant and tenant.slug == 'elev8' %}
+  <div class="switch-tenant">
+    <a class="btn btn-secondary" href="{{ url_for('static', filename='downloads/1Cpace-Android-1.0.0.apk') }}" download>Download Elev8 Android app</a>
+    <p><small>Version 1.0.0 · Android 7+ · 64-bit ARM · 25 MB</small></p>
+  </div>
+  {% endif %}
 
   {% if tenant and tenant.logo_filename %}
   <p class="powered-by">Powered by 1Cpace</p>

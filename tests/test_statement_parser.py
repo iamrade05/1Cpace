@@ -1,10 +1,45 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+import pytest
 
 from pdfminer.pdfdocument import PDFPasswordIncorrect
 
 from onecpase.database import get_db
 from onecpase.statement_parser import _is_password_error, analyse_pdf
+
+
+@pytest.mark.parametrize('line,expected', [
+    ('01/07/2026 Bank fee -1.00 1 234.56', (2026, 7, 1, 1234.56)),
+    ('02/08/2026 Purchase -100.00 0.00', (2026, 8, 2, 0.0)),
+    ('03/09/2026 Debit -100.00 -25.50', (2026, 9, 3, -25.5)),
+    ('31/02/2026 Purchase -100.00 200.00', None),
+    ('24/07/2026 Fee -R100.00 25/08/2026 Fee -R20.00', None),
+    ('31/08/2026 Monthly fee -R20.00', None),
+])
+def test_capitec_numeric_transaction_rows(line, expected):
+    from onecpase.statement_parser import _parse_tx_row
+    assert _parse_tx_row(line, None) == expected
+
+
+def test_capitec_statement_unlocks_two_month_coverage(tmp_path):
+    text = '''Capitec Bank
+From Date: 01/07/2026 Opening Balance: R1 000.00
+To Date: 30/09/2026 Closing Balance: R200.00
+01/07/2026 Bank fee -1.00 999.00
+25/07/2026 Salary 7 500.00 8 499.00
+01/08/2026 Purchase -500.00 7 999.00
+25/08/2026 Salary 7 500.00 15 499.00
+01/09/2026 Purchase -500.00 14 999.00
+25/09/2026 Salary 7 500.00 22 499.00
+'''
+    pdf_path = tmp_path / 'capitec.pdf'
+    pdf_path.write_bytes(b'%PDF-1.4 fake')
+    with patch('onecpase.statement_parser.pdfplumber.open', return_value=_fake_pdf(text)):
+        result = analyse_pdf(str(pdf_path), monthly_installment=500)
+    assert result['error'] is None
+    assert result['cashflow']['months'] == 3
+    assert result['cashflow']['enough_months'] is True
+    assert result['verification_qualified'] is True
 
 
 def _login(client):

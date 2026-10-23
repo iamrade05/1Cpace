@@ -13,6 +13,7 @@
   <div class="card-header"><h2>Link to an existing lead or member</h2></div>
   <div class="card-body">
     <form method="POST">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="form-group">
         <label class="form-label">Lead</label>
         <select name="lead_id" class="form-control">

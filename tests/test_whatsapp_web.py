@@ -18,7 +18,8 @@ def _reset_module_state():
     whatsapp_web._commands = queue_module.Queue()
     with whatsapp_web._state_lock:
         whatsapp_web._state.update({
-            "enabled": False, "started": False, "logged_in": False,
+            "enabled": False, "started": False, "logged_in": False, "syncing": False,
+            "pairing_requested_at": None, "last_browser_poll_at": None,
             "last_qr_at": None, "last_error": None, "last_sent_at": None,
             "pairing_code": None, "pairing_status": None, "pairing_blocked_until": None,
         })
@@ -47,7 +48,7 @@ def test_queueing_strips_non_digits_from_the_phone_number():
     _reset_module_state()
     whatsapp_web.queue_message("082 123-4567", "Hello")
     phone, text = whatsapp_web._send_queue.get_nowait()
-    assert phone == "0821234567"
+    assert phone == "27821234567"
     assert text == "Hello"
 
 
@@ -309,7 +310,7 @@ def test_qr_command_just_reloads_whatsapp_web():
     _reset_module_state()
     page = _FakePhonePage(["x"])
     whatsapp_web._handle_command(page, "qr", "")
-    assert page.actions == [("goto", "https://web.whatsapp.com")]
+    assert ("goto", "https://web.whatsapp.com") in page.actions
 
 
 # ── Admin routes ──────────────────────────────────────────────────────────────

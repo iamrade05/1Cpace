@@ -60,3 +60,35 @@ def test_invalid_key_is_not_treated_as_enabled(monkeypatch):
     assert encryption_enabled() is False
     with pytest.raises(EncryptionConfigurationError):
         encrypt("sensitive")
+
+
+def test_app_key_controls_encryption_and_lookup_hash(app, monkeypatch):
+    import hashlib
+    import hmac
+
+    # A shell key must not override this app's configured database key.
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
+    with app.app_context():
+        key = app.config["ENCRYPTION_KEY"]
+        encrypted = encrypt("app-sensitive")
+        assert Fernet(key.encode()).decrypt(encrypted[4:].encode()) == b"app-sensitive"
+        assert decrypt(encrypted) == "app-sensitive"
+        assert hash_for_lookup("app-sensitive") == hmac.new(
+            key.encode(), b"app-sensitive", hashlib.sha256
+        ).hexdigest()
+
+
+def test_missing_app_key_does_not_fall_back_to_shell(app, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", TEST_KEY)
+    app.config["ENCRYPTION_KEY"] = ""
+    with app.app_context():
+        with pytest.raises(EncryptionConfigurationError):
+            encrypt("sensitive")
+
+
+def test_startup_rejects_invalid_app_key(monkeypatch):
+    from onecpase import create_app
+
+    monkeypatch.setenv("ENCRYPTION_KEY", TEST_KEY)
+    with pytest.raises(EncryptionConfigurationError):
+        create_app({"TESTING": True, "ENCRYPTION_KEY": "invalid"})

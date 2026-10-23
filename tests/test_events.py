@@ -581,6 +581,7 @@ def test_whatsapp_web_is_used_when_the_cloud_api_is_not_configured(client):
     silently sending nothing."""
     _login_admin(client)
     client.application.config["WHATSAPP_WEB_ENABLED"] = True
+    client.application.config["WHATSAPP_WEB_TENANT"] = None  # This fixture uses the isolated legacy database.
     event = _create_event(client)
     with client.session_transaction() as session:
         session.clear()
@@ -696,6 +697,7 @@ def test_resend_tickets_only_messages_people_who_have_not_had_one(client):
         session["user_id"] = 1
         session["role"] = "admin"
     client.application.config["WHATSAPP_WEB_ENABLED"] = True
+    client.application.config["WHATSAPP_WEB_TENANT"] = None  # This fixture uses the isolated legacy database.
 
     with patch("onecpase.whatsapp_web.queue_message") as queue_message:
         response = client.post(

@@ -93,9 +93,18 @@ const tick = setInterval(() => {
 setTimeout(() => { resendBtn.disabled = false; }, 30000);
 
 /* Auto-submit when all 6 digits entered */
-document.getElementById('otpForm').addEventListener('input', () => {
-  if (hidden.value.length === 6) {
-    setTimeout(() => document.getElementById('otpForm').submit(), 250);
+/* A code is single-use: a second POST (auto-submit + button click) would
+   overwrite the signed-in session cookie and bounce back to sign-in. */
+const otpForm = document.getElementById('otpForm');
+let otpSubmitted = false;
+otpForm.addEventListener('submit', e => {
+  if (otpSubmitted) { e.preventDefault(); return; }
+  otpSubmitted = true;
+  verifyBtn.disabled = true;
+});
+otpForm.addEventListener('input', () => {
+  if (hidden.value.length === 6 && !otpSubmitted) {
+    setTimeout(() => { if (!otpSubmitted) otpForm.requestSubmit(); }, 250);
   }
 });
 </script>

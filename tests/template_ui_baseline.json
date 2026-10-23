@@ -402,9 +402,9 @@
     "emoji": 0
   },
   "fitness/index.html": {
-    "inline_styles": 12,
+    "inline_styles": 0,
     "style_blocks": 0,
-    "hex_colours": 7,
+    "hex_colours": 0,
     "emoji": 0
   },
   "fitness/member_supplements.html": {
@@ -575,16 +575,10 @@
     "hex_colours": 2,
     "emoji": 0
   },
-  "leads/convert.html": {
-    "inline_styles": 11,
-    "style_blocks": 0,
-    "hex_colours": 13,
-    "emoji": 0
-  },
   "leads/detail.html": {
-    "inline_styles": 77,
+    "inline_styles": 76,
     "style_blocks": 0,
-    "hex_colours": 40,
+    "hex_colours": 39,
     "emoji": 0
   },
   "leads/edit.html": {

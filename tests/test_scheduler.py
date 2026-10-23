@@ -48,3 +48,10 @@ def test_itensity_import_is_well_separated_from_ptp_automations(app):
         "ptp_automations - too tight for a live network pull that writes to "
         "the same database ptp_automations reads"
     )
+
+
+def test_staff_notifications_refresh_every_five_minutes(app):
+    from datetime import timedelta
+    jobs = _init_and_get_jobs(app)
+    assert jobs['staff_notifications'].trigger.interval == timedelta(minutes=5)
+    assert jobs['staff_notifications'].max_instances == 1

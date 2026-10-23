@@ -57,6 +57,16 @@
       </select>
     </div>
     <div class="form-group">
+      <label class="form-label" for="supervisor_id">Supervisor</label>
+      <select name="supervisor_id" id="supervisor_id" class="form-control">
+        <option value="">Not assigned</option>
+        {% for supervisor in supervisors %}
+        <option value="{{ supervisor.id }}" {{ 'selected' if user and user.supervisor_id==supervisor.id }}>{{ supervisor.full_name }}</option>
+        {% endfor %}
+      </select>
+      <small>Receives your escalation and overdue follow-up notifications.</small>
+    </div>
+    <div class="form-group">
       <label class="form-label">{{ 'New Password' if user else 'Password *' }}</label>
       <input type="password" name="{{ 'new_password' if user else 'password' }}"
              class="form-control" {{ 'required' if not user }}
@@ -129,13 +139,13 @@
                   letter-spacing:0.5px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #EEF4FA;">
         {{ mod_name|replace('_',' ')|title }}
       </div>
-      {% for perm in perms %}
+      {% for key, label in perms %}
       <label style="display:flex;align-items:center;gap:7px;font-size:0.8rem;cursor:pointer;
                     padding:3px 0;color:#374151;">
-        <input type="checkbox" name="permissions" value="{{ perm }}"
+        <input type="checkbox" name="permissions" value="{{ key }}"
                style="accent-color:#185FA5;"
-               {{ 'checked' if perm in user_perms }}>
-        {{ perm|replace('_',' ')|title }}
+               {{ 'checked' if key in user_perms }}>
+        {{ label }}
       </label>
       {% endfor %}
     </div>

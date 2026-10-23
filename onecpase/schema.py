@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     full_name TEXT NOT NULL,
+    employee_number TEXT,
     role TEXT NOT NULL DEFAULT 'staff',
     department TEXT DEFAULT 'General',
     contact TEXT,
@@ -613,6 +614,27 @@ CREATE TABLE IF NOT EXISTS contact_logs (
     FOREIGN KEY (consultant_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS nupay_mandate_checks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    member_id INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    status TEXT,
+    contract_reference TEXT,
+    message TEXT,
+    checked_by INTEGER,
+    checked_at TEXT DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ptp_mandate_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ptp_id INTEGER NOT NULL,
+    purpose TEXT NOT NULL,
+    amount REAL NOT NULL,
+    mandate_id INTEGER,
+    FOREIGN KEY (ptp_id) REFERENCES ptp_agreements(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS ptp_receipts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ptp_id INTEGER,
@@ -1145,6 +1167,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     full_name TEXT NOT NULL,
+    employee_number TEXT,
     role TEXT NOT NULL DEFAULT 'staff',
     department TEXT DEFAULT 'General',
     contact TEXT,
@@ -1718,6 +1741,27 @@ CREATE TABLE IF NOT EXISTS contact_logs (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
     FOREIGN KEY (consultant_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS nupay_mandate_checks (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    status TEXT,
+    contract_reference TEXT,
+    message TEXT,
+    checked_by INTEGER,
+    checked_at TIMESTAMPTZ DEFAULT NOW(),
+    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ptp_mandate_links (
+    id SERIAL PRIMARY KEY,
+    ptp_id INTEGER NOT NULL,
+    purpose TEXT NOT NULL,
+    amount DOUBLE PRECISION NOT NULL,
+    mandate_id INTEGER,
+    FOREIGN KEY (ptp_id) REFERENCES ptp_agreements(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS ptp_receipts (

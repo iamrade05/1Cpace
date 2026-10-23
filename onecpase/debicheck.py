@@ -8,6 +8,7 @@ from typing import Any
 from flask import current_app
 
 from . import nupay_driver
+from .debicheck_rules import account_holder_error, debit_date_error
 
 
 ACCOUNT_TYPE_CODES = {
@@ -68,14 +69,21 @@ def mandate_from_member(member_id: int, data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def validate_mandate(data: dict[str, Any]) -> list[str]:
-    """Validate payer and mandate details before saving or contacting NuPay."""
+def validate_mandate(data: dict[str, Any], *, sales: bool = False) -> list[str]:
+    """Validate payer and mandate details before saving or contacting NuPay.
+
+    ``sales=True`` is the new-member sign-up, the only place the 7-day lead time applies.
+    """
     if data.get("payment_type") == "Cash":
         return []
     if data.get("payment_type") not in ("Debit Order", "Third-Party Debit Order"):
         return ["Select Cash, Debit Order, or Third-Party Debit Order."]
 
     errors = []
+    for error in (account_holder_error(data.get("account_name"), str(data.get("debicheck_id_type")) == "4"),
+                  debit_date_error(data.get("debicheck_submit_date"), sales=sales)):
+        if error:
+            errors.append(error)
     staff_number = str(data.get("debicheck_client_ref2") or "").strip()
     if len(staff_number) != 4 or not staff_number.isdigit():
         errors.append("Client Reference 2 must be the 4-digit staff number")
@@ -121,6 +129,10 @@ def validate_mandate(data: dict[str, Any]) -> list[str]:
 def validate_stored_mandate(mandate: dict[str, Any]) -> list[str]:
     """Validate a persisted mandate before a standalone retry."""
     errors = []
+    for error in (account_holder_error(mandate.get("account_name"), str(mandate.get("id_type")) == "4"),
+                  debit_date_error(mandate.get("submit_date"))):
+        if error:
+            errors.append(error)
     required = {
         "merchant_id": "Merchant",
         "client_ref1": "Client Reference 1",
@@ -205,6 +217,40 @@ def check_mandate_status_on_nupay(mandate: dict[str, Any]) -> tuple[bool, str, s
     return bool(result.found), str(result.status), str(result.message)
 
 
+def check_member_on_nupay(member: dict[str, Any]) -> dict[str, Any]:
+    """Look for any mandate NuPay holds for this member, without needing one here.
+
+    ``state`` is "active" for an approved mandate, "inactive" when one exists in
+    another state, "none" when NuPay has nothing for them, and "error" when the
+    report could not be read (nothing should be assumed then).
+    """
+    reference = str(member.get("id_number") or "").strip()
+    probe = {
+        "client_ref1": reference,
+        "account_number": str(member.get("account_number") or "").strip(),
+        "member_join_date": str(member.get("join_date") or "").strip(),
+    }
+    if len(reference) < 6 and len(probe["account_number"]) < 6:
+        return {"state": "error", "status": None, "contract_reference": None,
+                "message": "The client has no ID number or account number to search NuPay with."}
+    rows, message = nupay_driver.fetch_mandate_report_rows()
+    if rows is None:
+        return {"state": "error", "status": None, "contract_reference": None, "message": message}
+    match, stale_pre_join = nupay_driver.match_mandate_row(rows, probe)
+    if match is None or stale_pre_join:
+        return {"state": "none", "status": None, "contract_reference": None,
+                "message": f"No mandate found for this client on NuPay ({len(rows)} rows checked)."}
+    raw_status = nupay_driver._normalize_mandate_status(
+        match.get("status"), match.get("status_reason"), match.get("mandate_status")) or "unknown"
+    status = normalise_debicheck_status(raw_status)
+    contract = str(match.get("contract_reference") or "") or None
+    return {
+        "state": "active" if status == "approved" else "inactive", "status": status,
+        "contract_reference": contract,
+        "message": f"NuPay mandate {contract or '?'}: {match.get('status', raw_status)}.",
+    }
+
+
 def record_push_result(db, mandate_id: int, success: bool, message: str) -> None:
     """Persist the NuPay submission result.
 
@@ -225,6 +271,8 @@ def record_push_result(db, mandate_id: int, success: bool, message: str) -> None
         if contract:
             db.execute("UPDATE debicheck_mandates SET contract_reference=? WHERE id=? AND COALESCE(imported_from_nupay, 0)=0", (contract.group(1), mandate_id))
     sync_debicheck_to_application(db, mandate_id)
+    from .ptp_grant import on_mandate_status_changed
+    on_mandate_status_changed(db, mandate_id)
 
 
 # NuPay installations can return different spellings for the same business

@@ -1,0 +1,775 @@
+[
+  {
+    "slug": "sales",
+    "title": "Sales",
+    "page": 34,
+    "summary": "Capture prospects, record activities and decisions, check evidence and hand over applications.",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "text": "This chapter adds the reasoning, checks and handovers behind the 28 screenshot steps in the first part of the manual. Use those screenshots to find the screen, then use this guidance to decide what to record and what to do next. Sales, reception and managers must use their own accounts and assigned permissions."
+      },
+      {
+        "type": "heading",
+        "text": "Start and finish every shift with a work review"
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Select the correct gym and check your signed-in name. If either is wrong, stop before creating or changing a record. Complete the email-code verification and any required password change.",
+          "Open Notifications and Follow-ups. Separate work due today from work waiting for the client, a provider or a manager. An alert is a request for attention; it is not proof that the underlying task is complete.",
+          "Review your assigned Sales CRM cards. Read the last activity and the next action before contacting someone. Check for a do-not-contact instruction, an existing appointment or a query that another colleague is handling.",
+          "Prioritise overdue follow-ups, agreed callbacks and appointments due today. For a blocked application, identify the exact missing evidence instead of starting another application.",
+          "At the end of the shift, update every case you worked: actual result, clear note, next action, named owner and follow-up date. Hand over unfinished work to the colleague or supervisor responsible for the next action."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Recommended handover note: “Application remains blocked because the uploaded statement did not qualify. Client informed at 14:10. Client will provide a clearer statement on 12 October. Assigned consultant to review that day. Supervisor informed; no submission or activation promised.” Use actual dates and facts, not these example values."
+      },
+      {
+        "type": "heading",
+        "text": "Capture a prospect without creating a duplicate"
+      },
+      {
+        "type": "paragraph",
+        "text": "Search the phone number first, including the existing normalised number where shown. Confirm the name and relevant contact details with the person. A similar name alone does not establish a duplicate, and a different spelling does not justify a second record for the same person."
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "If the prospect already exists, open that record and read its history. If ownership is unclear, ask the responsible manager to resolve the handover. Do not create a second card to take ownership or gain sales credit.",
+          "Capture the full name, correct phone and email, and the real Original Lead Source. Add the relevant referrer or campaign rather than choosing a source that appears easier to process.",
+          "Record consent accurately and respect do-not-contact instructions. Avoid putting ID documents or bank details into general prospect notes.",
+          "Save once and verify who the application assigned. Reception capture of a walk-in is different from consultant capture of a referral, outreach or social lead. Do not assume every capture enters the same rotation.",
+          "Record what the prospect wants and the agreed next action. A useful note gives the membership interest, availability and contact preference; it does not label the prospect “good” or “bad”."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Example: “Interested in evening training after work. Asked for a call after 17:00 on 12 October to discuss membership options. Consent recorded. No appointment booked yet.” This gives another colleague enough information to continue accurately."
+      },
+      {
+        "type": "heading",
+        "text": "Record calls conversations and appointments correctly"
+      },
+      {
+        "type": "paragraph",
+        "text": "The funnel distinguishes an attempted contact, a conversation, a booked appointment, attendance and an agreement to join. Record what happened at the time of the activity. A long call is not automatically a sale, and a saved appointment is not attendance."
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Open the assigned prospect and the guided Contact Activity. Confirm the contact method and destination before calling or messaging.",
+          "When the client answers, explain who you are and why you are contacting them. Confirm the relevant enquiry before discussing details. If the number belongs to someone else, record the outcome and arrange correction without sharing the prospect's information.",
+          "Choose the actual result. For no response, save the attempted contact and the next supported step. For a callback, enter the specific date/time requested. For an appointment, agree the date/time and record it accurately.",
+          "After the appointment, record attended or did not attend through Appointment Result. A walk-in is recorded through the walk-in/attendance path rather than invented as a prebooked appointment.",
+          "Record the consultation decision separately. Agreed to Join means the proposal was accepted; the member still needs the application, evidence and payment/mandate processes."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Do not use a successful-contact outcome to improve totals after an unanswered call. Where a PBX-supported metric is shown, it is separate evidence from the saved contact result. If the call log is missing or appears wrong, report that issue rather than changing the client's outcome to make the report agree."
+      },
+      {
+        "type": "heading",
+        "text": "Work a decision follow-up and close the loop"
+      },
+      {
+        "type": "paragraph",
+        "text": "When the prospect needs time to decide, ask what they still need to consider and agree the next conversation. The app uses a five-working-day decision follow-up rule; read the due action on the card rather than guessing from calendar days. Decision records can be recycled when their applicable period expires."
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Record the reason for the follow-up in plain language: price question, consultation with a family member, scheduling concern or another stated reason.",
+          "Enter the agreed follow-up details using the guided action. Check that the date/time saved on the card matches what was agreed.",
+          "At the next contact, read the earlier note and address the outstanding question. Record the new decision through the relevant action rather than manually forcing a later stage.",
+          "If the client agrees to join, open the linked application. If they decline, record the actual reason and any contact instruction. If there is no response, record that result and the next permitted step.",
+          "If you need a manager's decision, record the question, evidence and owner. Keep the prospect informed about what is being reviewed without promising an approval."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Example follow-up question: “At our last discussion you wanted to confirm whether the membership fits your work hours. Have you had a chance to decide, or is there a specific question I should help resolve?” Do not record “joined” merely because the prospect says they will think about it."
+      },
+      {
+        "type": "heading",
+        "text": "Check evidence before submission and activation"
+      },
+      {
+        "type": "paragraph",
+        "text": "The draft, NuPay submission, bank confirmation, Itensity activation and compliance completion are separate checkpoints. A saved draft creates a record for the next steps; it does not perform them. Refer to screenshot steps 12–24 when carrying out the actions below."
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Check the member's identity, personal details, selected package, monthly amount and intended debit date. Keep the member and a third-party payer clearly identified as separate people.",
+          "Upload the correct ID copy and bank statement to the correct application. Open the document entry to verify ownership and readability. Correct a wrong upload before analysing or submitting.",
+          "Run the bank-statement analysis and read the qualification result, not only the balance or risk label. The original manual's qualification rule remains subject to the actual analysis result. A failed or unreadable analysis needs correction or review; uploading a PDF alone does not qualify it.",
+          "Resolve any required manager/guardian approval through its own workflow. Ordinary staff and manager approval do not remove a missing-document or mandate-confirmation gate. An admin override is an explicit, audited exception, never a routine workaround.",
+          "Prepare and submit the mandate through the supported action. Client Reference 1 uses the member ID; an Itensity reference is not required first. Recheck third-party payer identity and banking details without replacing the member ID reference.",
+          "Confirm approval for the latest mandate before the ordinary Itensity push. If a newer mandate is unapproved, an older approved mandate does not satisfy the current requirement.",
+          "Push once, wait for the result and verify the stored reference. If the result is uncertain, inspect the activity/provider result and ask for assistance before retrying. Repeated clicks can create avoidable reconciliation work."
+        ]
+      },
+      {
+        "type": "heading",
+        "text": "Complete the sale and hand the member over"
+      },
+      {
+        "type": "paragraph",
+        "text": "An Active label confirms a different milestone from compliance completion. An activated member can still have an unsigned contract, unpaid registration fee or another requirement outstanding. Read Compliance and Consultant Sales Credit on the application."
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Review the contract with the member and capture the actual signature through the signing workflow. Do not substitute a manually selected checklist status for signature evidence.",
+          "Record the registration-fee payment under the correct purpose. Match the amount and reference to the actual receipt. A monthly payment or general collection does not replace the fee; a partial fee does not complete a requirement for full payment.",
+          "Reopen the application and confirm the explicit compliance-complete message. Check documents, qualifying analysis, latest approved mandate, successful activation, signature, full fee and required approvals.",
+          "Check the member profile and recorded Itensity reference. Explain the agreed membership amount, debit date and where to direct a payment or account question. Do not change banking information to make a handover appear complete.",
+          "Review the sales report using the first compliance-completion date. The month of that completion determines sales credit and the completed sale is counted once.",
+          "If the first debit later fails, follow the assigned first-month collections work instead of reopening or claiming another sale. A collection payment and a new sale are separate outcomes."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Before leaving the member's record, ask: “Can the next colleague identify what is complete, what is outstanding, who owns the next action and when it is due?” If the answer is no, improve the note and assignment before handover."
+      }
+    ],
+    "search": "{\"slug\": \"sales\", \"title\": \"sales\", \"page\": 34, \"summary\": \"capture prospects, record activities and decisions, check evidence and hand over applications.\", \"blocks\": [{\"type\": \"paragraph\", \"text\": \"this chapter adds the reasoning, checks and handovers behind the 28 screenshot steps in the first part of the manual. use those screenshots to find the screen, then use this guidance to decide what to record and what to do next. sales, reception and managers must use their own accounts and assigned permissions.\"}, {\"type\": \"heading\", \"text\": \"start and finish every shift with a work review\"}, {\"type\": \"ordered\", \"items\": [\"select the correct gym and check your signed-in name. if either is wrong, stop before creating or changing a record. complete the email-code verification and any required password change.\", \"open notifications and follow-ups. separate work due today from work waiting for the client, a provider or a manager. an alert is a request for attention; it is not proof that the underlying task is complete.\", \"review your assigned sales crm cards. read the last activity and the next action before contacting someone. check for a do-not-contact instruction, an existing appointment or a query that another colleague is handling.\", \"prioritise overdue follow-ups, agreed callbacks and appointments due today. for a blocked application, identify the exact missing evidence instead of starting another application.\", \"at the end of the shift, update every case you worked: actual result, clear note, next action, named owner and follow-up date. hand over unfinished work to the colleague or supervisor responsible for the next action.\"]}, {\"type\": \"paragraph\", \"text\": \"recommended handover note: “application remains blocked because the uploaded statement did not qualify. client informed at 14:10. client will provide a clearer statement on 12 october. assigned consultant to review that day. supervisor informed; no submission or activation promised.” use actual dates and facts, not these example values.\"}, {\"type\": \"heading\", \"text\": \"capture a prospect without creating a duplicate\"}, {\"type\": \"paragraph\", \"text\": \"search the phone number first, including the existing normalised number where shown. confirm the name and relevant contact details with the person. a similar name alone does not establish a duplicate, and a different spelling does not justify a second record for the same person.\"}, {\"type\": \"ordered\", \"items\": [\"if the prospect already exists, open that record and read its history. if ownership is unclear, ask the responsible manager to resolve the handover. do not create a second card to take ownership or gain sales credit.\", \"capture the full name, correct phone and email, and the real original lead source. add the relevant referrer or campaign rather than choosing a source that appears easier to process.\", \"record consent accurately and respect do-not-contact instructions. avoid putting id documents or bank details into general prospect notes.\", \"save once and verify who the application assigned. reception capture of a walk-in is different from consultant capture of a referral, outreach or social lead. do not assume every capture enters the same rotation.\", \"record what the prospect wants and the agreed next action. a useful note gives the membership interest, availability and contact preference; it does not label the prospect “good” or “bad”.\"]}, {\"type\": \"paragraph\", \"text\": \"example: “interested in evening training after work. asked for a call after 17:00 on 12 october to discuss membership options. consent recorded. no appointment booked yet.” this gives another colleague enough information to continue accurately.\"}, {\"type\": \"heading\", \"text\": \"record calls conversations and appointments correctly\"}, {\"type\": \"paragraph\", \"text\": \"the funnel distinguishes an attempted contact, a conversation, a booked appointment, attendance and an agreement to join. record what happened at the time of the activity. a long call is not automatically a sale, and a saved appointment is not attendance.\"}, {\"type\": \"ordered\", \"items\": [\"open the assigned prospect and the guided contact activity. confirm the contact method and destination before calling or messaging.\", \"when the client answers, explain who you are and why you are contacting them. confirm the relevant enquiry before discussing details. if the number belongs to someone else, record the outcome and arrange correction without sharing the prospect's information.\", \"choose the actual result. for no response, save the attempted contact and the next supported step. for a callback, enter the specific date/time requested. for an appointment, agree the date/time and record it accurately.\", \"after the appointment, record attended or did not attend through appointment result. a walk-in is recorded through the walk-in/attendance path rather than invented as a prebooked appointment.\", \"record the consultation decision separately. agreed to join means the proposal was accepted; the member still needs the application, evidence and payment/mandate processes.\"]}, {\"type\": \"paragraph\", \"text\": \"do not use a successful-contact outcome to improve totals after an unanswered call. where a pbx-supported metric is shown, it is separate evidence from the saved contact result. if the call log is missing or appears wrong, report that issue rather than changing the client's outcome to make the report agree.\"}, {\"type\": \"heading\", \"text\": \"work a decision follow-up and close the loop\"}, {\"type\": \"paragraph\", \"text\": \"when the prospect needs time to decide, ask what they still need to consider and agree the next conversation. the app uses a five-working-day decision follow-up rule; read the due action on the card rather than guessing from calendar days. decision records can be recycled when their applicable period expires.\"}, {\"type\": \"ordered\", \"items\": [\"record the reason for the follow-up in plain language: price question, consultation with a family member, scheduling concern or another stated reason.\", \"enter the agreed follow-up details using the guided action. check that the date/time saved on the card matches what was agreed.\", \"at the next contact, read the earlier note and address the outstanding question. record the new decision through the relevant action rather than manually forcing a later stage.\", \"if the client agrees to join, open the linked application. if they decline, record the actual reason and any contact instruction. if there is no response, record that result and the next permitted step.\", \"if you need a manager's decision, record the question, evidence and owner. keep the prospect informed about what is being reviewed without promising an approval.\"]}, {\"type\": \"paragraph\", \"text\": \"example follow-up question: “at our last discussion you wanted to confirm whether the membership fits your work hours. have you had a chance to decide, or is there a specific question i should help resolve?” do not record “joined” merely because the prospect says they will think about it.\"}, {\"type\": \"heading\", \"text\": \"check evidence before submission and activation\"}, {\"type\": \"paragraph\", \"text\": \"the draft, nupay submission, bank confirmation, itensity activation and compliance completion are separate checkpoints. a saved draft creates a record for the next steps; it does not perform them. refer to screenshot steps 12–24 when carrying out the actions below.\"}, {\"type\": \"ordered\", \"items\": [\"check the member's identity, personal details, selected package, monthly amount and intended debit date. keep the member and a third-party payer clearly identified as separate people.\", \"upload the correct id copy and bank statement to the correct application. open the document entry to verify ownership and readability. correct a wrong upload before analysing or submitting.\", \"run the bank-statement analysis and read the qualification result, not only the balance or risk label. the original manual's qualification rule remains subject to the actual analysis result. a failed or unreadable analysis needs correction or review; uploading a pdf alone does not qualify it.\", \"resolve any required manager/guardian approval through its own workflow. ordinary staff and manager approval do not remove a missing-document or mandate-confirmation gate. an admin override is an explicit, audited exception, never a routine workaround.\", \"prepare and submit the mandate through the supported action. client reference 1 uses the member id; an itensity reference is not required first. recheck third-party payer identity and banking details without replacing the member id reference.\", \"confirm approval for the latest mandate before the ordinary itensity push. if a newer mandate is unapproved, an older approved mandate does not satisfy the current requirement.\", \"push once, wait for the result and verify the stored reference. if the result is uncertain, inspect the activity/provider result and ask for assistance before retrying. repeated clicks can create avoidable reconciliation work.\"]}, {\"type\": \"heading\", \"text\": \"complete the sale and hand the member over\"}, {\"type\": \"paragraph\", \"text\": \"an active label confirms a different milestone from compliance completion. an activated member can still have an unsigned contract, unpaid registration fee or another requirement outstanding. read compliance and consultant sales credit on the application.\"}, {\"type\": \"ordered\", \"items\": [\"review the contract with the member and capture the actual signature through the signing workflow. do not substitute a manually selected checklist status for signature evidence.\", \"record the registration-fee payment under the correct purpose. match the amount and reference to the actual receipt. a monthly payment or general collection does not replace the fee; a partial fee does not complete a requirement for full payment.\", \"reopen the application and confirm the explicit compliance-complete message. check documents, qualifying analysis, latest approved mandate, successful activation, signature, full fee and required approvals.\", \"check the member profile and recorded itensity reference. explain the agreed membership amount, debit date and where to direct a payment or account question. do not change banking information to make a handover appear complete.\", \"review the sales report using the first compliance-completion date. the month of that completion determines sales credit and the completed sale is counted once.\", \"if the first debit later fails, follow the assigned first-month collections work instead of reopening or claiming another sale. a collection payment and a new sale are separate outcomes.\"]}, {\"type\": \"paragraph\", \"text\": \"before leaving the member's record, ask: “can the next colleague identify what is complete, what is outstanding, who owns the next action and when it is due?” if the answer is no, improve the note and assignment before handover.\"}]}"
+  },
+  {
+    "slug": "collections",
+    "title": "Collections",
+    "page": 38,
+    "summary": "Verify balances, work collection calls, record payments and escalate unresolved cases.",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "text": "Collections is the workflow for checking money owed, recording contact and recovering verified arrears. A client saying they paid, a receipt upload, a PTP and a mandate approval are each different from a reconciled payment. Use the member's current account, not memory or a dashboard total, to establish the case."
+      },
+      {
+        "type": "heading",
+        "text": "Open the dashboard and choose the right work"
+      },
+      {
+        "type": "paragraph",
+        "text": "Open the Collections dashboard using your assigned permissions. Sales staff may have first-month work while reception handles transferred or older accounts. Read the owner, arrears and next action on the case. If an account is assigned to another person, resolve the handover instead of creating parallel contact."
+      },
+      {
+        "type": "paragraph",
+        "text": "!IMAGE collections-dashboard-1366.png | Collections dashboard from the local training app using synthetic records"
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Review the work categories, due calls and pending decisions. A pending exception needs a manager decision, while a call task needs the assigned caller to record an actual contact result.",
+          "Open the appropriate queue or member case. Check the member reference and contact details before discussing an account.",
+          "Check the applicable debit cycle and the reconciliation result. A pending debit is not a confirmed failure. Reminder messaging and a collection call are separate records.",
+          "Read the latest payment, mandate, PTP, dispute and contact history. This prevents chasing a payment already received or making an offer that conflicts with a live arrangement.",
+          "If the balance or ownership appears wrong, stop that decision and record the issue for review. Do not alter a payment or promise merely to remove the account from a list."
+        ]
+      },
+      {
+        "type": "heading",
+        "text": "Verify the balance before contacting the member"
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Identify the recurring charges, failed debit results, verified payments and any reversals. Separate the current month's membership fee from older arrears, registration fees and any other payment purpose.",
+          "Confirm the months owing and the source of the displayed balance. If a provider import or reconciliation is outstanding, describe it as outstanding rather than calling the amount final.",
+          "Check whether there is an active PTP and whether the latest DebiCheck mandate is confirmed. Read the access decision separately; a saved promise does not establish a payment or entitlement to access.",
+          "Where the client claims an earlier payment, obtain the amount, date, method, reference and proof through the approved document/receipt workflow. Record “client says already paid” until the payment has been verified.",
+          "Log a dispute or mismatch as a Query, with the account details and question to be checked. Assign the person responsible for reconciling it and set the follow-up date."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Suggested opening: “I am following up on your membership account. Our current record shows an outstanding amount of R____. Before we discuss a payment arrangement, have you made a payment we need to verify or is there an amount you would like us to check?” Only fill in the amount after reviewing the account."
+      },
+      {
+        "type": "heading",
+        "text": "Complete a collection call and record the outcome"
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Open the assigned call task or member case and use the permitted calling action. Check the destination and read the last note so the client does not have to repeat the same issue.",
+          "Establish whether you reached the member. An unanswered call, wrong number or disconnected number must use its actual outcome.",
+          "If the member answers, discuss the verified account and select the result that matches the conversation: a delivered reminder, reactivation interest, promise to pay, callback, already-paid claim, dispute or refusal, as shown on the screen.",
+          "Answer any follow-up question shown for that outcome. An already-paid claim needs the payment purpose. A dispute needs the disputed amount/type. A refusal needs the reason. “Other” needs a useful written explanation.",
+          "Enter the next date/time for an agreed callback or payment action. A promise needs a formal PTP where applicable; a note saying “will pay” does not replace it.",
+          "Save and read the recorded result. Check that the next action and any linked Query/PTP have actually been created. If the action failed, correct it or escalate rather than assuming the note performed it."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Example note: “Reached member. Disputes the monthly amount, not the identity of the account. Query logged for package/amount verification. No discount offered. Assigned reviewer to confirm by 12 October; caller to update member after review.”"
+      },
+      {
+        "type": "heading",
+        "text": "Follow the communication sequence and measure honestly"
+      },
+      {
+        "type": "paragraph",
+        "text": "The collection workflow follows Call → WhatsApp → SMS → Email where those steps are applicable. The screen tracks what was actually sent or attempted. Do not mark a message sent merely because a template was prepared, copied or a channel selected."
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Check the next channel on the case and confirm the approved contact details and message before sending.",
+          "Use only an available, authorised sending method. WhatsApp/SMS steps may require manual handling; an unavailable provider is an issue to report, not evidence of delivery.",
+          "Record the real sent/failed result and any reply. Preserve the earlier call history. A client reply that changes the case must also update the business outcome or follow-up.",
+          "Use the final email action only when the prior required communication steps have been recorded. If sending fails, keep the case open and report the failure.",
+          "Review Calls, Clients Reached and PBX Verified Calls as separate measures. Saved successful-contact outcomes support Clients Reached; the PBX-confirmed figure applies its own evidence requirement. A reminder message is not a completed collection call."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "The current queue uses an 80-call minimum, a 100-call target and a 10-contact target for its daily KPI. Check the live screen and your assigned duties before interpreting a target. Never manufacture outcomes to meet it. Review overdue cases and unresolved disputes alongside activity totals."
+      },
+      {
+        "type": "heading",
+        "text": "Record payment and resolve or escalate the case"
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Record only an actual received payment, against the right member and purpose. Check the amount, payment date, method and reference against the receipt or verified provider result.",
+          "Before saving, search for an existing payment with the same details. A client resending a receipt is not a new payment. If an import may already have posted it, reconcile first.",
+          "Record and verify the receipt/payment using the supported workflow. If a payment push is required, wait for its result and confirm the external reference instead of assuming the local save succeeded outside the app.",
+          "Recheck the remaining balance, PTP instalments and case status after the payment. A partial payment reduces only the amount verified; it does not settle the whole account.",
+          "If the case is settled, confirm the reconciliation and supported closure. If it is not settled, agree and record the next action without deleting the history.",
+          "Escalate non-standard discounts, disputed calculations, prior defaults, legal-pathway cases, unclear provider results or access exceptions to the authorised reviewer. Include the verified account, what the member requested, the evidence and the decision needed."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "If the member disputes the charge or requests cancellation, use the relevant Query/approval process. A collections caller must not silently write off arrears, approve a cancellation or grant an exception simply to finish a call."
+      }
+    ],
+    "search": "{\"slug\": \"collections\", \"title\": \"collections\", \"page\": 38, \"summary\": \"verify balances, work collection calls, record payments and escalate unresolved cases.\", \"blocks\": [{\"type\": \"paragraph\", \"text\": \"collections is the workflow for checking money owed, recording contact and recovering verified arrears. a client saying they paid, a receipt upload, a ptp and a mandate approval are each different from a reconciled payment. use the member's current account, not memory or a dashboard total, to establish the case.\"}, {\"type\": \"heading\", \"text\": \"open the dashboard and choose the right work\"}, {\"type\": \"paragraph\", \"text\": \"open the collections dashboard using your assigned permissions. sales staff may have first-month work while reception handles transferred or older accounts. read the owner, arrears and next action on the case. if an account is assigned to another person, resolve the handover instead of creating parallel contact.\"}, {\"type\": \"paragraph\", \"text\": \"!image collections-dashboard-1366.png | collections dashboard from the local training app using synthetic records\"}, {\"type\": \"ordered\", \"items\": [\"review the work categories, due calls and pending decisions. a pending exception needs a manager decision, while a call task needs the assigned caller to record an actual contact result.\", \"open the appropriate queue or member case. check the member reference and contact details before discussing an account.\", \"check the applicable debit cycle and the reconciliation result. a pending debit is not a confirmed failure. reminder messaging and a collection call are separate records.\", \"read the latest payment, mandate, ptp, dispute and contact history. this prevents chasing a payment already received or making an offer that conflicts with a live arrangement.\", \"if the balance or ownership appears wrong, stop that decision and record the issue for review. do not alter a payment or promise merely to remove the account from a list.\"]}, {\"type\": \"heading\", \"text\": \"verify the balance before contacting the member\"}, {\"type\": \"ordered\", \"items\": [\"identify the recurring charges, failed debit results, verified payments and any reversals. separate the current month's membership fee from older arrears, registration fees and any other payment purpose.\", \"confirm the months owing and the source of the displayed balance. if a provider import or reconciliation is outstanding, describe it as outstanding rather than calling the amount final.\", \"check whether there is an active ptp and whether the latest debicheck mandate is confirmed. read the access decision separately; a saved promise does not establish a payment or entitlement to access.\", \"where the client claims an earlier payment, obtain the amount, date, method, reference and proof through the approved document/receipt workflow. record “client says already paid” until the payment has been verified.\", \"log a dispute or mismatch as a query, with the account details and question to be checked. assign the person responsible for reconciling it and set the follow-up date.\"]}, {\"type\": \"paragraph\", \"text\": \"suggested opening: “i am following up on your membership account. our current record shows an outstanding amount of r____. before we discuss a payment arrangement, have you made a payment we need to verify or is there an amount you would like us to check?” only fill in the amount after reviewing the account.\"}, {\"type\": \"heading\", \"text\": \"complete a collection call and record the outcome\"}, {\"type\": \"ordered\", \"items\": [\"open the assigned call task or member case and use the permitted calling action. check the destination and read the last note so the client does not have to repeat the same issue.\", \"establish whether you reached the member. an unanswered call, wrong number or disconnected number must use its actual outcome.\", \"if the member answers, discuss the verified account and select the result that matches the conversation: a delivered reminder, reactivation interest, promise to pay, callback, already-paid claim, dispute or refusal, as shown on the screen.\", \"answer any follow-up question shown for that outcome. an already-paid claim needs the payment purpose. a dispute needs the disputed amount/type. a refusal needs the reason. “other” needs a useful written explanation.\", \"enter the next date/time for an agreed callback or payment action. a promise needs a formal ptp where applicable; a note saying “will pay” does not replace it.\", \"save and read the recorded result. check that the next action and any linked query/ptp have actually been created. if the action failed, correct it or escalate rather than assuming the note performed it.\"]}, {\"type\": \"paragraph\", \"text\": \"example note: “reached member. disputes the monthly amount, not the identity of the account. query logged for package/amount verification. no discount offered. assigned reviewer to confirm by 12 october; caller to update member after review.”\"}, {\"type\": \"heading\", \"text\": \"follow the communication sequence and measure honestly\"}, {\"type\": \"paragraph\", \"text\": \"the collection workflow follows call → whatsapp → sms → email where those steps are applicable. the screen tracks what was actually sent or attempted. do not mark a message sent merely because a template was prepared, copied or a channel selected.\"}, {\"type\": \"ordered\", \"items\": [\"check the next channel on the case and confirm the approved contact details and message before sending.\", \"use only an available, authorised sending method. whatsapp/sms steps may require manual handling; an unavailable provider is an issue to report, not evidence of delivery.\", \"record the real sent/failed result and any reply. preserve the earlier call history. a client reply that changes the case must also update the business outcome or follow-up.\", \"use the final email action only when the prior required communication steps have been recorded. if sending fails, keep the case open and report the failure.\", \"review calls, clients reached and pbx verified calls as separate measures. saved successful-contact outcomes support clients reached; the pbx-confirmed figure applies its own evidence requirement. a reminder message is not a completed collection call.\"]}, {\"type\": \"paragraph\", \"text\": \"the current queue uses an 80-call minimum, a 100-call target and a 10-contact target for its daily kpi. check the live screen and your assigned duties before interpreting a target. never manufacture outcomes to meet it. review overdue cases and unresolved disputes alongside activity totals.\"}, {\"type\": \"heading\", \"text\": \"record payment and resolve or escalate the case\"}, {\"type\": \"ordered\", \"items\": [\"record only an actual received payment, against the right member and purpose. check the amount, payment date, method and reference against the receipt or verified provider result.\", \"before saving, search for an existing payment with the same details. a client resending a receipt is not a new payment. if an import may already have posted it, reconcile first.\", \"record and verify the receipt/payment using the supported workflow. if a payment push is required, wait for its result and confirm the external reference instead of assuming the local save succeeded outside the app.\", \"recheck the remaining balance, ptp instalments and case status after the payment. a partial payment reduces only the amount verified; it does not settle the whole account.\", \"if the case is settled, confirm the reconciliation and supported closure. if it is not settled, agree and record the next action without deleting the history.\", \"escalate non-standard discounts, disputed calculations, prior defaults, legal-pathway cases, unclear provider results or access exceptions to the authorised reviewer. include the verified account, what the member requested, the evidence and the decision needed.\"]}, {\"type\": \"paragraph\", \"text\": \"if the member disputes the charge or requests cancellation, use the relevant query/approval process. a collections caller must not silently write off arrears, approve a cancellation or grant an exception simply to finish a call.\"}]}"
+  },
+  {
+    "slug": "ptp",
+    "title": "Promise to Pay (PTP)",
+    "page": 41,
+    "summary": "Prepare arrangements, understand approvals and instalments, and follow up missed promises.",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "text": "A Promise to Pay or PTP is a recorded agreement about future payment. It is not a receipt, a discount approval, a successful debit or confirmation that the account is settled. The arrangement must remain linked to its actual payments, dates and required approvals."
+      },
+      {
+        "type": "heading",
+        "text": "Prepare the arrangement with the member"
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Open the member's account and review the verified arrears, normal monthly membership amount, latest mandate, existing arrangement and relevant Query.",
+          "Ask what the member can actually pay and on which dates. Record the stated offer accurately. Do not record an offered upfront amount as money already received.",
+          "Select the appropriate full/split/recovery arrangement shown by the app. Check that each promised amount and date is realistic for the member and distinct from the normal membership fee.",
+          "Read the calculated discount, upfront, balance and recovery figures and the required conditions. Different panels serve different decisions; do not apply one fixed upfront percentage to every offer or bypass a displayed access/payment requirement.",
+          "If manager review is required, explain that the proposal is pending approval. Do not describe it as accepted or apply the proposed reduction as a verified payment.",
+          "If a related Query already exists, create/link the PTP through that case where the screen offers it. This keeps the issue and the financial arrangement connected without creating duplicate records."
+        ]
+      },
+      {
+        "type": "heading",
+        "text": "Enter the PTP and read the saved result"
+      },
+      {
+        "type": "paragraph",
+        "text": "Find the PTP section on the member profile or use Create PTP from the linked Query when available. Access to the financial arrangement may be restricted by role. If you cannot see the action, hand it to authorised reception/collections staff rather than borrowing their login."
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Confirm the member, arrears amount, promise amount, promise date and payment method. Enter the actual agreed values, not a rounded figure that changes the agreement.",
+          "Choose the arrangement type. Where instalments are used, confirm each amount and due date and check the final total.",
+          "Review the requested discount and its qualifying basis. Read the system's permitted range, recommended figure and manager requirement. A discount above the staff ceiling, or an account marked for manager discretion, needs the authorised decision.",
+          "Review any upfront amount and access request. If the screen requires proof of an upfront payment or a confirmed mandate, obtain the evidence rather than marking a promised amount received.",
+          "Write the agreement clearly: what will be paid, when, by which method, what remains payable, and which approval/condition is outstanding. Include the linked Query reference where applicable.",
+          "Save once. Reopen the arrangement and check its status, calculation and approval requirement. The app can supersede an older open PTP when a new one is recorded; review the history before creating another.",
+          "Explain the saved agreement to the member. Give the amounts and dates separately from the normal monthly membership payment. Do not promise that a pending arrangement has already restored access."
+        ]
+      },
+      {
+        "type": "heading",
+        "text": "Understand approval access and exceptions"
+      },
+      {
+        "type": "paragraph",
+        "text": "The app determines approval and access using the account's arrears, arrangement, confirmed mandate and verified payment conditions. Read its actual decision. The number of months owing by itself is not enough to decide whether an arrangement or discount is available."
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "If Manager Approval is pending, send the proposal and evidence to the assigned reviewer. Include previous broken arrangements or a legal referral where present.",
+          "The reviewer must record approve/reject/return through the decision workflow and include the reason. A verbal agreement outside the app must be entered through that supported workflow before staff rely on it.",
+          "If returned for correction, correct the stated issue and record the next follow-up. If rejected, inform the member of the decision and discuss only the options actually permitted.",
+          "Read the account's access decision after the approved/verified actions. Temporary access, where authorised, has an expiry and conditions; record the expiry accurately and explain it without guaranteeing an indefinite unblock.",
+          "Do not use a PTP as a way to remove a restriction without the required condition. When policy and the displayed result appear inconsistent, escalate the discrepancy instead of manually changing labels."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Managers should review the complete account before approving a hardship or non-standard arrangement. Staff should never guess a legal outcome, promise a write-off or approve their own request."
+      },
+      {
+        "type": "heading",
+        "text": "Work through a calculation without confusing the amounts"
+      },
+      {
+        "type": "paragraph",
+        "text": "Arithmetic example only: assume a reviewer has already approved a R1,200 arrears balance and a 20% reduction for this particular case. This example does not authorise that discount for another account."
+      },
+      {
+        "type": "table",
+        "rows": [
+          [
+            "Item",
+            "Calculation",
+            "Amount"
+          ],
+          [
+            "Verified arrears",
+            "Starting amount",
+            "R1,200.00"
+          ],
+          [
+            "Approved reduction",
+            "R1,200 × 20%",
+            "R240.00"
+          ],
+          [
+            "Amount to collect",
+            "R1,200 − R240",
+            "R960.00"
+          ],
+          [
+            "Verified upfront receipt",
+            "Actually received",
+            "R300.00"
+          ],
+          [
+            "Remaining arrears",
+            "R960 − R300",
+            "R660.00"
+          ],
+          [
+            "Three equal arrears instalments",
+            "R660 ÷ 3",
+            "R220.00 each"
+          ]
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "If the normal monthly membership amount is R345, the member would need to understand the R220 arrears instalment separately from that R345 amount. The combined R565 is an arithmetic explanation, not a mandate instruction: use the approved plan and the debit amounts actually saved by the system."
+      },
+      {
+        "type": "paragraph",
+        "text": "If R300 has only been promised, do not subtract it as a verified receipt. If a discount is still proposed, explain the proposed and approved amounts separately. If the app calculates a different plan because of its term, minimum or other rule, follow that displayed plan and ask for review before offering different figures."
+      },
+      {
+        "type": "heading",
+        "text": "Record receipts and monitor a missed promise"
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "On the promised date, check actual receipts/provider results and the linked account. A member saying the bank will debit tomorrow is not a payment received today.",
+          "Record the payment once with amount, date, method, reference and supporting evidence. Allocate it to the correct arrangement/instalment using the supported receipt action.",
+          "Read the remaining amount and status. A partial receipt does not turn the arrangement into Paid. Do not manually force Paid to clear an overdue alert.",
+          "If the promise date passes without the required payment, review the actual balance and overdue/broken result. Automation can update the arrangement and access state; verify the current record before contacting the member.",
+          "Contact the member, record the actual result and agree the next authorised action. A revised offer may need manager review, especially where there is a prior default or other exception.",
+          "Update the linked Query. A paid PTP can produce a payment-verified query state, but the Query may still need a resolution note and supported closure. Do not assume every issue is resolved simply because one instalment was received."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Supervisor review should ask whether the receipt was verified, the allocation is correct, the remaining balance is clear and the next action is assigned. Preserve the old arrangement history so repeated defaults can be assessed accurately."
+      }
+    ],
+    "search": "{\"slug\": \"ptp\", \"title\": \"promise to pay (ptp)\", \"page\": 41, \"summary\": \"prepare arrangements, understand approvals and instalments, and follow up missed promises.\", \"blocks\": [{\"type\": \"paragraph\", \"text\": \"a promise to pay or ptp is a recorded agreement about future payment. it is not a receipt, a discount approval, a successful debit or confirmation that the account is settled. the arrangement must remain linked to its actual payments, dates and required approvals.\"}, {\"type\": \"heading\", \"text\": \"prepare the arrangement with the member\"}, {\"type\": \"ordered\", \"items\": [\"open the member's account and review the verified arrears, normal monthly membership amount, latest mandate, existing arrangement and relevant query.\", \"ask what the member can actually pay and on which dates. record the stated offer accurately. do not record an offered upfront amount as money already received.\", \"select the appropriate full/split/recovery arrangement shown by the app. check that each promised amount and date is realistic for the member and distinct from the normal membership fee.\", \"read the calculated discount, upfront, balance and recovery figures and the required conditions. different panels serve different decisions; do not apply one fixed upfront percentage to every offer or bypass a displayed access/payment requirement.\", \"if manager review is required, explain that the proposal is pending approval. do not describe it as accepted or apply the proposed reduction as a verified payment.\", \"if a related query already exists, create/link the ptp through that case where the screen offers it. this keeps the issue and the financial arrangement connected without creating duplicate records.\"]}, {\"type\": \"heading\", \"text\": \"enter the ptp and read the saved result\"}, {\"type\": \"paragraph\", \"text\": \"find the ptp section on the member profile or use create ptp from the linked query when available. access to the financial arrangement may be restricted by role. if you cannot see the action, hand it to authorised reception/collections staff rather than borrowing their login.\"}, {\"type\": \"ordered\", \"items\": [\"confirm the member, arrears amount, promise amount, promise date and payment method. enter the actual agreed values, not a rounded figure that changes the agreement.\", \"choose the arrangement type. where instalments are used, confirm each amount and due date and check the final total.\", \"review the requested discount and its qualifying basis. read the system's permitted range, recommended figure and manager requirement. a discount above the staff ceiling, or an account marked for manager discretion, needs the authorised decision.\", \"review any upfront amount and access request. if the screen requires proof of an upfront payment or a confirmed mandate, obtain the evidence rather than marking a promised amount received.\", \"write the agreement clearly: what will be paid, when, by which method, what remains payable, and which approval/condition is outstanding. include the linked query reference where applicable.\", \"save once. reopen the arrangement and check its status, calculation and approval requirement. the app can supersede an older open ptp when a new one is recorded; review the history before creating another.\", \"explain the saved agreement to the member. give the amounts and dates separately from the normal monthly membership payment. do not promise that a pending arrangement has already restored access.\"]}, {\"type\": \"heading\", \"text\": \"understand approval access and exceptions\"}, {\"type\": \"paragraph\", \"text\": \"the app determines approval and access using the account's arrears, arrangement, confirmed mandate and verified payment conditions. read its actual decision. the number of months owing by itself is not enough to decide whether an arrangement or discount is available.\"}, {\"type\": \"ordered\", \"items\": [\"if manager approval is pending, send the proposal and evidence to the assigned reviewer. include previous broken arrangements or a legal referral where present.\", \"the reviewer must record approve/reject/return through the decision workflow and include the reason. a verbal agreement outside the app must be entered through that supported workflow before staff rely on it.\", \"if returned for correction, correct the stated issue and record the next follow-up. if rejected, inform the member of the decision and discuss only the options actually permitted.\", \"read the account's access decision after the approved/verified actions. temporary access, where authorised, has an expiry and conditions; record the expiry accurately and explain it without guaranteeing an indefinite unblock.\", \"do not use a ptp as a way to remove a restriction without the required condition. when policy and the displayed result appear inconsistent, escalate the discrepancy instead of manually changing labels.\"]}, {\"type\": \"paragraph\", \"text\": \"managers should review the complete account before approving a hardship or non-standard arrangement. staff should never guess a legal outcome, promise a write-off or approve their own request.\"}, {\"type\": \"heading\", \"text\": \"work through a calculation without confusing the amounts\"}, {\"type\": \"paragraph\", \"text\": \"arithmetic example only: assume a reviewer has already approved a r1,200 arrears balance and a 20% reduction for this particular case. this example does not authorise that discount for another account.\"}, {\"type\": \"table\", \"rows\": [[\"item\", \"calculation\", \"amount\"], [\"verified arrears\", \"starting amount\", \"r1,200.00\"], [\"approved reduction\", \"r1,200 × 20%\", \"r240.00\"], [\"amount to collect\", \"r1,200 − r240\", \"r960.00\"], [\"verified upfront receipt\", \"actually received\", \"r300.00\"], [\"remaining arrears\", \"r960 − r300\", \"r660.00\"], [\"three equal arrears instalments\", \"r660 ÷ 3\", \"r220.00 each\"]]}, {\"type\": \"paragraph\", \"text\": \"if the normal monthly membership amount is r345, the member would need to understand the r220 arrears instalment separately from that r345 amount. the combined r565 is an arithmetic explanation, not a mandate instruction: use the approved plan and the debit amounts actually saved by the system.\"}, {\"type\": \"paragraph\", \"text\": \"if r300 has only been promised, do not subtract it as a verified receipt. if a discount is still proposed, explain the proposed and approved amounts separately. if the app calculates a different plan because of its term, minimum or other rule, follow that displayed plan and ask for review before offering different figures.\"}, {\"type\": \"heading\", \"text\": \"record receipts and monitor a missed promise\"}, {\"type\": \"ordered\", \"items\": [\"on the promised date, check actual receipts/provider results and the linked account. a member saying the bank will debit tomorrow is not a payment received today.\", \"record the payment once with amount, date, method, reference and supporting evidence. allocate it to the correct arrangement/instalment using the supported receipt action.\", \"read the remaining amount and status. a partial receipt does not turn the arrangement into paid. do not manually force paid to clear an overdue alert.\", \"if the promise date passes without the required payment, review the actual balance and overdue/broken result. automation can update the arrangement and access state; verify the current record before contacting the member.\", \"contact the member, record the actual result and agree the next authorised action. a revised offer may need manager review, especially where there is a prior default or other exception.\", \"update the linked query. a paid ptp can produce a payment-verified query state, but the query may still need a resolution note and supported closure. do not assume every issue is resolved simply because one instalment was received.\"]}, {\"type\": \"paragraph\", \"text\": \"supervisor review should ask whether the receipt was verified, the allocation is correct, the remaining balance is clear and the next action is assigned. preserve the old arrangement history so repeated defaults can be assessed accurately.\"}]}"
+  },
+  {
+    "slug": "debicheck",
+    "title": "DebiCheck and NuPay",
+    "page": 44,
+    "summary": "Capture mandates, interpret provider status and handle failed debits or banking changes.",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "text": "DebiCheck is the mandate approval workflow used here through NuPay. A mandate records the payment instruction and its confirmed state. Saving it, submitting it, getting approval and receiving a payment are four separate events. Use the screenshot sequence in steps 18–21 alongside this guide."
+      },
+      {
+        "type": "heading",
+        "text": "Choose the correct member payer and mandate"
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Open the member/application and identify the latest relevant mandate. Read existing references and statuses before creating a new one. Do not duplicate an instruction merely because an earlier response is taking time.",
+          "Confirm the member ID and, where someone else pays, the third-party payer's identity and relationship. Enter banking information in the secured fields, not in a general contact note or staff message.",
+          "Confirm the account holder, bank, account number/type, instalment and debit date against the client's supplied information. Read back the relevant amounts and timing without exposing the full account number to other people.",
+          "Confirm that required ID/document evidence and a qualifying bank analysis exist. If blocked, correct the evidence or refer the issue through the appropriate review path.",
+          "Keep Client Reference 1 as the member ID in this app's submission path. Keep the provider mandate ID and later Itensity reference in their own fields.",
+          "Check which action you are about to use. Save Mandate stores the data; Submit & Push to NuPay sends it when the prerequisites pass. Read the result after the action."
+        ]
+      },
+      {
+        "type": "heading",
+        "text": "Interpret status and follow up with the member"
+      },
+      {
+        "type": "table",
+        "rows": [
+          [
+            "What you see",
+            "What it establishes",
+            "Required next check"
+          ],
+          [
+            "Saved or draft",
+            "A local mandate record exists",
+            "Check values and submission prerequisites"
+          ],
+          [
+            "Submitted or reviewing",
+            "The instruction has been submitted or is awaiting a result",
+            "Obtain the supported provider/bank status"
+          ],
+          [
+            "Confirmed approved or active",
+            "The returned result satisfies the current mandate approval check",
+            "Verify that it is the latest relevant mandate"
+          ],
+          [
+            "Rejected failed cancelled or inactive",
+            "The instruction is not a current confirmed approval",
+            "Read the response and obtain correction/review"
+          ]
+        ]
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "After submission, tell the member to follow their bank's authorisation instructions. Do not ask for their banking password, PIN or one-time authorisation code.",
+          "Use Check NuPay Status where the app offers it and read the returned result. Do not substitute a manual Approved selection for provider confirmation.",
+          "If approval is still pending, record that state and an agreed follow-up. Do not promise activation while the ordinary activation gate remains blocked.",
+          "If rejected/failed, identify the stated reason, confirm the details with the member and use the supported correction/retry process. If the cause is unclear, escalate it before another submission.",
+          "Once confirmed, check the application checklist and latest mandate. An old approval is not evidence that a later amended mandate has been approved."
+        ]
+      },
+      {
+        "type": "heading",
+        "text": "Handle a failed debit or a change in banking details"
+      },
+      {
+        "type": "paragraph",
+        "text": "An approved mandate does not prove that each debit succeeded. Collections must use actual transaction results and the reconciled balance. For a failed debit, record the verified result and follow the Collections/PTP process; do not call the mandate itself paid."
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Check whether the issue is the instruction, the bank's authorisation or an individual payment result. Record the actual reference and relevant response.",
+          "When the member requests a change, confirm their identity and the intended change using the supported process. Do not overwrite the old banking values in general notes or assume the old approval applies to the new instruction.",
+          "Obtain a new/amended confirmed mandate where required by the available workflow. If the app does not support the requested amendment, refer it to the authorised administrator/provider process.",
+          "Check that an old instruction will not cause an unintended duplicate collection before proceeding. Escalate unclear cancellation/replacement status rather than guessing.",
+          "Record the next owner and date and inform the member of what is confirmed and what remains pending. Keep transaction recovery separate from mandate maintenance."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "When a provider action is unavailable or fails, keep the record pending and escalate the operational issue. A staff notification, a screenshot or a saved checklist is not confirmation that NuPay, the bank or Itensity performed the action."
+      }
+    ],
+    "search": "{\"slug\": \"debicheck\", \"title\": \"debicheck and nupay\", \"page\": 44, \"summary\": \"capture mandates, interpret provider status and handle failed debits or banking changes.\", \"blocks\": [{\"type\": \"paragraph\", \"text\": \"debicheck is the mandate approval workflow used here through nupay. a mandate records the payment instruction and its confirmed state. saving it, submitting it, getting approval and receiving a payment are four separate events. use the screenshot sequence in steps 18–21 alongside this guide.\"}, {\"type\": \"heading\", \"text\": \"choose the correct member payer and mandate\"}, {\"type\": \"ordered\", \"items\": [\"open the member/application and identify the latest relevant mandate. read existing references and statuses before creating a new one. do not duplicate an instruction merely because an earlier response is taking time.\", \"confirm the member id and, where someone else pays, the third-party payer's identity and relationship. enter banking information in the secured fields, not in a general contact note or staff message.\", \"confirm the account holder, bank, account number/type, instalment and debit date against the client's supplied information. read back the relevant amounts and timing without exposing the full account number to other people.\", \"confirm that required id/document evidence and a qualifying bank analysis exist. if blocked, correct the evidence or refer the issue through the appropriate review path.\", \"keep client reference 1 as the member id in this app's submission path. keep the provider mandate id and later itensity reference in their own fields.\", \"check which action you are about to use. save mandate stores the data; submit & push to nupay sends it when the prerequisites pass. read the result after the action.\"]}, {\"type\": \"heading\", \"text\": \"interpret status and follow up with the member\"}, {\"type\": \"table\", \"rows\": [[\"what you see\", \"what it establishes\", \"required next check\"], [\"saved or draft\", \"a local mandate record exists\", \"check values and submission prerequisites\"], [\"submitted or reviewing\", \"the instruction has been submitted or is awaiting a result\", \"obtain the supported provider/bank status\"], [\"confirmed approved or active\", \"the returned result satisfies the current mandate approval check\", \"verify that it is the latest relevant mandate\"], [\"rejected failed cancelled or inactive\", \"the instruction is not a current confirmed approval\", \"read the response and obtain correction/review\"]]}, {\"type\": \"ordered\", \"items\": [\"after submission, tell the member to follow their bank's authorisation instructions. do not ask for their banking password, pin or one-time authorisation code.\", \"use check nupay status where the app offers it and read the returned result. do not substitute a manual approved selection for provider confirmation.\", \"if approval is still pending, record that state and an agreed follow-up. do not promise activation while the ordinary activation gate remains blocked.\", \"if rejected/failed, identify the stated reason, confirm the details with the member and use the supported correction/retry process. if the cause is unclear, escalate it before another submission.\", \"once confirmed, check the application checklist and latest mandate. an old approval is not evidence that a later amended mandate has been approved.\"]}, {\"type\": \"heading\", \"text\": \"handle a failed debit or a change in banking details\"}, {\"type\": \"paragraph\", \"text\": \"an approved mandate does not prove that each debit succeeded. collections must use actual transaction results and the reconciled balance. for a failed debit, record the verified result and follow the collections/ptp process; do not call the mandate itself paid.\"}, {\"type\": \"ordered\", \"items\": [\"check whether the issue is the instruction, the bank's authorisation or an individual payment result. record the actual reference and relevant response.\", \"when the member requests a change, confirm their identity and the intended change using the supported process. do not overwrite the old banking values in general notes or assume the old approval applies to the new instruction.\", \"obtain a new/amended confirmed mandate where required by the available workflow. if the app does not support the requested amendment, refer it to the authorised administrator/provider process.\", \"check that an old instruction will not cause an unintended duplicate collection before proceeding. escalate unclear cancellation/replacement status rather than guessing.\", \"record the next owner and date and inform the member of what is confirmed and what remains pending. keep transaction recovery separate from mandate maintenance.\"]}, {\"type\": \"paragraph\", \"text\": \"when a provider action is unavailable or fails, keep the record pending and escalate the operational issue. a staff notification, a screenshot or a saved checklist is not confirmation that nupay, the bank or itensity performed the action.\"}]}"
+  },
+  {
+    "slug": "queries",
+    "title": "Queries",
+    "page": 46,
+    "summary": "Assign cases, investigate issues, request approvals, escalate and close with evidence.",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "text": "A Query is the case record for an issue needing investigation, a decision or follow-up. It captures why action is needed, who owns it and when it must be followed up. A linked PTP records the financial arrangement; the Query records the issue and its resolution."
+      },
+      {
+        "type": "heading",
+        "text": "Log the issue and assign an owner"
+      },
+      {
+        "type": "paragraph",
+        "text": "!IMAGE queries-1366.png | Queries workspace from the local training app using synthetic records"
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Search the member and existing open Queries first. If the same issue is already being handled, add the update to that record rather than creating a duplicate case.",
+          "Open the new Query action and select the correct member, category and query type. For a payment dispute, identify exactly what is disputed: balance, amount, payment allocation or another issue.",
+          "Describe the client's request and the facts separately. “Client says a R500 EFT was made on 8 October; reference supplied; payment not yet matched” is clearer than “account wrong”.",
+          "Set a suitable priority, department, named assigned person and follow-up date. The normal new-query follow-up window is five working days unless another date is recorded; urgent cases should not be left on an ordinary default date.",
+          "Save and record the Query reference. Verify the member link and the actual owner. A department name alone does not identify the employee who must act.",
+          "Tell the member what will be checked and when they can expect an update. Record that communication and next action without promising an outcome that still requires review."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Query notes should contain enough information to investigate the issue, but should not repeat full banking credentials or attach unrelated private documents. Use the supported document/evidence workflow for sensitive material."
+      },
+      {
+        "type": "heading",
+        "text": "Investigate and use status to show the real position"
+      },
+      {
+        "type": "table",
+        "rows": [
+          [
+            "Status",
+            "Meaning for the staff member",
+            "What must still happen"
+          ],
+          [
+            "Open",
+            "Issue captured and awaiting work",
+            "Review and begin the assigned action"
+          ],
+          [
+            "In Progress",
+            "An owner is working the issue",
+            "Record findings and the next action"
+          ],
+          [
+            "Pending Member",
+            "The member must supply information/action",
+            "Record what is needed and the follow-up date"
+          ],
+          [
+            "Pending Admin",
+            "An administrative action is outstanding",
+            "Assign the responsible person and due date"
+          ],
+          [
+            "Pending Approval",
+            "A controlled decision is required",
+            "Authorised reviewer must approve/reject/return"
+          ],
+          [
+            "Escalated",
+            "Management help has been requested",
+            "Reviewer acts; the case remains open"
+          ],
+          [
+            "Resolved",
+            "The issue has been addressed",
+            "Preserve evidence and confirm the supported closure"
+          ],
+          [
+            "Closed",
+            "The supported closing action is complete",
+            "Keep the history for later reference"
+          ]
+        ]
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Read the latest note, account summary, linked arrangement and previous decision. Check the verified balance before considering a financial request.",
+          "Record each material finding: what was checked, which result was confirmed and what remains uncertain. Do not remove an earlier dispute note after correcting the account.",
+          "Update Action Taken and the next follow-up using the supported form. A status without a useful note gives the next colleague no instruction.",
+          "For payment cases, use the specific stages shown, such as Arrears Confirmed, PTP Created, Awaiting Payment, POP Received and Payment Verified. POP Received means evidence was supplied; verification is a separate action.",
+          "If nothing has changed by the agreed date, update the member and record the new owner/date or escalate the delay. Do not repeatedly move the date with no explanation."
+        ]
+      },
+      {
+        "type": "heading",
+        "text": "Escalate clearly and request a controlled approval"
+      },
+      {
+        "type": "paragraph",
+        "text": "Escalation requests assistance; approval authorises a specific controlled decision. They are related but not interchangeable. A manager seeing an alert does not automatically approve a discount, cancellation or other request."
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "On the Query, select Escalate when management assistance is needed. Enter a specific reason: what cannot be resolved, what has already been checked, the member's request and the decision needed.",
+          "Confirm Escalate and read the updated case. The app routes the escalation to Management, raises priority and puts it on the due follow-up list. The recorded owner and their own configured supervisor receive separate notifications.",
+          "Where a financial/cancellation decision requires approval, use the request-approval workflow. Enter the proposal, reason and supporting facts instead of treating the escalation note as an approval.",
+          "The authorised reviewer checks the account and evidence, then records the supported decision. Staff must not approve their own request or bypass a pending approval to close the case.",
+          "After the decision, the assigned person informs the member and carries out the permitted next action. Record what was approved, what was declined or what needs correction."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Recommended escalation note: “Member disputes three recurring charges after a package change. Compared the account and payment references; no duplicate payment found. Need manager/admin confirmation of the applicable package amount before proposing an arrangement. Member promised an update on 12 October. No balance reduction applied.”"
+      },
+      {
+        "type": "heading",
+        "text": "Link a PTP and close the Query with evidence"
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "If the issue requires a payment arrangement, confirm the member and approval state. Use Create PTP from the Query when available rather than creating an unrelated arrangement.",
+          "Read the carried-through account values and enter the actual agreed plan. Confirm the linked PTP reference after saving. Do not create a second open arrangement while a linked one is still live unless the supported replacement process applies.",
+          "Track the arrangement's outcome through payments and the linked Query. A broken promise needs follow-up; a payment-verified event may still leave another part of the Query unresolved.",
+          "Before closure, check that the required approval is decided and that there is no unresolved linked financial arrangement preventing closure. For an owing cancellation/freeze case, follow the displayed balance and acknowledgment requirements.",
+          "Use Close Query with the proper closure reason and resolution notes. Explain the completed action, evidence/reference, member communication and any separately assigned follow-up.",
+          "Save and verify the closed record. If the app blocks closure, resolve the stated condition rather than manually changing a status selection."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Example closure note: “Payment matched to the correct member and recurring-fee period. Duplicate claim checked; no second receipt entered. Corrected account allocation verified. Member informed on 12 October. Linked arrangement settled; no approval remains pending.” Use this wording only when each statement is true."
+      }
+    ],
+    "search": "{\"slug\": \"queries\", \"title\": \"queries\", \"page\": 46, \"summary\": \"assign cases, investigate issues, request approvals, escalate and close with evidence.\", \"blocks\": [{\"type\": \"paragraph\", \"text\": \"a query is the case record for an issue needing investigation, a decision or follow-up. it captures why action is needed, who owns it and when it must be followed up. a linked ptp records the financial arrangement; the query records the issue and its resolution.\"}, {\"type\": \"heading\", \"text\": \"log the issue and assign an owner\"}, {\"type\": \"paragraph\", \"text\": \"!image queries-1366.png | queries workspace from the local training app using synthetic records\"}, {\"type\": \"ordered\", \"items\": [\"search the member and existing open queries first. if the same issue is already being handled, add the update to that record rather than creating a duplicate case.\", \"open the new query action and select the correct member, category and query type. for a payment dispute, identify exactly what is disputed: balance, amount, payment allocation or another issue.\", \"describe the client's request and the facts separately. “client says a r500 eft was made on 8 october; reference supplied; payment not yet matched” is clearer than “account wrong”.\", \"set a suitable priority, department, named assigned person and follow-up date. the normal new-query follow-up window is five working days unless another date is recorded; urgent cases should not be left on an ordinary default date.\", \"save and record the query reference. verify the member link and the actual owner. a department name alone does not identify the employee who must act.\", \"tell the member what will be checked and when they can expect an update. record that communication and next action without promising an outcome that still requires review.\"]}, {\"type\": \"paragraph\", \"text\": \"query notes should contain enough information to investigate the issue, but should not repeat full banking credentials or attach unrelated private documents. use the supported document/evidence workflow for sensitive material.\"}, {\"type\": \"heading\", \"text\": \"investigate and use status to show the real position\"}, {\"type\": \"table\", \"rows\": [[\"status\", \"meaning for the staff member\", \"what must still happen\"], [\"open\", \"issue captured and awaiting work\", \"review and begin the assigned action\"], [\"in progress\", \"an owner is working the issue\", \"record findings and the next action\"], [\"pending member\", \"the member must supply information/action\", \"record what is needed and the follow-up date\"], [\"pending admin\", \"an administrative action is outstanding\", \"assign the responsible person and due date\"], [\"pending approval\", \"a controlled decision is required\", \"authorised reviewer must approve/reject/return\"], [\"escalated\", \"management help has been requested\", \"reviewer acts; the case remains open\"], [\"resolved\", \"the issue has been addressed\", \"preserve evidence and confirm the supported closure\"], [\"closed\", \"the supported closing action is complete\", \"keep the history for later reference\"]]}, {\"type\": \"ordered\", \"items\": [\"read the latest note, account summary, linked arrangement and previous decision. check the verified balance before considering a financial request.\", \"record each material finding: what was checked, which result was confirmed and what remains uncertain. do not remove an earlier dispute note after correcting the account.\", \"update action taken and the next follow-up using the supported form. a status without a useful note gives the next colleague no instruction.\", \"for payment cases, use the specific stages shown, such as arrears confirmed, ptp created, awaiting payment, pop received and payment verified. pop received means evidence was supplied; verification is a separate action.\", \"if nothing has changed by the agreed date, update the member and record the new owner/date or escalate the delay. do not repeatedly move the date with no explanation.\"]}, {\"type\": \"heading\", \"text\": \"escalate clearly and request a controlled approval\"}, {\"type\": \"paragraph\", \"text\": \"escalation requests assistance; approval authorises a specific controlled decision. they are related but not interchangeable. a manager seeing an alert does not automatically approve a discount, cancellation or other request.\"}, {\"type\": \"ordered\", \"items\": [\"on the query, select escalate when management assistance is needed. enter a specific reason: what cannot be resolved, what has already been checked, the member's request and the decision needed.\", \"confirm escalate and read the updated case. the app routes the escalation to management, raises priority and puts it on the due follow-up list. the recorded owner and their own configured supervisor receive separate notifications.\", \"where a financial/cancellation decision requires approval, use the request-approval workflow. enter the proposal, reason and supporting facts instead of treating the escalation note as an approval.\", \"the authorised reviewer checks the account and evidence, then records the supported decision. staff must not approve their own request or bypass a pending approval to close the case.\", \"after the decision, the assigned person informs the member and carries out the permitted next action. record what was approved, what was declined or what needs correction.\"]}, {\"type\": \"paragraph\", \"text\": \"recommended escalation note: “member disputes three recurring charges after a package change. compared the account and payment references; no duplicate payment found. need manager/admin confirmation of the applicable package amount before proposing an arrangement. member promised an update on 12 october. no balance reduction applied.”\"}, {\"type\": \"heading\", \"text\": \"link a ptp and close the query with evidence\"}, {\"type\": \"ordered\", \"items\": [\"if the issue requires a payment arrangement, confirm the member and approval state. use create ptp from the query when available rather than creating an unrelated arrangement.\", \"read the carried-through account values and enter the actual agreed plan. confirm the linked ptp reference after saving. do not create a second open arrangement while a linked one is still live unless the supported replacement process applies.\", \"track the arrangement's outcome through payments and the linked query. a broken promise needs follow-up; a payment-verified event may still leave another part of the query unresolved.\", \"before closure, check that the required approval is decided and that there is no unresolved linked financial arrangement preventing closure. for an owing cancellation/freeze case, follow the displayed balance and acknowledgment requirements.\", \"use close query with the proper closure reason and resolution notes. explain the completed action, evidence/reference, member communication and any separately assigned follow-up.\", \"save and verify the closed record. if the app blocks closure, resolve the stated condition rather than manually changing a status selection.\"]}, {\"type\": \"paragraph\", \"text\": \"example closure note: “payment matched to the correct member and recurring-fee period. duplicate claim checked; no second receipt entered. corrected account allocation verified. member informed on 12 october. linked arrangement settled; no approval remains pending.” use this wording only when each statement is true.\"}]}"
+  },
+  {
+    "slug": "notifications",
+    "title": "Notifications and handover",
+    "page": 49,
+    "summary": "Work alerts with your own supervisor, acknowledge reminders and hand over unfinished work.",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "text": "Notifications support follow-up across Sales, reception and approval/escalation work. They are internal app alerts, not automatic WhatsApp, SMS or email messages to staff or members. The assigned employee and their own supervisor receive separate alerts rather than broadcasting every case to the department."
+      },
+      {
+        "type": "heading",
+        "text": "Set up the supervisor and work the alert"
+      },
+      {
+        "type": "paragraph",
+        "text": "An administrator must select each employee's Supervisor under Admin → Users → Edit. The supervisor must be an active staff account in the same gym. Self-assignment and reporting cycles are rejected. If your Notifications page says no supervisor is assigned, ask the administrator to correct the relationship."
+      },
+      {
+        "type": "paragraph",
+        "text": "!IMAGE notifications-390.png | Notification with an overdue reminder in the local training app using a synthetic Query"
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "Open Notifications at the start of the shift and return to it during the day. The top-bar count refreshes while the page is visible; background checking also runs without staff opening the page.",
+          "Read the source, due date and reminder information. Use View work where permitted to inspect the actual case. A supervisor alert does not grant new permissions to approve or edit a restricted record.",
+          "Acknowledge only when you have taken responsibility for reviewing the alert. Opening it does not acknowledge it automatically. Each recipient acknowledges their own copy.",
+          "Carry out the next action in the underlying Query, Sales activity, application or arrangement. Acknowledgment stops your alert reminders, but does not close the case, receive money or approve a request.",
+          "Record the result, owner and follow-up date in the source workflow. When the source is resolved/completed/decided, its active alert is retired."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Once overdue, a recipient receives one recorded reminder per Johannesburg calendar day until they acknowledge it or the work is resolved. A new escalation or approval request creates a fresh alert even when an earlier one was acknowledged. Changes in assignment or supervisor retire the previous recipient's alert."
+      },
+      {
+        "type": "heading",
+        "text": "Keep acknowledged work from being forgotten"
+      },
+      {
+        "type": "paragraph",
+        "text": "Acknowledged work can remain unfinished. Continue using the source's follow-up date and team review until the actual issue is resolved. Notifications are a prompt to act; the source case is the record of work."
+      },
+      {
+        "type": "ordered",
+        "items": [
+          "The assigned person updates the case, not merely the alert. If waiting for someone else, record who, what is needed and the date of the next check.",
+          "The supervisor reviews overdue and pending decisions, confirms that a named person owns each action, and requests a clear update when a case has not progressed.",
+          "If the assigned employee changes, record the supported reassignment. Do not assume a direct staff message has transferred responsibility in the underlying case.",
+          "Include outstanding approvals, unresolved payment claims, missed promises and provider failures in shift handover. Give the record reference, current state and next required action.",
+          "If there is no assigned employee, use the source workflow to assign one. Some alerts fall back to the recorded creator/requester; a case with neither has no individual employee recipient. Review unassigned work in the manager queues rather than relying only on alert counts."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Handover format: record reference; verified position; action already taken; decision/evidence still required; next owner; follow-up date; member update due. Do not include passwords, PINs, one-time bank codes or full bank credentials in the handover."
+      }
+    ],
+    "search": "{\"slug\": \"notifications\", \"title\": \"notifications and handover\", \"page\": 49, \"summary\": \"work alerts with your own supervisor, acknowledge reminders and hand over unfinished work.\", \"blocks\": [{\"type\": \"paragraph\", \"text\": \"notifications support follow-up across sales, reception and approval/escalation work. they are internal app alerts, not automatic whatsapp, sms or email messages to staff or members. the assigned employee and their own supervisor receive separate alerts rather than broadcasting every case to the department.\"}, {\"type\": \"heading\", \"text\": \"set up the supervisor and work the alert\"}, {\"type\": \"paragraph\", \"text\": \"an administrator must select each employee's supervisor under admin → users → edit. the supervisor must be an active staff account in the same gym. self-assignment and reporting cycles are rejected. if your notifications page says no supervisor is assigned, ask the administrator to correct the relationship.\"}, {\"type\": \"paragraph\", \"text\": \"!image notifications-390.png | notification with an overdue reminder in the local training app using a synthetic query\"}, {\"type\": \"ordered\", \"items\": [\"open notifications at the start of the shift and return to it during the day. the top-bar count refreshes while the page is visible; background checking also runs without staff opening the page.\", \"read the source, due date and reminder information. use view work where permitted to inspect the actual case. a supervisor alert does not grant new permissions to approve or edit a restricted record.\", \"acknowledge only when you have taken responsibility for reviewing the alert. opening it does not acknowledge it automatically. each recipient acknowledges their own copy.\", \"carry out the next action in the underlying query, sales activity, application or arrangement. acknowledgment stops your alert reminders, but does not close the case, receive money or approve a request.\", \"record the result, owner and follow-up date in the source workflow. when the source is resolved/completed/decided, its active alert is retired.\"]}, {\"type\": \"paragraph\", \"text\": \"once overdue, a recipient receives one recorded reminder per johannesburg calendar day until they acknowledge it or the work is resolved. a new escalation or approval request creates a fresh alert even when an earlier one was acknowledged. changes in assignment or supervisor retire the previous recipient's alert.\"}, {\"type\": \"heading\", \"text\": \"keep acknowledged work from being forgotten\"}, {\"type\": \"paragraph\", \"text\": \"acknowledged work can remain unfinished. continue using the source's follow-up date and team review until the actual issue is resolved. notifications are a prompt to act; the source case is the record of work.\"}, {\"type\": \"ordered\", \"items\": [\"the assigned person updates the case, not merely the alert. if waiting for someone else, record who, what is needed and the date of the next check.\", \"the supervisor reviews overdue and pending decisions, confirms that a named person owns each action, and requests a clear update when a case has not progressed.\", \"if the assigned employee changes, record the supported reassignment. do not assume a direct staff message has transferred responsibility in the underlying case.\", \"include outstanding approvals, unresolved payment claims, missed promises and provider failures in shift handover. give the record reference, current state and next required action.\", \"if there is no assigned employee, use the source workflow to assign one. some alerts fall back to the recorded creator/requester; a case with neither has no individual employee recipient. review unassigned work in the manager queues rather than relying only on alert counts.\"]}, {\"type\": \"paragraph\", \"text\": \"handover format: record reference; verified position; action already taken; decision/evidence still required; next owner; follow-up date; member update due. do not include passwords, pins, one-time bank codes or full bank credentials in the handover.\"}]}"
+  },
+  {
+    "slug": "practice",
+    "title": "Practice and daily checklist",
+    "page": 51,
+    "summary": "Use five practice cases and a daily checklist to assess readiness.",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "text": "Use synthetic records or a supervisor-led discussion for training. Do not practise by submitting a real mandate, posting a payment, changing a live member's access or pushing to Itensity. The trainer should confirm both the screen action and the explanation of its result."
+      },
+      {
+        "type": "heading",
+        "text": "Practise the full handover with five cases"
+      },
+      {
+        "type": "table",
+        "rows": [
+          [
+            "Practice case",
+            "What the trainee must demonstrate",
+            "Evidence the trainer checks"
+          ],
+          [
+            "Sales client agrees to join",
+            "Capture the decision and linked application without claiming activation/completion",
+            "Separate commitment, activation and compliance milestones"
+          ],
+          [
+            "NuPay is submitted but approval is pending",
+            "Explain the pending state and record a follow-up",
+            "No fabricated approval or ordinary activation"
+          ],
+          [
+            "Member says an EFT was already paid",
+            "Record the claim and investigation before posting another payment",
+            "Amount/date/reference and Query ownership"
+          ],
+          [
+            "PTP misses its promise date",
+            "Review receipts and status, then record contact and next action",
+            "Verified balance, real outcome and required review"
+          ],
+          [
+            "Query needs management help",
+            "Enter the reason, owner and due action, then distinguish acknowledgment from resolution",
+            "Escalation history, separate recipients and source task still open"
+          ]
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Ask the trainee to explain why each wrong shortcut would mislead the next colleague. A successful demonstration includes the correct record, actual outcome, useful note, named owner, due date and required evidence—not just a sequence of clicks."
+      },
+      {
+        "type": "heading",
+        "text": "Daily operating checklist"
+      },
+      {
+        "type": "unordered",
+        "items": [
+          "Confirm the gym, signed-in employee and own assigned permissions.",
+          "Check Notifications, due Follow-ups, appointments and assigned collection tasks.",
+          "Read the existing record and history before contacting the client or creating another case.",
+          "Record actual contact, attendance, decisions and payment results without changing them to improve totals.",
+          "Verify document ownership, qualification, latest mandate result and any required approval before a controlled submission or activation.",
+          "Separate a proposed arrangement, approved arrangement, supplied proof and verified receipt.",
+          "Keep the ordinary monthly fee, arrears, registration fee and any other purpose separate.",
+          "Give every unfinished action a named owner and follow-up date, with a useful note.",
+          "Escalate a blocked decision with evidence and a clear request; acknowledgment does not finish the task.",
+          "Before handover, confirm what is complete, what is outstanding and who must act next."
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "The trainer should repeat the exercise after a workflow or approved gym policy changes. This edition expands the original Sales screenshot guide and adds operational guidance checked against the application workflows available on 9 October 2026."
+      }
+    ],
+    "search": "{\"slug\": \"practice\", \"title\": \"practice and daily checklist\", \"page\": 51, \"summary\": \"use five practice cases and a daily checklist to assess readiness.\", \"blocks\": [{\"type\": \"paragraph\", \"text\": \"use synthetic records or a supervisor-led discussion for training. do not practise by submitting a real mandate, posting a payment, changing a live member's access or pushing to itensity. the trainer should confirm both the screen action and the explanation of its result.\"}, {\"type\": \"heading\", \"text\": \"practise the full handover with five cases\"}, {\"type\": \"table\", \"rows\": [[\"practice case\", \"what the trainee must demonstrate\", \"evidence the trainer checks\"], [\"sales client agrees to join\", \"capture the decision and linked application without claiming activation/completion\", \"separate commitment, activation and compliance milestones\"], [\"nupay is submitted but approval is pending\", \"explain the pending state and record a follow-up\", \"no fabricated approval or ordinary activation\"], [\"member says an eft was already paid\", \"record the claim and investigation before posting another payment\", \"amount/date/reference and query ownership\"], [\"ptp misses its promise date\", \"review receipts and status, then record contact and next action\", \"verified balance, real outcome and required review\"], [\"query needs management help\", \"enter the reason, owner and due action, then distinguish acknowledgment from resolution\", \"escalation history, separate recipients and source task still open\"]]}, {\"type\": \"paragraph\", \"text\": \"ask the trainee to explain why each wrong shortcut would mislead the next colleague. a successful demonstration includes the correct record, actual outcome, useful note, named owner, due date and required evidence—not just a sequence of clicks.\"}, {\"type\": \"heading\", \"text\": \"daily operating checklist\"}, {\"type\": \"unordered\", \"items\": [\"confirm the gym, signed-in employee and own assigned permissions.\", \"check notifications, due follow-ups, appointments and assigned collection tasks.\", \"read the existing record and history before contacting the client or creating another case.\", \"record actual contact, attendance, decisions and payment results without changing them to improve totals.\", \"verify document ownership, qualification, latest mandate result and any required approval before a controlled submission or activation.\", \"separate a proposed arrangement, approved arrangement, supplied proof and verified receipt.\", \"keep the ordinary monthly fee, arrears, registration fee and any other purpose separate.\", \"give every unfinished action a named owner and follow-up date, with a useful note.\", \"escalate a blocked decision with evidence and a clear request; acknowledgment does not finish the task.\", \"before handover, confirm what is complete, what is outstanding and who must act next.\"]}, {\"type\": \"paragraph\", \"text\": \"the trainer should repeat the exercise after a workflow or approved gym policy changes. this edition expands the original sales screenshot guide and adds operational guidance checked against the application workflows available on 9 october 2026.\"}]}"
+  }
+]

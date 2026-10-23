@@ -1,0 +1,141 @@
+{% set summary = a.summary %}
+    <div class="card collection-acct-card">
+      <div class="card-header collection-acct-header">
+        <h2>Account Summary</h2>
+        <a href="{{ url_for('members.member_detail', mid=p.member.id) }}"
+           class="collection-acct-link">Open account →</a>
+      </div>
+      <div class="card-body collection-acct-body">
+        <div class="collection-acct-name">
+          {{ summary.member.first_name }} {{ summary.member.last_name }}
+        </div>
+
+        <div class="collection-acct-row">
+          <span class="collection-acct-label">Balance</span>
+          {% if summary.is_owing %}
+            <span class="collection-acct-badge collection-acct-danger">Owing R{{ '%.2f'|format(summary.total_outstanding) }}</span>
+          {% else %}
+            <span class="collection-acct-badge collection-acct-success">Zero balance</span>
+          {% endif %}
+        </div>
+
+        <!-- Payment / arrears decision support -->
+        <div class="collection-acct-decision">
+          <div class="collection-acct-heading">
+            Payment / Arrears Decision
+          </div>
+          <div class="collection-acct-row collection-acct-total-row">
+            <span class="collection-acct-label collection-acct-total-label">Total owing</span>
+            <span class="collection-acct-total">R{{ '%.2f'|format(summary.total_outstanding) }}</span>
+          </div>
+          <div class="collection-acct-row collection-acct-decision-row">
+            <span class="collection-acct-label collection-acct-decision-label">Arrears</span>
+            <span class="collection-acct-value">{{ summary.arrears_months }} month(s)</span>
+          </div>
+          <div class="collection-acct-row collection-acct-decision-row">
+            <span class="collection-acct-label collection-acct-decision-label">Discount rule</span>
+            <span class="collection-acct-discount">
+              {{ summary.discount_range_label }}{% if summary.discount_min_percent != summary.discount_max_percent %} (rec. {{ summary.discount_percent }}%){% endif %}
+              {% if summary.discount_amount %}<br>(−R{{ '%.2f'|format(summary.discount_amount) }}){% endif %}
+            </span>
+          </div>
+          <div class="collection-acct-row collection-acct-decision-row">
+            <span class="collection-acct-label collection-acct-decision-label">Member pays</span>
+            <span class="collection-acct-payable">R{{ '%.2f'|format(summary.settlement_amount) }}</span>
+          </div>
+          <div class="collection-acct-row collection-acct-decision-row">
+            <span class="collection-acct-label collection-acct-decision-label">PTP required</span>
+            <span class="collection-acct-value">{{ summary.ptp_required }}</span>
+          </div>
+          <div class="collection-acct-row collection-acct-decision-row">
+            <span class="collection-acct-label collection-acct-decision-label">Proof required</span>
+            <span class="collection-acct-value">{{ summary.proof_of_payment_required }}</span>
+          </div>
+          <div class="collection-acct-row collection-acct-decision-row">
+            <span class="collection-acct-label collection-acct-decision-label">Bank statement</span>
+            <span class="collection-acct-value">{{ 'On file' if summary.has_bank_statement else 'Not on file' }}</span>
+          </div>
+          <div class="collection-acct-row collection-acct-decision-row">
+            <span class="collection-acct-label collection-acct-decision-label">Income verified</span>
+            <span class="collection-acct-value">{{ 'Yes' if summary.income_verified else 'No' }}</span>
+          </div>
+          <div class="collection-acct-row collection-acct-decision-row">
+            <span class="collection-acct-label collection-acct-decision-label">Access decision</span>
+            <span class="collection-acct-discount">{{ summary.access_decision }}</span>
+          </div>
+          <div class="collection-acct-row collection-acct-decision-row">
+            <span class="collection-acct-label collection-acct-decision-label">Follow-up</span>
+            <span class="collection-acct-value">{{ summary.payment_follow_up }}</span>
+          </div>
+          <div class="collection-acct-row collection-acct-decision-row">
+            <span class="collection-acct-label collection-acct-decision-label">Assigned to</span>
+            <span class="collection-acct-value">{{ summary.payment_assigned_to }}</span>
+          </div>
+          <div class="collection-acct-recommendation">
+            <strong>Recommended:</strong> {{ summary.recommended_action }}
+          </div>
+          {% if summary.manager_approval_required %}
+          <div class="collection-acct-approval">
+             The recommended discount is above {{ summary.staff_discount_ceiling }}%{% if summary.manager_discretion %} / at manager discretion{% endif %} — request manager approval before offering it.
+          </div>
+          {% endif %}
+          {% if summary.is_owing and not summary.ptp_requirements_met %}
+          <div class="collection-acct-requirements">
+             The PTP module will send this to a manager unless a confirmed DebiCheck{% if not summary.debicheck_confirmed %} (missing){% endif %} and a qualifying bank statement{% if not summary.statement_qualified %} (missing){% endif %} are on file.
+          </div>
+          {% endif %}
+        </div>
+        <div class="collection-acct-row">
+          <span class="collection-acct-label">Debit order</span>
+          {% if summary.has_debit_order %}
+            <span class="collection-acct-debit-order">Yes{% if summary.debit_order_status %} · {{ summary.debit_order_status|title }}{% endif %}</span>
+          {% else %}
+            <span class="collection-acct-missing-order">None on file</span>
+          {% endif %}
+        </div>
+
+        <div class="collection-acct-row">
+          <span class="collection-acct-label">Access</span>
+          {% if summary.is_blocked %}
+            <span class="collection-acct-badge collection-acct-danger">Blocked</span>
+          {% else %}
+            <span class="collection-acct-badge collection-acct-success">Allowed</span>
+          {% endif %}
+        </div>
+
+        <div class="collection-acct-row">
+          <span class="collection-acct-label">Queries</span>
+          <span><strong>{{ summary.query_total }}</strong> total · {{ summary.query_open }} open</span>
+        </div>
+
+        <div class="collection-acct-row">
+          <span class="collection-acct-label">Disputes</span>
+          {% if summary.dispute_count %}
+            <span class="collection-acct-badge collection-acct-warning">{{ summary.dispute_count }} on record</span>
+          {% else %}
+            <span class="collection-acct-empty">None</span>
+          {% endif %}
+        </div>
+
+        <!-- Banking (show / hide) -->
+        <details class="collection-acct-banking">
+          <summary class="btn btn-ghost btn-sm collection-acct-banking-toggle"
+                  >
+             Show banking
+          </summary>
+          <div id="acct-banking" class="collection-acct-banking-body">
+            <div class="collection-acct-row"><span class="collection-acct-label">Bank</span><span>{{ summary.bank or '—' }}</span></div>
+            <div class="collection-acct-row"><span class="collection-acct-label">Account name</span><span>{{ summary.account_name or '—' }}</span></div>
+            <div class="collection-acct-row"><span class="collection-acct-label">Account no.</span><span>{{ summary.account_masked or '—' }}</span></div>
+            <div class="collection-acct-row"><span class="collection-acct-label">Branch</span><span>{{ summary.branch_code or '—' }}</span></div>
+            <div class="collection-acct-row"><span class="collection-acct-label">Debit date</span><span>{{ summary.debit_order_date or '—' }}</span></div>
+            {% if has_perm('new_debicheck') %}
+            <a href="{{ url_for('debicheck.add', member_id=p.member.id) }}"
+               class="btn btn-primary btn-sm collection-acct-debit-link">
+              ＋ Load Debit Order
+            </a>
+            {% endif %}
+          </div>
+        </details>
+      </div>
+    </div>

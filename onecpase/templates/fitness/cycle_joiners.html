@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block title %}Onboarding | 1Cpace{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/fitness-tools.css') }}">
+<header class="page-header"><div><h1>Onboarding</h1><p>Full cycles always run from the 15th to the 14th.</p></div><a class="btn" href="{{ url_for('fitness.anatomy') }}">Anatomy & exercises</a></header>
+{% include 'fitness/_joining_cohort.html' %}
+{% endblock %}

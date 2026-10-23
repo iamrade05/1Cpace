@@ -24,14 +24,14 @@
   <div class="card-body">
     <h2>Pre-debit Message Reminders</h2>
     <p>Reminders are due two days before each member’s debit date. The five cycle groups are the 1st, 5th, 15th, 25th and month-end (30th/31st). A month-end member keeps their own due date; short months use the last day.</p>
-    <p>Send the reminder through your usual WhatsApp, SMS or email channel, then record delivery here. These reminders do not use the 100-call allocation.</p>
+    <p>Send WhatsApp reminders from the Reception number, or record reminders sent through another channel. These messages do not use the 100-call allocation.</p>
     {% if reminders %}
     <div class="table-wrap"><table class="table">
       <thead><tr><th>Member</th><th>Contact</th><th>Debit Due</th><th>Reminder</th></tr></thead>
       <tbody>{% for reminder in reminders %}<tr>
         <td><a href="{{ url_for('members.member_detail', mid=reminder.member_id) }}">{{ reminder.first_name }} {{ reminder.last_name }}</a></td>
         <td>{{ reminder.contact or 'No contact number' }}</td><td>{{ reminder.due_date }}</td>
-        <td><form method="post" action="{{ url_for('collections.record_reminder_delivery', reminder_id=reminder.id) }}">
+        <td><a class="btn btn-primary btn-sm" href="{{ url_for('collections.send_collection_whatsapp',kind='reminder',record_id=reminder.id) }}">Send WhatsApp</a><form method="post" action="{{ url_for('collections.record_reminder_delivery', reminder_id=reminder.id) }}">
           <label>Delivered through <select name="channel" required><option value="">Choose channel</option><option value="WHATSAPP">WhatsApp</option><option value="SMS">SMS</option><option value="EMAIL">Email</option></select></label>
           <button class="btn btn-secondary btn-sm">Record Delivered Reminder</button>
         </form></td>
@@ -58,7 +58,7 @@
     </div>
     {% set talk = (summary.talk_seconds or 0)|int %}
     <div style="margin-top:10px;color:var(--t2);font-size:.78rem;">{{ summary.assigned or 0 }} calls assigned for {{ today_label }} · Talk time {{ talk // 60 }}m {{ talk % 60 }}s</div>
-    <div style="margin-top:4px;color:var(--t2);font-size:.72rem;">Reached = contact outcome + {{ min_talk_seconds }}s or more on the phone</div>
+    <div style="margin-top:4px;color:var(--t2);font-size:.72rem;">Reached = saved contact outcome. PBX-confirmed: {{ summary.verified or 0 }} with {{ min_talk_seconds }}s or more of talk time.</div>
   </div>
   {% endfor %}
 </div>

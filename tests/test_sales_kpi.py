@@ -87,7 +87,7 @@ def test_sales_funnel_keeps_applications_within_assigned_lead_cohort(app):
         assert report["funnel"]["activated"] == 1
         assert [row["stage"] for row in report["funnel_leakage"]] == [
             "assigned", "contacted", "appointment", "show",
-            "application", "activated", "joined",
+            "joined", "application", "activated",
         ]
 
 

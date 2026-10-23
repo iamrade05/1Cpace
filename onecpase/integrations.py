@@ -101,9 +101,9 @@ def push_member_to_itensity(member_data: Dict) -> Tuple[bool, Optional[str], Opt
     # (1Cpace.db) via _save_itensity_ref — not ours. Intercept that call
     # instead of letting it write to the wrong database.
     captured: Dict[str, str] = {}
+    PLAYWRIGHT_LOCK.acquire()
     original_save = module._save_itensity_ref
     module._save_itensity_ref = lambda member_id, ref: captured.update(ref=ref)
-    PLAYWRIGHT_LOCK.acquire()
     try:
         module.push(data, headless=True, submit=True)
     except module.ItensityPushError as exc:
@@ -164,9 +164,9 @@ def push_pos_payment_to_itensity(
         smoke=False,
     )
 
+    PLAYWRIGHT_LOCK.acquire()
     original_member_from_args = module.member_from_args
     module.member_from_args = lambda _args: dict(member_data)
-    PLAYWRIGHT_LOCK.acquire()
     try:
         module.push_pos(args)
     except module.ItensityPosError as exc:

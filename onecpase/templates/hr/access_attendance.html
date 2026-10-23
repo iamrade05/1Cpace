@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Access Card Attendance | 1Cpace{% endblock %}
+{% block page_title %}Access Card Attendance{% endblock %}
+{% block content %}
+<header class="page-header"><div><h1>Access Card Attendance</h1><p class="text-muted">Weekly shift preview and recorded gym entries</p></div></header>
+<p><a class="btn btn-ghost" href="{{ url_for('hr.staff_index') }}">Staff directory</a> <a class="btn btn-ghost" href="{{ url_for('hr.timesheets_index') }}">Manual timesheets</a></p>
+{% if error %}<div class="card"><div class="card-body" role="status">{{ error }}</div></div>{% endif %}
+{% if report %}
+<form method="get" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:20px;">
+  <a class="btn btn-ghost" href="{{ url_for('hr.access_attendance',week=report.prev_week) }}">Previous week</a>
+  <label>Week containing <input class="form-control" type="date" name="week" value="{{ report.week_start }}"></label>
+  <button class="btn btn-secondary">Show week</button>
+  <a class="btn btn-ghost" href="{{ url_for('hr.access_attendance',week=report.next_week) }}">Next week</a>
+</form>
+<div class="card" style="margin-bottom:20px;"><div class="card-body">
+  <h2>{{ report.week_start }} to {{ report.week_end }}</h2>
+  <p><strong>{{ report.totals.present }} employees with successful scans</strong> · {{ report.totals.successful_scans }} successful scans · {{ report.totals.denied_scans }} denied scans · {{ report.totals.scan_groups }} scan groups</p>
+  <p>Latest access date in the source: <strong>{{ report.source_latest_date }}</strong>. Imported {{ report.captured_at[:19]|replace('T',' ') }} SAST.</p>
+  <p class="text-muted">Entry evidence only. Last entry is not a sign-out. Lunch, departure and hours worked are not inferred. Repeated successful scans no more than 60 seconds apart are grouped for this preview; the raw scan count stays visible.</p>
+  <p class="text-muted">Sales weekday shift: 09:00–19:00. A pre-shift entry is shown separately and the policy start is no earlier than the shift start. Reception, fitness instructors and cleaners share the same shifts: morning 05:00–13:00, late 13:00–21:00 (Friday until 20:00). Saturday/public-holiday hours 06:00–14:00; Sunday closed. Sales Saturday hours and individual days off still need confirmation.</p>
+  {% if report.duplicates_removed %}<p class="text-muted">{{ report.duplicates_removed }} exact duplicate source row(s) excluded from the counts.</p>{% endif %}
+  {% if not report.available %}<p role="status"><strong>No access snapshot for the selected week.</strong> No attendance conclusions can be drawn from these empty cells.</p>{% endif %}
+  {% if report.quality.unmatched_staff %}<p role="status">No card-reference match found for: {{ report.quality.unmatched_staff|join(', ') }}.</p>{% endif %}
+  {% if report.quality.unlinked_source_staff %}<p role="status"><strong>Staff-like access records not linked to an employee account:</strong> {% for item in report.quality.unlinked_source_staff %}{{ item.name }} ({{ item.role }}, {{ item.scans }} scans){% if not loop.last %}; {% endif %}{% endfor %}. These are excluded from employee totals until the identity is confirmed.</p>{% endif %}
+</div></div>
+<div class="card" style="margin-bottom:20px;"><div class="card-header"><h2>Weekly overview</h2></div><div class="card-body table-wrap">
+<table class="table"><thead><tr><th>Employee</th><th>Number</th><th>Department</th><th>Days with entries</th><th>Successful scans</th><th>Scan groups</th><th>Denied scans</th></tr></thead><tbody>
+{% for employee in report.employees %}<tr><td><a href="#employee-{{ employee.id }}">{{ employee.full_name }}</a></td><td>{{ employee.employee_number or 'Unassigned' }}</td><td>{{ employee.department }}</td><td>{{ employee.present_days }}</td><td>{{ employee.successful_scans }}</td><td>{{ employee.scan_groups }}</td><td>{{ employee.denied_scans }}</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% for employee in report.employees %}
+<details class="card" id="employee-{{ employee.id }}" style="margin-bottom:14px;" {% if employee.successful_scans %}open{% endif %}>
+<summary style="padding:16px;cursor:pointer;"><strong>{{ employee.full_name }}</strong> · {{ employee.employee_number or 'Unassigned' }} · {{ employee.present_days }} day(s) with entries · {{ employee.successful_scans }} successful scans</summary>
+<div class="card-body"><div class="table-wrap"><table class="table"><thead><tr><th>Day</th><th>Shift template</th><th>First entry</th><th>Last entry</th><th>Policy start</th><th>Scans / groups</th><th>Evidence</th></tr></thead><tbody>
+{% for day in employee.days %}<tr>
+  <td style="white-space:nowrap;">{{ day.day }}</td>
+  <td>{{ day.shift.label }}{% if day.shift.start %}<br>{{ day.shift.start }}–{{ day.shift.end }}{% endif %}</td>
+  <td>{{ day.first_entry or '—' }}{% if day.pre_shift_entry %}<br><small>Before shift / may be training</small>{% endif %}</td>
+  <td>{{ day.last_entry or '—' }}</td><td>{{ day.policy_start or '—' }}</td>
+  <td>{{ day.successful_scans }} / {{ day.scan_groups }}{% if day.denied_scans %}<br>{{ day.denied_scans }} denied{% endif %}</td>
+  <td>{{ day.status }}{% if day.scan_times %}<details><summary>Scan times</summary>{{ day.scan_times|join(', ') }}</details>{% endif %}</td>
+</tr>{% endfor %}</tbody></table></div>
+<p class="text-muted">Sign-out: not recorded · Lunch out/in: not recorded · Verified working hours: unavailable. Shift windows are planning rules, not proof of a full shift worked.</p>
+</div></details>
+{% endfor %}
+{% endif %}
+{% endblock %}
