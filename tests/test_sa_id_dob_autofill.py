@@ -150,8 +150,10 @@ def test_edit_member_page_uses_the_shared_script(app):
 
 
 def test_prospect_conversion_form_fills_the_date_of_birth_from_the_id():
-    source = (ROOT / "onecpase" / "templates" / "leads" / "convert.html").read_text(encoding="utf-8")
+    # Conversion now goes through the Add Member form, prefilled from the prospect.
+    source = (ROOT / "onecpase" / "templates" / "members" / "add.html").read_text(encoding="utf-8")
 
     assert "js/sa_id.js" in source
     assert 'id="dobField"' in source
     assert "saIdFillDob" in source
+    assert "Convert Prospect to Member" in source

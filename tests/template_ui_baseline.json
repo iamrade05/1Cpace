@@ -168,7 +168,7 @@
     "emoji": 0
   },
   "collections/call_profile.html": {
-    "inline_styles": 64,
+    "inline_styles": 68,
     "style_blocks": 0,
     "hex_colours": 9,
     "emoji": 0
@@ -792,7 +792,7 @@
     "emoji": 0
   },
   "screen_recordings/index.html": {
-    "inline_styles": 7,
+    "inline_styles": 8,
     "style_blocks": 0,
     "hex_colours": 6,
     "emoji": 0
@@ -805,6 +805,66 @@
   },
   "welcome.html": {
     "inline_styles": 0,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "collections/whatsapp_preview.html": {
+    "inline_styles": 1,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "communications/whatsapp_compose.html": {
+    "inline_styles": 2,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "debicheck/_document_upload.html": {
+    "inline_styles": 2,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "fitness/_intake_register.html": {
+    "inline_styles": 1,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "fitness/intake.html": {
+    "inline_styles": 1,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "fitness/onboarding_session.html": {
+    "inline_styles": 12,
+    "style_blocks": 0,
+    "hex_colours": 2,
+    "emoji": 0
+  },
+  "hr/_workforce_nav.html": {
+    "inline_styles": 1,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "hr/access_attendance.html": {
+    "inline_styles": 6,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "hr/people_setup.html": {
+    "inline_styles": 2,
+    "style_blocks": 0,
+    "hex_colours": 0,
+    "emoji": 0
+  },
+  "hr/workforce_week.html": {
+    "inline_styles": 1,
     "style_blocks": 0,
     "hex_colours": 0,
     "emoji": 0

@@ -99,11 +99,12 @@ def test_hr_does_not_expose_payroll_or_allow_account_edits(client, role, departm
         sid = db.execute("INSERT INTO staff (first_name, last_name, salary) VALUES ('Test', 'Employee', 98765)").lastrowid
         db.execute("INSERT INTO payroll (staff_id, month, basic, net) VALUES (?, '2026-10', 98765, 98765)", (sid,))
         db.commit()
+    # Employee records are admin-only since the HR workforce release.
     detail = client.get(f'/hr/employees/{sid}')
-    assert detail.status_code == 200
-    assert b'All Payroll' not in detail.data
+    assert detail.status_code == 403
     assert b'98765' not in detail.data
     form = client.get(f'/hr/employees/{sid}/edit')
+    assert form.status_code == 403
     assert b'name="salary"' not in form.data
     client.post(f'/hr/employees/{sid}/edit', data={'first_name': 'Test', 'last_name': 'Employee', 'salary': '1'})
     with client.application.app_context():

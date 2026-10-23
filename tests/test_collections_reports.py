@@ -66,7 +66,18 @@ def test_financial_report_counts_the_month(app):
         assert financial_report(db, "2025-01")["new_arrears"] == 0
 
 
-def test_sales_quality_failure_rate_recovery_and_transfer(app):
+def test_sales_quality_failure_rate_recovery_and_transfer(app, monkeypatch):
+    import datetime as real_datetime
+    import onecpase.collections_engine as engine
+
+    class SeptemberDate(real_datetime.date):
+        """Ownership depends on membership age, so pin 'today' to the report
+        month or the cases stop counting as first-month failures over time."""
+        @classmethod
+        def today(cls):
+            return cls(2026, 9, 6)
+
+    monkeypatch.setattr(engine, "date", SeptemberDate)
     with app.app_context():
         db = get_db()
         # Consultant 1 signed three members in September; two first debits failed.
