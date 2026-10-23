@@ -275,6 +275,22 @@ def _refresh_expired_qr(page) -> None:
         pass
 
 
+BROWSER_GONE_RE = re.compile(
+    r"invalid session id|session deleted|chrome not reachable|disconnected|no such window"
+    r"|target window already closed|has been closed|browser has disconnected", re.I)
+
+
+def _browser_gone(exc: Exception) -> bool:
+    """True when the browser behind the page has died. Every later command
+    fails the same way, so the worker must end and be restarted with a fresh
+    browser rather than keep polling a dead session."""
+    if exc.__class__.__module__.startswith("urllib3"):
+        return True  # chromedriver itself is gone
+    if exc.__class__.__name__ in ("InvalidSessionIdException", "NoSuchWindowException"):
+        return True
+    return bool(BROWSER_GONE_RE.search(str(exc)))
+
+
 def _poll_login_state(page, session_dir: Path) -> bool:
     """Refresh logged_in/last_qr_at from the page's current DOM. Returns
     the current logged_in value."""
@@ -285,7 +301,7 @@ def _poll_login_state(page, session_dir: Path) -> bool:
             return True
     except Exception as exc:
         _set_state(last_error=f"Browser status check failed: {exc}", logged_in=False)
-        if exc.__class__.__module__.startswith("urllib3"):
+        if _browser_gone(exc):
             raise
     try:
         syncing = page.evaluate("document.body ? /Loading your chats|Your messages are downloading/i.test(document.body.innerText) : false")
@@ -398,6 +414,9 @@ def _run_worker(app, session_dir: Path, delay: float) -> None:
                     _set_state(last_sent_at=_now_iso(), last_error=None)
                     outgoing_status = 'sent'
                 except Exception as exc:
+                    if _browser_gone(exc):
+                        _send_queue.put((phone, text))  # retried once the browser is back
+                        raise
                     _set_state(last_error=f'Send to {phone} failed: {exc}')
                     outgoing_status = 'failed'
                 try:
@@ -413,11 +432,19 @@ def _run_worker(app, session_dir: Path, delay: float) -> None:
 
 
 def _supervise_worker(app, session_dir, delay):
-    for attempt in range(3):
+    """Keep a browser session running for the life of the process. A worker
+    that ran for a while gets restarted straight away; one that keeps failing
+    fast backs off to at most every five minutes instead of giving up, which
+    left WhatsApp down until the next service restart."""
+    wait = 5
+    while True:
+        started = time.monotonic()
         _run_worker(app, session_dir, delay)
-        if attempt < 2:
-            _set_state(pairing_status=None, pairing_code=None, last_error='Restarting an unresponsive WhatsApp browser session.')
-            time.sleep(5)
+        if time.monotonic() - started > 600:
+            wait = 5
+        _set_state(pairing_status=None, pairing_code=None, last_error='Restarting an unresponsive WhatsApp browser session.')
+        time.sleep(wait)
+        wait = min(wait * 2, 300)
 
 
 def init_whatsapp_web(app) -> None:

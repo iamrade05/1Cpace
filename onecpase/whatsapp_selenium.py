@@ -69,4 +69,7 @@ class SeleniumPage:
     def goto(self,url,**kwargs): self.driver.get(url)
     def evaluate(self,script): return self.driver.execute_script('return '+script)
     def wait_for_timeout(self,ms): time.sleep(ms/1000)
-    def close(self): self.driver.quit()
+    def close(self):
+        # quit() on a crashed Chrome can raise; the restart must still go ahead.
+        try: self.driver.quit()
+        except Exception: pass
