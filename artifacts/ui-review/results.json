@@ -50,6 +50,83 @@
       "background": "rgb(244, 246, 248)"
     },
     {
+      "page": "leads",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "applications",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "queries",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "debicheck",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "fitness",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "hr",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "operations",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "reports",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "admin",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "notifications",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "staff-supervisor",
+      "width": 1366,
+      "status": 200,
+      "scroll": 1366,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
       "page": "welcome",
       "width": 1366,
       "status": 200,
@@ -121,6 +198,83 @@
     },
     {
       "page": "sales-dashboard",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "leads",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "applications",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "queries",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "debicheck",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "fitness",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "hr",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "operations",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "reports",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "admin",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "notifications",
+      "width": 390,
+      "status": 200,
+      "scroll": 390,
+      "background": "rgb(244, 246, 248)"
+    },
+    {
+      "page": "staff-supervisor",
       "width": 390,
       "status": 200,
       "scroll": 390,
