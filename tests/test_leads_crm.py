@@ -267,11 +267,11 @@ def test_sales_process_feeds_sales_kpi_report(app):
         # it asserted ("assigned", "show", 1, 1) as the expected/correct value.
         assert tuple(event) == ("assigned", "joined", 1, 1)
 
-        response = client.get("/sales-dashboard?from=2000-01-01&to=2099-12-31")
+        response = client.get(f"/sales-dashboard?from={date.today() - timedelta(days=30)}&to={date.today()}")
         assert response.status_code == 200
         assert b"Shows" in response.data
         assert b"Activated" in response.data
-        assert b"Monthly Credited Sales" in response.data
+        assert b"Credited sales in selected period" in response.data
 
 
 def test_leads_pipeline_does_not_show_removed_kpi_blocks(app):

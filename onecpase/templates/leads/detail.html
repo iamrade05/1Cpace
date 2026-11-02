@@ -37,7 +37,7 @@
         <div class="form-group" id="scheduleGroup"><label class="form-label" id="scheduleLabel">Appointment date and time *</label><input type="datetime-local" name="scheduled_for" id="scheduledFor" class="form-control"></div>
         <div class="form-group" id="reasonGroup" style="display:none;"><label class="form-label" id="reasonLabel">Reason *</label><select name="reason" id="contactReason" class="form-control"><option value="Client is busy">Client is busy</option><option value="Client could not speak">Client could not speak</option><option value="Client needs to speak to spouse / partner">Client needs to speak to spouse / partner</option><option value="Client requested a specific callback time">Client requested a specific callback time</option><option value="Other">Other</option></select></div>
         <div class="form-group"><label class="form-label">Notes / objection</label><textarea name="notes" class="form-control" rows="3" placeholder="Record what was discussed, the client's request, or the objection."></textarea></div>
-        <button type="submit" class="btn btn-primary">Save Contact Result</button>
+        <button type="submit" class="btn funnel-btn funnel-btn--info">Save Contact Result</button>
       </form>
       <script>
       function updateContactFields() {
@@ -69,26 +69,26 @@
          unable to ever reach SHOW - see sync_legacy_stage() in
          sales_pipeline.py for why that made every conversion after this
          screen fail its "must be at SHOW or CONSULTATION" check. #}
-      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="showed"><button type="submit" class="btn btn-primary" style="background:var(--ok)!important;width:100%;">Client Attended</button></form>
-      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="no_show"><div class="form-group"><label class="form-label">No-show note *</label><input name="reason" class="form-control" required placeholder="Why did the client not attend?"></div><button type="submit" class="btn btn-secondary">Client Didn't Show</button></form>
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="showed"><button type="submit" class="btn funnel-btn funnel-btn--ok">Client Attended</button></form>
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="no_show"><div class="form-group"><label class="form-label">No-show note *</label><input name="reason" class="form-control" required placeholder="Why did the client not attend?"></div><button type="submit" class="btn funnel-btn funnel-btn--warn">Client Didn't Show</button></form>
       {% endif %}
-      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="rescheduled"><div class="form-group"><label class="form-label">New appointment date and time *</label><input type="datetime-local" name="scheduled_for" class="form-control" required></div><button type="submit" class="btn btn-secondary">Reschedule Appointment</button></form>
-      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="not_interested"><div class="form-group"><label class="form-label">Why is the client not interested? *</label><input name="reason" class="form-control" required></div><button type="submit" class="btn btn-ghost" style="color:var(--err)!important;">Not Interested</button></form>
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="rescheduled"><div class="form-group"><label class="form-label">New appointment date and time *</label><input type="datetime-local" name="scheduled_for" class="form-control" required></div><button type="submit" class="btn funnel-btn funnel-btn--info">Reschedule Appointment</button></form>
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}"><input type="hidden" name="activity_type" value="appointment"><input type="hidden" name="outcome" value="not_interested"><div class="form-group"><label class="form-label">Why is the client not interested? *</label><input name="reason" class="form-control" required></div><button type="submit" class="btn funnel-btn funnel-btn--err">Not Interested</button></form>
 
       {% elif journey_step in ('walk_in', 'membership_decision') %}
       <h3 style="font-size:.9rem;color:var(--ok);text-transform:uppercase;margin-bottom:6px;">{{ 'Walk-In Details' if journey_step == 'walk_in' else 'Client Attendance Result' }}</h3>
       <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">Attendance is confirmed. Record whether the client agrees to join or is not interested.</p>
-      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="visit"><input type="hidden" name="outcome" value="joined"><button type="submit" class="btn btn-primary" style="background:var(--ok)!important;width:100%;">Agreed to Join → Start Application</button></form>
-      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}"><input type="hidden" name="activity_type" value="visit"><input type="hidden" name="outcome" value="not_interested"><div class="form-group"><label class="form-label">Why is the client not interested? *</label><input name="reason" class="form-control" required></div><button type="submit" class="btn btn-ghost" style="color:var(--err)!important;">Not Interested</button></form>
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}" style="margin-bottom:12px;"><input type="hidden" name="activity_type" value="visit"><input type="hidden" name="outcome" value="joined"><button type="submit" class="btn funnel-btn funnel-btn--ok">Agreed to Join → Start Application</button></form>
+      <form method="POST" action="{{ url_for('leads.add_activity', lid=lead.id) }}"><input type="hidden" name="activity_type" value="visit"><input type="hidden" name="outcome" value="not_interested"><div class="form-group"><label class="form-label">Why is the client not interested? *</label><input name="reason" class="form-control" required></div><button type="submit" class="btn funnel-btn funnel-btn--err">Not Interested</button></form>
 
       {% elif journey_step == 'membership' %}
       <h3 style="font-size:.9rem;color:var(--ok);text-transform:uppercase;margin-bottom:8px;">Application Started</h3>
-      <a href="{{ url_for('applications.application_detail', aid=application.id) }}" class="btn btn-primary">Open Membership Application #{{ application.id }}</a>
+      <a href="{{ url_for('applications.application_detail', aid=application.id) }}" class="btn funnel-btn funnel-btn--ok">Open Membership Application #{{ application.id }}</a>
 
       {% elif journey_step == 'convert_pending' %}
       <h3 style="font-size:.9rem;color:var(--warn);text-transform:uppercase;margin-bottom:6px;">Application Not Yet Started</h3>
       <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">The client agreed to join, but no membership application exists yet. Start the application to create the member record.</p>
-      <a href="{{ url_for('leads.convert_lead', lid=lead.id) }}" class="btn btn-primary" style="background:var(--ok)!important;">Start Membership Application</a>
+      <a href="{{ url_for('leads.convert_lead', lid=lead.id) }}" class="btn funnel-btn funnel-btn--ok">Start Membership Application</a>
       {% else %}
       <h3 style="font-size:.9rem;color:var(--t2);text-transform:uppercase;margin-bottom:8px;">Sales Journey Complete</h3>
       <p style="color:var(--t2);font-size:.8rem;">No further sales activity is required on this prospect.</p>

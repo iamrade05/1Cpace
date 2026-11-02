@@ -647,24 +647,28 @@ def _run_collections_automations(db, today: str, dry_run: bool = False) -> dict:
             inactive_count += 1
 
         if not dry_run:
-            case_id = sync_collection_case(
-                db,
-                member["id"],
-                arrears_amount=arrears["total_arrears"],
-                months_owing=arrears["months_in_arrears"],
-                monthly_installment=member["monthly_installment"],
-                debicheck_status="active" if _has_qualifying_arrangement(db, member["id"]) else "required",
-                access_status=decision["access"].lower(),
-                failed_debit_date=oldest,
-                failure_reason="Outstanding collection balance",
-            )
-            record_access_decision(
-                db,
-                member["id"],
-                decision["access"],
-                decision["action"],
-                case_id=case_id,
-            )
+            # An unpaid row does not always mean arrears once payments are matched.
+            # Opening a case here would only see it resolved at the end of this
+            # sweep, and again on every sweep after it.
+            if float(arrears["total_arrears"] or 0) > 0:
+                case_id = sync_collection_case(
+                    db,
+                    member["id"],
+                    arrears_amount=arrears["total_arrears"],
+                    months_owing=arrears["months_in_arrears"],
+                    monthly_installment=member["monthly_installment"],
+                    debicheck_status="active" if _has_qualifying_arrangement(db, member["id"]) else "required",
+                    access_status=decision["access"].lower(),
+                    failed_debit_date=oldest,
+                    failure_reason="Outstanding collection balance",
+                )
+                record_access_decision(
+                    db,
+                    member["id"],
+                    decision["access"],
+                    decision["action"],
+                    case_id=case_id,
+                )
             if should_restrict:
                 reason = (
                     "arrears_upfront_required"

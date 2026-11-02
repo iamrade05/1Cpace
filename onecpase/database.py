@@ -389,6 +389,14 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
         ("otp_sent_at",    "TEXT"),
         ("otp_sent_to",    "TEXT"),
         ("verified_at",    "TEXT"),
+        # Who signed from the shared link: the drawn signature and the device it came from
+        ("signature_id",      "INTEGER"),
+        ("debit_signature_id", "INTEGER"),
+        ("signed_ip",         "TEXT"),
+        ("signed_user_agent", "TEXT"),
+        # What the member confirmed on the link before signing
+        ("read_to_end_at",        "TEXT"),
+        ("debicheck_accepted_at", "TEXT"),
     ]:
         _ensure_column(db, backend, "contract_share_tokens", col, defn)
 

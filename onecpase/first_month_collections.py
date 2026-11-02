@@ -7,6 +7,9 @@ consultant's working list; it lives in Phase 1 because it is part of the sale.
 """
 from __future__ import annotations
 
+import re
+from datetime import date
+
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 from .auth import login_required
@@ -17,6 +20,7 @@ from .collections_engine import (
     transfer_due_sales_cases,
 )
 from .database import get_db, member_activity
+from .reporting_cycle import cycle_bounds, cycle_key, cycle_label, shift_month, today as reporting_today
 
 first_month_bp = Blueprint(
     "first_month_collections", __name__, url_prefix="/sales/first-month-failed-debits"
@@ -32,6 +36,59 @@ def _is_manager() -> bool:
     return session.get("role") in MANAGER_ROLES
 
 
+def _same_name(left, right) -> bool:
+    return " ".join(str(left or "").split()).lower() == " ".join(str(right or "").split()).lower()
+
+
+def cycle_failed_debits(db, cycle: str) -> dict:
+    """Debit-order members who joined in a 15th-14th cycle and how many debits failed.
+
+    A failure dated before the join date belongs to an earlier membership, so it
+    is left out rather than charged to the consultant who signed this one."""
+    first, last = cycle_bounds(cycle)
+    members = db.execute(
+        """SELECT m.id, m.first_name, m.last_name, m.contact, m.join_date,
+                  COALESCE(lead_user.full_name, app_user.full_name, NULLIF(TRIM(m.sold_by), '')) AS signed_by,
+                  COALESCE(l.assigned_to, ma.created_by) AS signed_by_id,
+                  (SELECT MIN(c.collection_date) FROM collections c
+                    WHERE c.member_id = m.id AND c.status = 'failed'
+                      AND COALESCE(c.payment_purpose, 'general') <> 'registration_fee'
+                      AND substr(c.collection_date, 1, 10) >= substr(m.join_date, 1, 10)) AS failed_on,
+                  (SELECT cs.owner_type FROM collections_cases cs
+                    WHERE cs.member_id = m.id AND cs.status IN ('open', 'active', 'pending')
+                    ORDER BY cs.id DESC LIMIT 1) AS case_owner
+           FROM members m
+           LEFT JOIN membership_applications ma
+             ON ma.id = (SELECT MAX(x.id) FROM membership_applications x WHERE x.member_id = m.id)
+           LEFT JOIN leads l ON l.id = ma.lead_id
+           LEFT JOIN users lead_user ON lead_user.id = l.assigned_to
+           LEFT JOIN users app_user ON app_user.id = ma.created_by
+           WHERE substr(m.join_date, 1, 10) BETWEEN ? AND ?
+             AND LOWER(COALESCE(m.payment_type, '')) LIKE '%debit%'
+           ORDER BY m.join_date, m.id""",
+        (first.isoformat(), last.isoformat()),
+    ).fetchall()
+    if not _is_manager():
+        me = db.execute("SELECT full_name FROM users WHERE id=?", (session.get("user_id"),)).fetchone()
+        members = [
+            m for m in members
+            if m["signed_by_id"] == session.get("user_id") or (me and _same_name(m["signed_by"], me["full_name"]))
+        ]
+    consultants: dict = {}
+    for member in members:
+        name = " ".join(str(member["signed_by"] or "Not recorded").split())
+        row = consultants.setdefault(name, {"name": name, "joined": 0, "failed": 0})
+        row["joined"] += 1
+        row["failed"] += 1 if member["failed_on"] else 0
+    failed = [m for m in members if m["failed_on"]]
+    return {
+        "key": cycle, "label": cycle_label(cycle), "joined": len(members), "failed": failed,
+        "rate": round(100.0 * len(failed) / len(members), 1) if members else None,
+        "consultants": sorted(consultants.values(), key=lambda r: (-r["failed"], r["name"])),
+        "previous": shift_month(date.fromisoformat(cycle + "-01"), -1).strftime("%Y-%m"),
+    }
+
+
 @first_month_bp.get("/")
 @login_required
 def index():
@@ -39,6 +96,11 @@ def index():
 
     db = get_db()
     transfer_due_sales_cases(db)
+    current = cycle_key(reporting_today())
+    chosen = request.args.get("cycle", "")
+    if not re.fullmatch(r"20\d\d-(0[1-9]|1[0-2])", chosen) or chosen > current:
+        chosen = current
+    cycle = cycle_failed_debits(db, chosen)
     placeholders = ",".join("?" for _ in OPEN_STATUSES)
     params: list = [OWNER_SALES, *OPEN_STATUSES]
     scope = ""
@@ -60,10 +122,12 @@ def index():
             ORDER BY c.failed_debit_date, c.id""",
         params,
     ).fetchall()
-    arrears = bulk_member_arrears(db, [row["member_id"] for row in cases]) if cases else {}
+    arrears = bulk_member_arrears(
+        db, {row["member_id"] for row in cases} | {member["id"] for member in cycle["failed"]},
+    ) if cases or cycle["failed"] else {}
     return render_template(
         "collections/first_month.html",
-        cases=cases, arrears=arrears, manager_view=_is_manager(),
+        cases=cases, arrears=arrears, manager_view=_is_manager(), cycle=cycle, current_cycle=current,
         outcomes=CALL_OUTCOMES, channels=CHANNELS, outcome_labels=OUTCOME_LABELS,
     )
 

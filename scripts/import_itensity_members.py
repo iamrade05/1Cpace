@@ -223,6 +223,7 @@ def roster_member_values(record: dict[str, Any]) -> dict[str, Any]:
         "branch_code": na_blank(banking.get("branch")),
         "payer_name": na_blank(banking.get("accname")),
         "itensity_ref": ref,
+        "sold_by": " ".join(text(extract.get("salename") or membership.get("sales") or roster.get("sales")).split()),
         "occupation": text(extract.get("add25")),
         "emergency_contact_name": emergency_name,
         "emergency_contact_number": emergency_number,
@@ -335,6 +336,8 @@ def import_members(db: sqlite3.Connection, members: list[dict[str, Any]]) -> Cou
                         na_blank(local.get(field))) or not incoming or (field == "account_number" and
                                     not incoming.isdigit()):
                     values.pop(field, None)
+            if not values.get("sold_by"):
+                values.pop("sold_by", None)
             local_status = db.execute(
                 "SELECT member_status FROM members WHERE id = ?", (existing[0],)
             ).fetchone()[0]

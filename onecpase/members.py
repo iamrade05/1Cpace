@@ -24,12 +24,15 @@ from .debicheck import (
 
 ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "doc", "docx", "xls", "xlsx"}
 
+TT3_DOCUMENT = "TT3 (Manual DebiCheck)"
+
 DOC_TYPES = [
     "SA ID Copy",
     "Bank Statement",
     "Proof of Address",
     "Signed Contract",
     "Debit Mandate",
+    TT3_DOCUMENT,
     "Medical / Doctor's Clearance",
     "PAR-Q Form",
     "Other",
@@ -960,6 +963,9 @@ def member_detail(mid: int):
         ptp_receipts=ptp_receipts,
         plan_items=plan_items,
         arrears_info=arrears_info,
+        has_tt3=bool(db.execute(
+            "SELECT 1 FROM member_documents WHERE member_id=? AND document_type=? LIMIT 1", (mid, TT3_DOCUMENT),
+        ).fetchone()),
         latest_debicheck_check=db.execute(
             "SELECT * FROM nupay_mandate_checks WHERE member_id=? ORDER BY id DESC LIMIT 1", (mid,)
         ).fetchone(),
@@ -1003,6 +1009,24 @@ def member_check_debicheck(mid: int):
         labels = {"active": "Active DebiCheck mandate confirmed", "inactive": "Mandate found, but it is not active", "none": "No DebiCheck mandate found"}
         flash(labels[result["state"]] + ". " + result["message"],
               "success" if result["state"] == "active" else "warning")
+    return redirect(url_for("members.member_detail", mid=mid) + "#debicheck-check")
+
+
+@members_bp.post("/members/<int:mid>/check-tt3")
+@permission_required("all_members")
+def member_check_tt3(mid: int):
+    """Ask NuPay again: a TT3 can take time to go live after the form is uploaded."""
+    from .tt3 import start_check
+
+    db = get_db()
+    if not db.execute(
+        "SELECT 1 FROM member_documents WHERE member_id=? AND document_type=? LIMIT 1", (mid, TT3_DOCUMENT),
+    ).fetchone():
+        abort(404)
+    if start_check(db, mid):
+        flash("Checking NuPay for an active DebiCheck. Refresh in about a minute for the result.", "info")
+    else:
+        flash("A NuPay check is already running for this member.", "warning")
     return redirect(url_for("members.member_detail", mid=mid) + "#debicheck-check")
 
 
@@ -1077,6 +1101,11 @@ def _upload_member_doc(mid: int, inline=False):
         db.execute(f"UPDATE compliance_checklists SET {field}=?, updated_at=datetime('now') WHERE application_id=?", (status, aid))
         sync_application_status(db, aid)
     db.commit()
+    if doc_type == TT3_DOCUMENT:
+        from .tt3 import start_check
+        start_check(db, mid)
+        return finish("TT3 uploaded. Checking NuPay for an active DebiCheck now; "
+                      "the result will show under DebiCheck verification on the member's profile.")
     return finish(f"{len(files)} document(s) uploaded successfully.")
 
 

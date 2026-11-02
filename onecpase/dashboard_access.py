@@ -18,8 +18,9 @@ def scope_for(user):
 
 def actor():
     if not hasattr(g,'dashboard_actor'):
-        g.dashboard_actor=get_db().execute('SELECT * FROM users WHERE id=? AND active=1 AND COALESCE(is_platform_user,0)=0',
-                                          (session.get('user_id'),)).fetchone() if session.get('user_id') else None
+        # A platform owner's shadow user only counts while they are actually in Power User mode.
+        g.dashboard_actor=get_db().execute('SELECT * FROM users WHERE id=? AND active=1 AND (COALESCE(is_platform_user,0)=0 OR ?)',
+                                          (session.get('user_id'),int(bool(session.get('is_power_user'))))).fetchone() if session.get('user_id') else None
     return g.dashboard_actor
 
 

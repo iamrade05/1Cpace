@@ -6,6 +6,7 @@ import secrets
 import time
 from pathlib import Path
 from datetime import date, datetime, timedelta
+from uuid import uuid4
 
 from flask import (
     Blueprint, abort, current_app, flash, g, jsonify, redirect,
@@ -19,8 +20,9 @@ from .database import (
     default_sections_config,
     default_terms_parts_config,
     get_db,
+    member_activity,
 )
-from .encryption import decrypt_member
+from .encryption import decrypt_member, encrypt_member
 from .extensions import mail
 from .platform_db import get_platform_db
 from .comms import send_whatsapp_message
@@ -28,6 +30,8 @@ from .comms import send_whatsapp_message
 contracts_bp = Blueprint("contracts", __name__, url_prefix="/contracts")
 
 SIGNER_ROLES = ("member", "representative", "witness")
+# The account holder (member or third-party payer) authorising the debit on the banking details.
+DEBIT_SIGNER_ROLE = "debit_authoriser"
 # A cleared/blank canvas still produces a small PNG - a real signature is
 # never this tiny, so this catches an accidental empty save without having
 # to decode and inspect pixel data.
@@ -197,7 +201,7 @@ def _current_tenant():
 
 
 def render_contract(contract_template, member, *, signing_enabled: bool = False, share=None,
-                    contract_status=None, signed_docs=()):
+                    contract_status=None, signed_docs=(), signature_data=None, debit_signature_data=None):
     """Shared renderer for both a real member's contract and the admin
     template preview — same data prep, same template, different member row."""
     gym_name = (contract_template["gym_name"] if contract_template else None) or "Elev8 Health & Fitness"
@@ -241,6 +245,8 @@ def render_contract(contract_template, member, *, signing_enabled: bool = False,
         share=share,
         contract_status=contract_status,
         signed_docs=signed_docs,
+        signature_data=signature_data,
+        debit_signature_data=debit_signature_data,
     )
 
 
@@ -293,7 +299,7 @@ def share_contract(mid: int):
     channel = request.form.get("channel", "link")
     token, link = _new_share(mid, channel)
     member = decrypt_member(member)
-    message = f"Hello {member['first_name']}, please review and approve your membership contract: {link}"
+    message = f"Hello {member['first_name']}, please read and sign your membership contract on your phone: {link}"
     if channel == "whatsapp":
         result = send_whatsapp_message(
             current_app.config.get("WA_RECEPTION_PHONE_ID", ""),
@@ -302,19 +308,19 @@ def share_contract(mid: int):
         if result.get("error"):
             flash(result["error"], "error")
         else:
-            flash("Contract approval link sent by WhatsApp.", "success")
+            flash("Contract signing link sent by WhatsApp.", "success")
     elif channel == "email":
         if not member.get("email"):
             flash("This member has no email address.", "error")
         else:
             try:
                 mail.send(Message("Your Elev8 membership contract", recipients=[member["email"]], body=message))
-                flash("Contract approval link sent by email.", "success")
+                flash("Contract signing link sent by email.", "success")
             except Exception:
                 current_app.logger.exception("Failed sending contract email for member %s", mid)
                 flash("Email is not configured or could not be sent.", "error")
     else:
-        flash(f"Approval link created for SMS/manual sending: {link}", "success")
+        flash(f"Signing link created for SMS/manual sending: {link}", "success")
     return redirect(url_for("members.member_detail", mid=mid))
 
 
@@ -345,35 +351,172 @@ def public_share(tenant_slug: str, token: str):
         abort(404)
     if request.method == "POST":
         action = request.form.get("action") or request.form.get("response")
+        id_code = _id_code(decrypt_member(member))
         if action == "send_code":
-            return _share_page(db, row["id"], member, _send_share_code(db, row, decrypt_member(member)))
+            # A member with a real ID number has nothing to be sent.
+            return _share_page(db, row["id"], member, None if id_code else _send_share_code(db, row, decrypt_member(member)))
         if action == "verify_code":
-            return _share_page(db, row["id"], member, _check_share_code(db, row, request.form.get("code", "")))
-        if action not in ("approved", "declined"):
+            entered = request.form.get("code", "")
+            notice = _check_id_code(db, row, entered, id_code) if id_code else _check_share_code(db, row, entered)
+            if not notice:
+                session[SHARE_VERIFIED_KEY] = row["id"]
+            return _share_page(db, row["id"], member, notice)
+        if action in ("sign", "approved"):
+            return _sign_shared_contract(db, row, member)
+        if action != "declined":
             abort(400)
-        # The link alone is only a bearer token - approving needs the code first.
-        if action == "approved" and not row["verified_at"]:
-            return _share_page(
-                db, row["id"], member,
-                "Please verify the code we send you before approving.", status=403,
-            )
         db.execute(
             "UPDATE contract_share_tokens SET status=?, responded_at=datetime('now'), response_note=? WHERE id=?",
             (action, request.form.get("note", "").strip()[:500], row["id"]),
         )
-        if action == "approved":
-            _mark_contract_signed(db, row["member_id"])
         db.commit()
-        return render_template("contracts/share_response.html", approved=action == "approved")
+        return render_template("contracts/share_response.html", approved=False)
     return _share_page(db, row["id"], member)
 
 
-# ── One-time code before a member can approve from the shared link ────────────
+BANKING_MISSING_NOTICE = "Your banking details are not complete yet. Please contact the gym before signing."
 
+
+def _is_debit_order(member) -> bool:
+    return "debit" in str(member.get("payment_type") or "").lower()
+
+
+def _banking_on_file(member) -> bool:
+    return bool(member.get("bank") and member.get("account_number") and member.get("branch_code"))
+
+
+def _sign_shared_contract(db, row, member):
+    """The member's own drawn signature is what approves a contract from the link."""
+    # The link alone is only a bearer token - signing needs the code first.
+    if not _verified_here(row):
+        return _share_page(db, row["id"], member, "Please verify the code we send you before signing.", status=403)
+    if request.form.get("read_to_end") != "1":
+        return _share_page(db, row["id"], member, "Please scroll through the whole agreement before signing.", status=400)
+    if request.form.get("accepted") != "1":
+        return _share_page(db, row["id"], member, "Please tick the box to accept the agreement before signing.", status=400)
+    shown = decrypt_member(member)
+    debit_order = _is_debit_order(shown)
+    payer = None
+    if debit_order:
+        if not _banking_on_file(shown):
+            return _share_page(db, row["id"], member, BANKING_MISSING_NOTICE, status=400)
+        if request.form.get("debicheck_accepted") != "1":
+            return _share_page(db, row["id"], member, "Please confirm your banking details and authorise the DebiCheck debit order.", status=400)
+        if request.form.get("third_party_payer") == "1":
+            payer = (request.form.get("payer_name", "").strip()[:120], request.form.get("payer_id_number", "").strip())
+            if not payer[0] or len(payer[1]) != 13 or not payer[1].isdigit():
+                return _share_page(db, row["id"], member, "Please enter the account holder's full name and 13-digit SA ID number.", status=400)
+    image_data = request.form.get("image_data", "")
+    debit_image = request.form.get("debit_signature_data", "") if debit_order else None
+    if debit_order and not _readable_signature(debit_image):
+        return _share_page(db, row["id"], member, "The account holder must sign in the banking details box to authorise the debit.", status=400)
+    if not _readable_signature(image_data):
+        return _share_page(db, row["id"], member, "Please draw your signature in the box before signing.", status=400)
+
+    def store_signature(role, image):
+        return db.execute(
+            "INSERT INTO contract_signatures (member_id, signer_role, image_filename) VALUES (?, ?, ?)",
+            (row["member_id"], role, _save_signature_image(row["member_id"], image)),
+        ).lastrowid
+
+    signature_id = store_signature("member", image_data)
+    debit_signature_id = store_signature(DEBIT_SIGNER_ROLE, debit_image) if debit_order else None
+    db.execute(
+        """UPDATE contract_share_tokens
+           SET status='approved', responded_at=datetime('now'), response_note=?,
+               signature_id=?, debit_signature_id=?, signed_ip=?, signed_user_agent=?, read_to_end_at=datetime('now'),
+               debicheck_accepted_at=CASE WHEN ? THEN datetime('now') END
+           WHERE id=?""",
+        (request.form.get("note", "").strip()[:500], signature_id, debit_signature_id, (request.remote_addr or "")[:64],
+         (request.user_agent.string or "")[:300], int(debit_order), row["id"]),
+    )
+    if payer:
+        db.execute(
+            "UPDATE members SET payer_name=?, payer_id_number=? WHERE id=?",
+            (payer[0], encrypt_member({"payer_id_number": payer[1]})["payer_id_number"], row["member_id"]),
+        )
+        member_activity(db, row["member_id"], "Third-party payer details added by the member on the contract link.")
+    member = db.execute(
+        "SELECT m.*,u.full_name consultant_name FROM members m LEFT JOIN users u ON u.id=m.uploaded_by_id WHERE m.id=?",
+        (row["member_id"],),
+    ).fetchone()
+    _mark_contract_signed(db, row["member_id"])
+    _store_signed_copy(db, row["member_id"], member, image_data, debit_image)
+    member_activity(db, row["member_id"], "Contract signed by the member from the shared link.")
+    if debit_order:
+        member_activity(db, row["member_id"], "Debit order authorised by the account holder's signature on the banking details.")
+    db.commit()
+    return render_template("contracts/share_response.html", approved=True)
+
+
+def _store_signed_copy(db, member_id: int, member, image_data: str, debit_image: str | None) -> None:
+    """Keep the agreement exactly as it read when signed: the contract page is
+    otherwise rendered live from member data, which can change afterwards."""
+    html = render_contract(
+        _active_template(db), decrypt_member(member), share={"stage": "signed"},
+        signature_data=image_data, debit_signature_data=debit_image,
+    )
+    upload_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "members" / str(member_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    stored_name = f"{uuid4().hex}_signed_contract.html"
+    path = upload_dir / stored_name
+    path.write_text(html, encoding="utf-8")
+    db.execute(
+        """INSERT INTO member_documents (member_id, document_type, original_name, stored_name, file_size)
+           VALUES (?, 'Signed Contract', ?, ?, ?)""",
+        (member_id, f"Signed contract {date.today().isoformat()}.html", stored_name, path.stat().st_size),
+    )
+
+
+# ── Confirming it is the member before the shared link opens ──────────────────
+# A member with a real SA ID enters its last six digits. Anyone else (imported
+# stand-in IDs, passports) has nothing to enter, so a one-time code is sent.
+
+SHARE_VERIFIED_KEY = "contract_share_verified"
 SHARE_CODE_TTL_MINUTES = 10
 SHARE_CODE_MAX_ATTEMPTS = 5
 SHARE_CODE_MAX_SENDS = 5
 SHARE_CODE_COOLDOWN_SECONDS = 60
+
+
+def _clean_id(value) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isalnum()).upper()
+
+
+def _id_code(member) -> str | None:
+    """The last six characters of the member's ID or passport number. An imported
+    stand-in ("ITN-<ref>") is not a number the member could know."""
+    raw = str(member.get("id_number") or "").strip().upper()
+    number = _clean_id(raw)
+    return number[-6:] if len(number) >= 6 and not raw.startswith("ITN-") else None
+
+
+def _verified_here(row) -> bool:
+    """Entering the code opens the link on this device only, so a forwarded link
+    still asks for it."""
+    return bool(row["verified_at"]) and session.get(SHARE_VERIFIED_KEY) == row["id"]
+
+
+def _check_id_code(db, row, entered: str, id_code: str) -> str | None:
+    """Check the ID digits. Returns a message for the page when it fails, else None.
+
+    These digits never change, so wrong tries count against the link itself and
+    only a new link from the gym starts again."""
+    if (row["otp_attempts"] or 0) >= SHARE_CODE_MAX_ATTEMPTS:
+        return "Too many wrong attempts. Please ask the gym to send you a new link."
+    if not hmac.compare_digest(_clean_id(entered).encode(), id_code.encode()):
+        db.execute(
+            "UPDATE contract_share_tokens SET otp_attempts=COALESCE(otp_attempts,0)+1 WHERE id=?",
+            (row["id"],),
+        )
+        db.commit()
+        return "Those digits are not right. Please check your number and try again."
+    db.execute(
+        "UPDATE contract_share_tokens SET verified_at=? WHERE id=?",
+        (datetime.now().isoformat(timespec="seconds"), row["id"]),
+    )
+    db.commit()
+    return None
 
 
 def _hash_share_code(token_id: int, code: str) -> str:
@@ -463,41 +606,32 @@ def _check_share_code(db, row, entered: str) -> str | None:
     return None
 
 
-def _mask_value(value, keep: int = 3) -> str:
-    text = str(value or "")
-    if not text:
-        return ""
-    return "\u2022" * max(len(text) - keep, 4) + (text[-keep:] if keep and len(text) > keep else "")
-
-
-def _mask_unverified(member) -> dict:
-    """A share link is only a bearer token: until the emailed code is entered,
-    the page must not reveal identity or banking numbers to whoever holds it."""
-    masked = dict(member)
-    for field, keep in (("id_number", 3), ("payer_id_number", 3), ("branch_code", 0),
-                        ("account_number", 3), ("contact", 3)):
-        if masked.get(field):
-            masked[field] = _mask_value(masked[field], keep)
-    return masked
+def _active_template(db):
+    return db.execute(
+        "SELECT * FROM contract_templates WHERE active=1 ORDER BY is_default DESC,id LIMIT 1"
+    ).fetchone()
 
 
 def _share_page(db, token_id: int, member, notice=None, status: int = 200):
     """The contract page for a shared link, in whichever stage of verification it is."""
     row = db.execute("SELECT * FROM contract_share_tokens WHERE id=?", (token_id,)).fetchone()
-    if row["verified_at"]:
+    shown = decrypt_member(member)
+    if _verified_here(row):
         stage = "verified"
+    elif _id_code(shown):
+        stage = "id_code"
     elif (row["otp_hash"] and row["otp_expires_at"]
           and datetime.fromisoformat(row["otp_expires_at"]) >= datetime.now()):
         stage = "code_sent"
     else:
         stage = "start"
-    template = db.execute(
-        "SELECT * FROM contract_templates WHERE active=1 ORDER BY is_default DESC,id LIMIT 1"
-    ).fetchone()
-    share = {"stage": stage, "notice": notice, "sent_to": row["otp_sent_to"]}
-    shown = decrypt_member(member)
-    if stage != "verified":
-        shown = _mask_unverified(shown)
+    template = _active_template(db)
+    share = {
+        "stage": stage, "notice": notice, "sent_to": row["otp_sent_to"],
+        "debit_order": _is_debit_order(shown), "banking_on_file": _banking_on_file(shown),
+        "banking_missing_notice": BANKING_MISSING_NOTICE,
+        "code_is_sa_id": (_id_code(shown) or "").isdigit() and len(_clean_id(shown.get("id_number"))) == 13,
+    }
     return render_contract(template, shown, share=share), status
 
 
@@ -539,9 +673,8 @@ def view_contract(mid: int):
     )
 
 
-def _save_signature_image(mid: int, image_data: str) -> str:
-    """Decode a canvas data URL and write it to disk. Returns the stored
-    filename. Raises ValueError on anything that isn't a small, real PNG."""
+def _decode_signature(image_data: str) -> bytes:
+    """The PNG in a canvas data URL. Raises ValueError on anything that isn't a small, real PNG."""
     if not image_data.startswith("data:image/png;base64,"):
         raise ValueError("Signature must be a PNG image.")
     raw = base64.b64decode(image_data.split(",", 1)[1], validate=True)
@@ -549,10 +682,24 @@ def _save_signature_image(mid: int, image_data: str) -> str:
         raise ValueError("The signature looks blank — please sign before saving.")
     if len(raw) > MAX_SIGNATURE_BYTES:
         raise ValueError("Signature image is too large.")
+    return raw
 
+
+def _readable_signature(image_data: str) -> bool:
+    try:
+        _decode_signature(image_data)
+    except (ValueError, base64.binascii.Error):
+        return False
+    return True
+
+
+def _save_signature_image(mid: int, image_data: str) -> str:
+    """Write a canvas data URL to disk and return the stored filename."""
+    raw = _decode_signature(image_data)
     upload_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "members" / str(mid) / "signatures"
     upload_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{int(time.time() * 1000)}.png"
+    # Two signatures can be saved in the same millisecond.
+    filename = f"{int(time.time() * 1000)}_{uuid4().hex[:8]}.png"
     (upload_dir / filename).write_bytes(raw)
     return filename
 

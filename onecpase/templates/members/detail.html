@@ -29,11 +29,19 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-secondary">Check DebiCheck</button>
   </form>
+  {% if has_tt3 %}
+  <form method="post" action="{{ url_for('members.member_check_tt3', mid=member.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn btn-secondary">Check NuPay for TT3</button>
+  </form>
+  {% endif %}
   <p class="text-muted">Checks NuPay for this member?s mandate. The check may take about a minute.</p>
   {% if latest_debicheck_check %}
     <p><strong>Last verified result:</strong>
       {% if latest_debicheck_check.state == 'active' %}Active mandate confirmed
       {% elif latest_debicheck_check.state == 'inactive' %}Mandate found ? not active
+      {% elif latest_debicheck_check.state == 'checking' %}Checking NuPay now
+      {% elif latest_debicheck_check.state == 'error' %}Could not check NuPay
       {% else %}No mandate found{% endif %}
       {% if latest_debicheck_check.status %} ? {{ latest_debicheck_check.status|title }}{% endif %}
       {% if latest_debicheck_check.contract_reference %} ? {{ latest_debicheck_check.contract_reference }}{% endif %}
@@ -178,7 +186,7 @@
         <select name="channel" class="form-control u-2b7ed66e" aria-label="Contract delivery method">
           <option value="link">Number / SMS</option><option value="whatsapp">WhatsApp</option><option value="email">Email</option>
         </select>
-        <button type="submit" class="btn btn-primary btn-sm">Send Approval Link</button>
+        <button type="submit" class="btn btn-primary btn-sm">Send Contract to Sign</button>
       </form>
       <a href="{{ url_for('members.members_index') }}" class="btn btn-ghost btn-sm">← Back</a>
     </div></details>

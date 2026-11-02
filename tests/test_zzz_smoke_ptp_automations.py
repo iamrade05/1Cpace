@@ -20,7 +20,13 @@ def _seed(app):
            VALUES ('ELE-0000000001','Arrears','MemberA','ID0001','0710000001','Active','allowed')"""
     )
     mid_a = cur.lastrowid
-    for i, month in enumerate(["2026-05", "2026-06", "2026-07"]):
+    # The last three months, so this stays short of the six-month inactive rule.
+    this_month = date.today().replace(day=1)
+    recent = []
+    for _ in range(3):
+        this_month = (this_month - timedelta(days=1)).replace(day=1)
+        recent.append(this_month.strftime("%Y-%m"))
+    for i, month in enumerate(recent):
         db.execute(
             """INSERT INTO collections (member_id, outstanding_balance, amount_paid,
                    collection_date, status, notes)

@@ -721,7 +721,7 @@ def mandate_state_for(db, member_id: int, local_status) -> str:
         return "active"
     check = db.execute(
         "SELECT state FROM nupay_mandate_checks WHERE member_id=? AND substr(checked_at,1,10) >= ? "
-        "ORDER BY id DESC LIMIT 1",
+        "AND state IN ('active', 'inactive', 'none') ORDER BY id DESC LIMIT 1",
         (member_id, (_collections_today() - timedelta(days=1)).isoformat()),
     ).fetchone()
     return check["state"] if check else "unknown"

@@ -2,6 +2,6 @@
 {% set gym = (g.get('tenant') or {}).get('name') or 'The gym' %}
 {% block title %}Contract Response{% endblock %}
 {% block contract_content %}
-<h2>{{ 'Contract approved' if approved else 'Contract declined' }}</h2>
-<p>{{ 'Thank you. ' ~ gym ~ ' has recorded your approval.' if approved else 'Your response has been recorded. ' ~ gym ~ ' will contact you to discuss the contract.' }}</p>
+<h2>{{ 'Contract signed' if approved else 'Contract declined' }}</h2>
+<p>{{ 'Thank you. ' ~ gym ~ ' has received your signed contract.' if approved else 'Your response has been recorded. ' ~ gym ~ ' will contact you to discuss the contract.' }}</p>
 {% endblock %}

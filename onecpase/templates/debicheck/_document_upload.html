@@ -4,7 +4,7 @@
   <div class="form-grid-2">
     <label class="form-group">Document Type
       <select class="form-control inline-document-type" aria-label="Document type">
-        {% for kind in ['SA ID Copy','Bank Statement','Proof of Address','Signed Contract','Debit Mandate',"Medical / Doctor's Clearance",'PAR-Q Form','Other'] %}
+        {% for kind in ['SA ID Copy','Bank Statement','Proof of Address','Signed Contract','Debit Mandate','TT3 (Manual DebiCheck)',"Medical / Doctor's Clearance",'PAR-Q Form','Other'] %}
         <option value="{{ kind }}" {% if kind=='Bank Statement' %}selected{% endif %}>{{ kind }}</option>
         {% endfor %}
       </select>
@@ -20,4 +20,4 @@
   <div style="margin-top:12px;"><button type="button" class="btn btn-secondary inline-document-submit">Upload and analyse</button></div>
   <p class="inline-document-result" role="status" aria-live="polite"></p>
 </section>
-<script src="{{ url_for('static', filename='js/document-upload.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/document-upload.js', v='upload-result-20261102') }}" defer></script>

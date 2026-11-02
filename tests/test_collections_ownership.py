@@ -1,12 +1,30 @@
+from datetime import date
+
+import pytest
+
 from onecpase.collections_engine import (
     apply_case_ownership,
     determine_owner,
     sync_collection_case,
     transfer_due_sales_cases,
 )
+from onecpase import collections_engine
 from onecpase.database import get_db
 
 CONSULTANT = 1  # the seeded admin user stands in for the signing consultant
+
+
+class _FixedDate(date):
+    """These scenarios use fixed dates, so "today" has to stay inside them too."""
+
+    @classmethod
+    def today(cls):
+        return cls(2026, 10, 2)
+
+
+@pytest.fixture(autouse=True)
+def _fixed_today(monkeypatch):
+    monkeypatch.setattr(collections_engine, "date", _FixedDate)
 
 
 def _member(db, mid, join_date="2026-09-20"):

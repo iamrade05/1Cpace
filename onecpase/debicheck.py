@@ -224,6 +224,11 @@ def check_member_on_nupay(member: dict[str, Any]) -> dict[str, Any]:
     another state, "none" when NuPay has nothing for them, and "error" when the
     report could not be read (nothing should be assumed then).
     """
+    return member_mandate_on_nupay(member)[0]
+
+
+def member_mandate_on_nupay(member: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """check_member_on_nupay's result, plus the report row it came from (None without a match)."""
     reference = str(member.get("id_number") or "").strip()
     probe = {
         "client_ref1": reference,
@@ -232,14 +237,14 @@ def check_member_on_nupay(member: dict[str, Any]) -> dict[str, Any]:
     }
     if len(reference) < 6 and len(probe["account_number"]) < 6:
         return {"state": "error", "status": None, "contract_reference": None,
-                "message": "The client has no ID number or account number to search NuPay with."}
+                "message": "The client has no ID number or account number to search NuPay with."}, None
     rows, message = nupay_driver.fetch_mandate_report_rows()
     if rows is None:
-        return {"state": "error", "status": None, "contract_reference": None, "message": message}
+        return {"state": "error", "status": None, "contract_reference": None, "message": message}, None
     match, stale_pre_join = nupay_driver.match_mandate_row(rows, probe)
     if match is None or stale_pre_join:
         return {"state": "none", "status": None, "contract_reference": None,
-                "message": f"No mandate found for this client on NuPay ({len(rows)} rows checked)."}
+                "message": f"No mandate found for this client on NuPay ({len(rows)} rows checked)."}, None
     raw_status = nupay_driver._normalize_mandate_status(
         match.get("status"), match.get("status_reason"), match.get("mandate_status")) or "unknown"
     status = normalise_debicheck_status(raw_status)
@@ -248,7 +253,7 @@ def check_member_on_nupay(member: dict[str, Any]) -> dict[str, Any]:
         "state": "active" if status == "approved" else "inactive", "status": status,
         "contract_reference": contract,
         "message": f"NuPay mandate {contract or '?'}: {match.get('status', raw_status)}.",
-    }
+    }, match
 
 
 def record_push_result(db, mandate_id: int, success: bool, message: str) -> None:

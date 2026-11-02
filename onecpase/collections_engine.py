@@ -1109,14 +1109,30 @@ def sync_collection_case(
 
 def find_original_sales_consultant(db, member_id):
     """The consultant who signed the member: the application's lead owner, else
-    whoever created the application. Never chosen by hand."""
+    whoever created the application, else the staff member Itensity names as the
+    seller. Never chosen by hand."""
     row = db.execute(
         """SELECT COALESCE(l.assigned_to, ma.created_by) AS consultant_id
            FROM membership_applications ma LEFT JOIN leads l ON l.id = ma.lead_id
            WHERE ma.member_id=? ORDER BY ma.id DESC LIMIT 1""",
         (member_id,),
     ).fetchone()
-    return row["consultant_id"] if row and row["consultant_id"] else None
+    if row and row["consultant_id"]:
+        return row["consultant_id"]
+    member = db.execute("SELECT sold_by FROM members WHERE id=?", (member_id,)).fetchone()
+    return staff_id_for_name(db, member["sold_by"] if member else None)
+
+
+def staff_id_for_name(db, name):
+    """The one user with this name (Itensity's spacing differs), or None if unclear."""
+    wanted = " ".join(str(name or "").split()).lower()
+    if not wanted:
+        return None
+    matches = [
+        row["id"] for row in db.execute("SELECT id, full_name FROM users WHERE full_name IS NOT NULL").fetchall()
+        if " ".join(row["full_name"].split()).lower() == wanted
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def is_first_debit_failure(db, member_id, failed_debit_date, months_owing):
@@ -1394,6 +1410,13 @@ def log_collection_communication(
 
 
 def record_access_decision(db, member_id, access_status, reason, *, case_id=None, source="collections_engine"):
+    """Log a decision when it changes; the sweep re-evaluates every member each run."""
+    latest = db.execute(
+        "SELECT case_id, access_status, reason FROM access_decisions WHERE member_id=? ORDER BY id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone()
+    if latest and (latest["case_id"], latest["access_status"], latest["reason"]) == (case_id, access_status.upper(), reason):
+        return
     db.execute(
         """INSERT INTO access_decisions
            (case_id, member_id, access_status, reason, source)

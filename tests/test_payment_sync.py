@@ -165,6 +165,10 @@ def test_itensity_pagination_rejects_truncation_and_repeated_ids(monkeypatch):
 
 
 def test_dashboard_reports_payment_sync_separately_from_refresh(app,client):
+    with app.app_context():
+        db=get_db()
+        db.execute("INSERT OR REPLACE INTO users (id,username,password_hash,full_name,role,active) VALUES (1,'owner','x','Owner','admin',1)")
+        db.commit()
     with client.session_transaction() as session:
         session['user_id']=1;session['tenant_slug']=None
     response=client.get('/dashboard')

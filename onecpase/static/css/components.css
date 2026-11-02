@@ -911,6 +911,11 @@ th { background:var(--s2); color:var(--t2); font-size:12px; font-weight:600; }
 .membership-progress h2 { font-size:.9rem; margin-bottom:10px; }
 .membership-progress ol { display:flex; gap:24px; flex-wrap:wrap; padding-left:20px; }
 .membership-progress p { color:var(--t2); font-size:.8rem; margin-top:10px; }
+.btn.funnel-btn { width:100%; color:var(--s1); text-decoration:none; }
+.btn.funnel-btn--ok { background:var(--ok); border-color:var(--ok); }
+.btn.funnel-btn--warn { background:var(--warn); border-color:var(--warn); }
+.btn.funnel-btn--info { background:var(--info); border-color:var(--info); }
+.btn.funnel-btn--err { background:var(--err); border-color:var(--err); }
 .notification-button { display: inline-flex; align-items: center; gap: .4rem; font-size: .8rem; color: var(--t1); text-decoration: none; }
 .notification-button span { background: var(--accent); color: var(--white, white); border-radius: 1rem; padding: .1rem .4rem; }
 .notification-item { padding: 1rem 0; border-bottom: 1px solid var(--b1); overflow-wrap: anywhere; }

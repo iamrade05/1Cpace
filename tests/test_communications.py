@@ -155,8 +155,16 @@ def test_facebook_webhook_ingests_comment(client, app):
 # ── Permission gating on the staff UI ─────────────────────────────────────────
 
 def test_whatsapp_inbox_denies_user_without_permission(client):
+    with client.application.app_context():
+        db = get_db()
+        db.execute(
+            """INSERT OR REPLACE INTO users (id, username, password_hash, full_name, role, active)
+               VALUES (1, 'testuser', 'x', 'Test User', 'staff', 1)"""
+        )
+        db.commit()
     _login(client, permissions=[])
     resp = client.get("/communications/whatsapp/reception", follow_redirects=True)
+    assert resp.status_code == 200
     assert b"do not have access" in resp.data.lower()
 
 

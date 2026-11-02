@@ -127,3 +127,15 @@ def test_internal_power_identity_cannot_use_tenant_password_login(app, client):
         follow_redirects=True,
     )
     assert b"Invalid username or password" in response.data
+
+
+def test_a_platform_shadow_user_needs_power_user_mode_for_the_dashboard(app, client):
+    tenant_id = _seed_power_user(app)
+    _platform_login(client)
+    client.post(f"/platform/tenants/{tenant_id}/enter")
+    assert client.get("/dashboard").status_code == 200
+
+    with client.session_transaction() as sess:
+        del sess["is_power_user"]
+
+    assert client.get("/dashboard").status_code == 403

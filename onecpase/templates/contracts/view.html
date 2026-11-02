@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>Membership Contract — {{ m.first_name }} {{ m.last_name }}</title>
+  {% if not (share and share.stage == 'signed') %}<meta name="csrf-token" content="{{ csrf_token() }}">{% endif %}
+  {% set contract_open = not share or share.stage in ('verified', 'signed') %}
+  <title>Membership Contract{% if contract_open %} — {{ m.first_name }} {{ m.last_name }}{% endif %}</title>
   <style>
     :root { --accent: {{ (contract_template.accent_color if contract_template and contract_template.accent_color else '#185FA5') }}; }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -187,6 +188,38 @@
       font-size: 0.7rem; color: #9ca3af;
     }
 
+    /* ── Client reading and signing from the shared link ── */
+    .share-section { margin: 14px 0; padding: 16px; border: 1px solid var(--accent); border-radius: 8px; font-size: 0.92rem; line-height: 1.5; }
+    .share-section p { margin: 8px 0; }
+    .share-section form { margin-top: 12px; }
+    .share-notice { color: var(--accent); font-weight: 700; }
+    .share-section .btn-print, .share-section .btn-back { min-height: 48px; padding: 12px 18px; font-size: 0.95rem; text-decoration: none; justify-content: center; }
+    .share-section .btn-back { color: white; }
+    .share-section input[type=text], .share-section input[inputmode] { width: 100%; min-height: 48px; padding: 10px 12px; font-size: 16px; border: 1px solid silver; border-radius: 7px; margin-bottom: 10px; }
+    .share-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .share-actions .btn-print { flex: 1 1 200px; }
+    .sign-accept { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 12px; font-weight: 600; }
+    .sign-accept input { width: 22px; height: 22px; flex-shrink: 0; }
+    .sign-error { color: var(--accent); font-weight: 700; }
+    .share-section .sig-canvas { display: block; height: 200px; margin-bottom: 10px; }
+    .sign-banking { margin: 10px 0 14px; }
+    .debit-signature { margin-top: 16px; max-width: 380px; }
+    .sign-part { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--accent); }
+    #contractReadEnd { height: 1px; }
+
+    /* ── Phone layout ── */
+    @media (max-width: 640px) {
+      .page { margin: 0; padding: 18px 14px; border-radius: 0; box-shadow: none; }
+      .contract-header { flex-direction: column; gap: 12px; }
+      .contract-meta { text-align: left; }
+      .detail-grid, .detail-grid.cols-3 { grid-template-columns: 1fr; }
+      .sig-row, .sig-row.cols-3 { grid-template-columns: 1fr; gap: 24px; }
+      .payment-highlight { flex-direction: column; align-items: flex-start; gap: 6px; }
+      .terms { font-size: 0.86rem; }
+      .parq-row { font-size: 0.86rem; }
+      .contract-footer { flex-direction: column; gap: 4px; }
+    }
+
     /* ── Print styles ── */
     @media print {
       body { background: #fff; }
@@ -199,6 +232,7 @@
 </head>
 <body>
 
+{% if not share %}
 <!-- Toolbar (hidden on print) -->
 <div class="toolbar">
   <span>{{ contract_template.agreement_title if contract_template else 'Membership Contract' }} — {{ m.first_name }} {{ m.last_name }} &nbsp;|&nbsp; Generated {{ generated_at }}</span>
@@ -222,6 +256,7 @@
     {% endif %}
   </div>
 </div>
+{% endif %}
 
 {% if signing_enabled and m.id %}
 <div class="status-bar">
@@ -260,66 +295,74 @@
       {% endif %}
       </div>
     </div>
+    {% if contract_open %}
     <div class="contract-meta">
       <strong>Contract #{{ "%05d"|format(m.id) }}</strong>
       Date: {{ today.strftime('%d %B %Y') }}<br>
       {% if m.itensity_ref %}Itensity Ref: {{ m.itensity_ref }}{% endif %}
     </div>
+    {% endif %}
   </div>
 
   <div class="contract-title">{{ contract_template.agreement_title if contract_template else 'Membership Agreement' }}</div>
 
-  {% if request.endpoint == 'contracts.public_share' %}
-  <div class="share-response" style="margin:14px 0;padding:14px;border:1px solid #d1d5db;background:#f8fafc;">
-    <strong>Client response</strong>
+  {% if share and share.stage != 'signed' %}
+  <div class="share-section">
+    <strong>Read and sign</strong>
     {% if share.notice %}
-    <p style="color:#b45309;font-weight:600;margin:8px 0;">{{ share.notice }}</p>
+    <p class="share-notice" role="alert">{{ share.notice }}</p>
     {% endif %}
 
     {% if share.stage == 'verified' %}
-    <p>You are verified. Please review this agreement and approve only when all details are correct.</p>
-    <form method="post" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <p>You are verified. Please read this agreement. Signing unlocks once you have scrolled to the end.</p>
+
+    {% elif share.stage == 'id_code' %}
+    {% set id_prompt = 'Last 6 digits of your ID number' if share.code_is_sa_id else 'Last 6 characters of your passport number' %}
+    <p>To open this agreement, first confirm it is you. Enter the {{ id_prompt|replace('Last', 'last') }}.</p>
+    <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-primary" name="response" value="approved" type="submit">Approve Contract</button>
-      <button class="btn btn-secondary" name="response" value="declined" type="submit">Decline / Request Changes</button>
-      <input name="note" placeholder="Optional note" style="min-width:220px;">
+      <input type="hidden" name="action" value="verify_code">
+      <input name="code" inputmode="{{ 'numeric' if share.code_is_sa_id else 'text' }}" autocomplete="off" autocapitalize="characters" maxlength="6"
+             placeholder="{{ id_prompt }}" aria-label="{{ id_prompt }}" required>
+      <div class="share-actions"><button class="btn-print" type="submit">Open Contract</button></div>
     </form>
 
     {% elif share.stage == 'code_sent' %}
     <p>A 6-digit code was sent to {{ share.sent_to }}. Enter it to continue.</p>
-    <form method="post" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="verify_code">
       <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"
-             placeholder="6-digit code" required style="min-width:160px;letter-spacing:3px;">
-      <button class="btn btn-primary" type="submit">Verify</button>
+             placeholder="6-digit code" aria-label="6-digit code" required>
+      <div class="share-actions"><button class="btn-print" type="submit">Verify</button></div>
     </form>
-    <form method="post" style="margin-top:8px;">
+    <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="send_code">
-      <button class="btn btn-secondary" type="submit">Send a new code</button>
+      <button class="btn-back" type="submit">Send a new code</button>
     </form>
 
     {% else %}
-    <p>To approve this agreement, first confirm it is you. We will send a 6-digit code to the WhatsApp number
+    <p>To open this agreement, first confirm it is you. We will send a 6-digit code to the WhatsApp number
        or email address the gym has on file for you.</p>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="send_code">
-      <button class="btn btn-primary" type="submit">Send me a code</button>
+      <div class="share-actions"><button class="btn-print" type="submit">Send me a code</button></div>
     </form>
     {% endif %}
 
     {% if share.stage != 'verified' %}
-    <form method="post" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+    <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-secondary" name="response" value="declined" type="submit">Decline / Request Changes</button>
-      <input name="note" placeholder="Optional note" style="min-width:220px;">
+      <input type="text" name="note" placeholder="Optional note" aria-label="Optional note">
+      <button class="btn-back" name="response" value="declined" type="submit">Decline / Request Changes</button>
     </form>
     {% endif %}
   </div>
   {% endif %}
 
+  {% if contract_open %}
   <!-- 1. Member Details -->
   {% if section_enabled('member') %}
   <div class="section">
@@ -471,6 +514,16 @@
     {% if debit_mandate %}
     <div class="terms" style="margin-top:12px;"><strong style="color:#374151;">Debit Order Mandate: </strong>{{ debit_mandate }}</div>
     {% endif %}
+    {% if debit_signature_data or (signatures.get('debit_authoriser') and not share) %}
+    <div class="sig-block debit-signature">
+      <div class="sig-line">
+        <img src="{{ debit_signature_data or url_for('contracts.signature_image', mid=m.id, role='debit_authoriser') }}" alt="Account holder signature authorising the debit order">
+      </div>
+      <div class="sig-name">{{ m.payer_name if m.payer_id_number else (m.first_name ~ ' ' ~ m.last_name) }}</div>
+      <div class="sig-label">Account holder signature authorising the debit order</div>
+      {% if signatures.get('debit_authoriser') %}<div class="sig-signed-at">Signed {{ signatures['debit_authoriser'].signed_at[:16].replace('T', ' ') }}</div>{% endif %}
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -493,7 +546,7 @@
   {% endif %}
 
   <!-- 6. PAR-Q -->
-  {% if section_enabled('parq') %}
+  {% if section_enabled('parq') and not share %}
   <div class="section">
     <div class="section-title">6. PAR-Q Health Screening</div>
     {% set parq_questions = [
@@ -543,11 +596,79 @@
     </div>
   </div>
 
+  {% if share and share.stage == 'verified' %}
+  <!-- Client signs from their own device -->
+  <div id="contractReadEnd"></div>
+  <div class="section share-section" id="sign">
+    <div class="section-title">8. Sign this agreement</div>
+    <p id="contractScrollHint">Please scroll through the whole agreement to unlock signing.</p>
+    {% if share.debit_order and not share.banking_on_file %}
+    <p class="share-notice" role="alert">{{ share.banking_missing_notice }}</p>
+    {% else %}
+    <form method="post" id="contractSignForm" hidden>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="sign">
+      <input type="hidden" name="image_data" id="signatureData">
+      <input type="hidden" name="debit_signature_data" id="debitSignatureData">
+      <input type="hidden" name="read_to_end" id="contractReadToEnd" value="">
+      {% if share.debit_order %}
+      <p><strong>Your banking details for the DebiCheck debit order</strong></p>
+      <div class="detail-grid sign-banking">
+        <div class="detail-cell"><div class="lbl">Account holder</div><div class="val">{{ m.account_name or (m.first_name ~ ' ' ~ m.last_name) }}</div></div>
+        <div class="detail-cell"><div class="lbl">Bank</div><div class="val">{{ m.bank }}</div></div>
+        <div class="detail-cell"><div class="lbl">Account type</div><div class="val">{{ m.account_type or '—' }}</div></div>
+        <div class="detail-cell"><div class="lbl">Account number</div><div class="val">{{ m.account_number[:3] }}****{{ m.account_number[-3:] }}</div></div>
+        <div class="detail-cell"><div class="lbl">Branch code</div><div class="val">{{ m.branch_code }}</div></div>
+        <div class="detail-cell"><div class="lbl">Monthly amount and debit day</div><div class="val">R {{ "%.2f"|format(m.monthly_installment or 0) }}{% if m.debit_order_date %} on day {{ m.debit_order_date }}{% endif %}</div></div>
+      </div>
+      <label class="sign-accept">
+        <input type="checkbox" name="third_party_payer" value="1" id="thirdPartyPayer" {% if m.payer_id_number %}checked{% endif %}>
+        <span>This bank account belongs to someone else (the payer is not the member).</span>
+      </label>
+      <div id="thirdPartyFields" {% if not m.payer_id_number %}hidden{% endif %}>
+        <input type="text" name="payer_name" autocomplete="off" placeholder="Account holder's full name" aria-label="Account holder's full name" value="{{ (m.payer_name or '') if m.payer_id_number else '' }}">
+        <input type="text" name="payer_id_number" autocomplete="off" inputmode="numeric" maxlength="13" pattern="[0-9]{13}" placeholder="Account holder's 13-digit SA ID number" aria-label="Account holder's SA ID number" value="{{ m.payer_id_number or '' }}">
+        <p class="share-notice">The account holder must tick the box and sign below themselves, on this phone.</p>
+      </div>
+      <label class="sign-accept">
+        <input type="checkbox" name="debicheck_accepted" value="1" required>
+        <span>These banking details are correct and I authorise {{ contract_template.gym_name if contract_template else 'the gym' }} to collect this amount by DebiCheck debit order. I will approve the DebiCheck request if my bank asks me to.</span>
+      </label>
+      <p><strong>Account holder:</strong> sign here to authorise the debit order.</p>
+      <canvas class="sig-canvas" id="contractDebitPad" role="img" aria-label="Account holder signature box"></canvas>
+      <p class="sign-error" id="contractDebitError" role="alert" hidden>The account holder must sign in this box.</p>
+      <div class="share-actions"><button type="button" class="btn-back" id="contractDebitClear">Clear</button></div>
+      <div class="sign-part">
+      {% endif %}
+      <label class="sign-accept">
+        <input type="checkbox" name="accepted" value="1" required>
+        <span>I have read this agreement and accept its terms{% if share.debit_order %}, including the debit order mandate{% endif %}.</span>
+      </label>
+      <p><strong>Member:</strong> sign here to accept this agreement.</p>
+      <canvas class="sig-canvas" id="contractSignPad" role="img" aria-label="Signature box"></canvas>
+      <p class="sign-error" id="contractSignError" role="alert" hidden>Please draw your signature in the box.</p>
+      <div class="share-actions">
+        <button type="button" class="btn-back" id="contractSignClear">Clear</button>
+        <button type="submit" class="btn-print">Sign Contract</button>
+      </div>
+      {% if share.debit_order %}</div>{% endif %}
+    </form>
+    {% endif %}
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="note" placeholder="Optional note" aria-label="Optional note">
+      <button class="btn-back" name="response" value="declined" type="submit">Decline / Request Changes</button>
+    </form>
+  </div>
+  {% endif %}
+
   <!-- Signatures -->
   {% macro sig_block(role, name, label) %}
   <div class="sig-block">
     <div class="sig-line">
-      {% if signatures.get(role) %}
+      {% if signature_data and role == 'member' %}
+      <img src="{{ signature_data }}" alt="{{ label }}">
+      {% elif signatures.get(role) and not share %}
       <img src="{{ url_for('contracts.signature_image', mid=m.id, role=role) }}" alt="{{ label }}">
       {% endif %}
     </div>
@@ -563,6 +684,7 @@
     {% endif %}
   </div>
   {% endmacro %}
+  {% if not share or share.stage == 'signed' %}
   <div class="sig-row {% if field_enabled('signatures', 'witness_name') and m.witness_name %}cols-3{% endif %}">
     {{ sig_block('member', m.first_name ~ ' ' ~ m.last_name, 'Member Signature & Date') }}
     {{ sig_block('representative', m.consultant_name or 'Authorised Representative', 'Gym Representative Signature & Date') }}
@@ -570,6 +692,7 @@
     {{ sig_block('witness', m.witness_name, 'Witness Signature & Date') }}
     {% endif %}
   </div>
+  {% endif %}
 
   {% if signing_enabled %}
   <!-- Signature pad modal: works with mouse, touch (tablet) and pen -->
@@ -598,9 +721,13 @@
     <span>Contract #{{ "%05d"|format(m.id) }} &nbsp;·&nbsp; {{ m.first_name }} {{ m.last_name }} &nbsp;·&nbsp; {{ m.id_number or '' }}</span>
     <span>Generated {{ generated_at }} &nbsp;·&nbsp; 1Cpace &copy; {{ today.year }}</span>
   </div>
+  {% endif %}
 
 </div>
 
+{% if share and share.stage == 'verified' %}
+<script src="{{ url_for('static', filename='js/contract-sign.js') }}" defer></script>
+{% endif %}
 {% if signing_enabled %}
 <script>
 (function () {

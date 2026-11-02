@@ -25,7 +25,7 @@ CLOSED_AT_PHASE_ONE = (
     "collections.collections_index",
     "ptp.ptp_dashboard",
     "queries.index",
-    "fitness.fitness_index",
+    "fitness.incidents_index",
     "reports.index",
     "operations.equipment_index",
     "access_report.index",
