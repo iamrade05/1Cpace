@@ -224,6 +224,9 @@ def fix_is_live():
 
 
 def apply(path):
+    # Other tools also release to this server; never stop the app underneath one.
+    running = subprocess.run(['pgrep', '-af', 'release[.]py'], capture_output=True, text=True).stdout.strip()
+    assert not running, 'Another release is running: ' + running[:200]
     restarted = fix_is_live()
     db = sqlite3.connect('file:' + str(path) + '?mode=ro', uri=True, timeout=60)
     try:

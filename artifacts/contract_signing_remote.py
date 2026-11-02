@@ -111,8 +111,10 @@ def verify(stage,manifest):
             assert response.status==200 and b'contractDebitPad' in response.read()
         with urlopen('https://'+host+'/static/js/document-upload.js?v=upload-result-20261102',timeout=20) as response:
             assert response.status==200 and b'documentUploadResult' in response.read()
+        # The login page uses the public layout, which has its own stylesheet version;
+        # staff pages carrying VERSION are covered by the render check.
         with urlopen('https://'+host+'/login',timeout=20) as response:
-            assert response.status==200 and VERSION in response.read().decode()
+            assert response.status==200
     columns=tenant_columns()
     for slug,present in columns.items():
         assert set(NEW_COLUMNS)<=present,(slug,set(NEW_COLUMNS)-present)
