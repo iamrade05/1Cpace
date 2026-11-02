@@ -2,6 +2,17 @@
 
 User-selected scope: both staff and members, with separate experiences. Server: `https://www.1cpace.co.za`. Shared client: `mobile/` (Expo/React Native/TypeScript). Backend: `onecpase/mobile_api.py`, opt-in versioned native API.
 
+## iOS preparation — 29 October 2026
+
+The user asked for an iOS version. The shared Expo source (native member access plus the full staff workspace) now carries iOS-specific behaviour and configuration. No backend, business-rule or database change.
+
+- **Downloads:** WKWebView has no system download manager. `onFileDownload` (attachments and non-renderable files) asks the current page to fetch the file with its own session, since every website download route is a GET. The app then validates the message (`readDownloadMessage`: trusted page, same-origin file, base64 only, sanitised file name), writes it to the cache and opens the iOS share sheet (Save to Files, AirDrop, other apps). It deletes the cached copy afterwards. Files over 20 MB, such as long screen recordings, show a message to use a computer instead.
+- **Uploads:** camera, photo-library and microphone usage descriptions are set, because WKWebView file inputs offer those sources.
+- **App Transport Security:** HTTPS only (`NSAllowsArbitraryLoads` false, local networking allowed for development). `ITSAppUsesNonExemptEncryption` is false because only standard HTTPS is used.
+- **Other:** Android installer links show a notice on iPhone instead of opening Safari. Print / Save PDF uses the existing `expo-print` bridge (AirPrint). Back uses the toolbar button and the WebView swipe gesture. Bundle ID `com.onecpase.mobile`, version 1.1.0, build 1. New dependencies: `expo-file-system` and `expo-sharing` (share-into extension not enabled).
+
+Validation: five workspace policy tests (including new download checks), TypeScript, Expo lint, resolved iOS config (Info.plist keys present) and a production iOS Hermes export (`dist-ios`) all passed. `expo install --check` reports existing patch updates for `expo` (57.0.31) and `expo-router` (57.0.29); these were not changed. Expo does not generate the iOS native project on Windows, so no Xcode project, IPA or device test exists yet. Building requires EAS cloud with an Expo account and a paid Apple Developer Program membership, or a Mac with Xcode. Neither has been set up by this task.
+
 ## Full staff workspace Android update ? 18 October 2026
 
 The user selected the existing full staff web workspace inside the standalone Android app, with native member access retained. Version 1.1.0 / code 2 source implements Expo Router navigation and an HTTPS WebView with normal website authentication, CSRF and role/phase permissions. Staff use **Open full staff workspace**; the limited native staff preview is fictional.

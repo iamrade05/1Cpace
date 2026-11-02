@@ -296,8 +296,10 @@ def submit_leave(db, uid, form):
     if kind not in LEAVE_TYPES:
         raise ValueError('Select a supported leave type.')
     p=db.execute('SELECT employment_type FROM hr_profiles WHERE user_id=?',(uid,)).fetchone()
-    if not p or p['employment_type']=='unconfirmed' or (p['employment_type']!='employee' and kind!='unpaid'):
-        raise ValueError('HR must confirm your employment arrangement before statutory leave can be requested. Contractors use the separately agreed unpaid time-off workflow.')
+    if not p or p['employment_type'] not in ('employee','contractor'):
+        raise ValueError('HR must confirm employment details in Employee setup before you can submit leave. Your employment type is not yet confirmed.')
+    if p['employment_type']=='contractor' and kind!='unpaid':
+        raise ValueError('Your HR profile is recorded as an independent contractor. Only unpaid time off can be requested here. Ask HR to review Employee setup if that classification is incorrect.')
     if form.get('attest')!='yes':
         raise ValueError('Confirm your leave request before submitting.')
     start,end=iso(form.get('start_date')),iso(form.get('end_date'))

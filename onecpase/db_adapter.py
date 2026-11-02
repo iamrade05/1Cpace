@@ -18,6 +18,9 @@ from psycopg2.extras import RealDictCursor
 # ── SQL translation rules (applied in order) ─────────────────────────────────
 
 _TRANSLATIONS = [
+    # 15th?14th reporting bucket, labelled by its closing month.
+    (re.compile(r"strftime\(\s*'%Y-%m'\s*,\s*date\(\s*([a-zA-Z_][\w.]*)\s*,\s*'-14 days'\s*,\s*'start of month'\s*,\s*'\+1 month'\s*\)\s*\)", re.IGNORECASE),
+     r"TO_CHAR(DATE_TRUNC('month', (\1)::date - INTERVAL '14 days') + INTERVAL '1 month', 'YYYY-MM')"),
     # INSERT OR IGNORE → INSERT (the ON CONFLICT clause is appended later)
     (re.compile(r"\bINSERT\s+OR\s+IGNORE\b", re.IGNORECASE), "INSERT /*_OCI_*/"),
 

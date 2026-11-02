@@ -12,6 +12,151 @@ from .fitness_cycle import today
 journey_bp = Blueprint('fitness_journey', __name__, url_prefix='/fitness/intake')
 
 
+@journey_bp.route('/allocations', methods=['GET','POST'])
+@permission_required('fitness_module')
+def allocations():
+    from . import fitness_allocation as allocation
+    db=get_db();ensure_journey(db)
+    allocation.begin_allocation(db)
+    try:
+        if request.method=='POST':
+            if request.form.get('action') not in ('accept','decline'):abort(400)
+            allocation.respond(db,int(request.form.get('offer_id','')),session['user_id'],
+                               request.form['action']=='accept',request.form.get('reason',''))
+        allocation.process_queue(db)
+        db.commit()
+    except (ValueError,TypeError) as exc:
+        # Expired offers must stay expired even when a late response is rejected.
+        db.rollback()
+        allocation.begin_allocation(db);allocation.process_queue(db);db.commit()
+        flash(str(exc),'warning')
+    if request.method=='POST':return redirect(url_for('fitness_journey.allocations'))
+    manager=session.get('role') in ('admin','manager')
+    clause='' if manager else ' WHERE o.instructor_id=?'
+    offers=db.execute('''SELECT o.*,u.full_name FROM fitness_allocation_offers o
+        JOIN users u ON u.id=o.instructor_id'''+clause+' ORDER BY o.id DESC LIMIT 100',
+        () if manager else (session['user_id'],)).fetchall()
+    clause='' if manager else ' WHERE r.instructor_id=?'
+    requests=db.execute('''SELECT r.*,u.full_name FROM fitness_allocation_requests r
+        LEFT JOIN users u ON u.id=r.instructor_id'''+clause+' ORDER BY r.id DESC LIMIT 100',
+        () if manager else (session['user_id'],)).fetchall()
+    requests=[dict(row)|{'start_label':display_stamp(row['starts_at']),'end_label':display_stamp(row['ends_at'])} for row in requests]
+    offers=[dict(row)|{'deadline_label':display_stamp(row['expires_at'])} for row in offers]
+    return render_template('fitness/allocations.html',offers=offers,allocations=requests,manager=manager)
+
+
+@journey_bp.post('/<int:mid>/request-allocation')
+@permission_required('fitness_module')
+def request_allocation(mid):
+    from . import fitness_allocation as allocation
+    db=get_db();ensure_journey(db)
+    if not db.execute('SELECT 1 FROM members WHERE id=?',(mid,)).fetchone():abort(404)
+    try:
+        start=datetime.fromisoformat(request.form.get('starts_at','')).replace(tzinfo=ZoneInfo('Africa/Johannesburg'))
+        end=datetime.fromisoformat(request.form.get('ends_at','')).replace(tzinfo=ZoneInfo('Africa/Johannesburg'))
+        allocation.begin_allocation(db)
+        allocation.request_allocation(db,mid,start.isoformat(),end.isoformat(),session['user_id'])
+        allocation.process_queue(db);db.commit()
+        flash('Availability recorded. The allocation queue will select an eligible instructor.','success')
+    except (ValueError,TypeError) as exc:
+        db.rollback();flash(str(exc),'warning')
+    return redirect(url_for('fitness_journey.member_intake',mid=mid))
+
+
+@journey_bp.post('/appointment/<int:rid>')
+@permission_required('fitness_module')
+def appointment(rid):
+    from . import fitness_allocation as allocation
+    db=get_db();ensure_journey(db)
+    try:
+        allocation.begin_allocation(db)
+        allocation.record_appointment(db,rid,request.form.get('action'),session['user_id'],
+                                      request.form.get('reason',''),request.form.get('visit_id') or None)
+        allocation.process_queue(db);db.commit()
+        flash('Appointment updated.','success')
+    except (ValueError,TypeError) as exc:
+        db.rollback();flash(str(exc),'warning')
+    return redirect(url_for('fitness_journey.allocations'))
+
+
+@journey_bp.route('/allocation-roster',methods=['GET','POST'])
+@permission_required('fitness_module')
+def allocation_roster():
+    from . import fitness_allocation as allocation
+    if session.get('role') not in ('admin','manager'):abort(403)
+    db=get_db();ensure_journey(db)
+    if request.method=='POST':
+        try:
+            action=request.form.get('action')
+            weekday=int(request.form.get('weekday',''))
+            start,end=request.form.get('start_time',''),request.form.get('end_time','')
+            if weekday not in range(7) or not start or not end:raise ValueError('Choose a day and valid opening/shift times.')
+            start=datetime.strptime(start,'%H:%M').strftime('%H:%M');end=datetime.strptime(end,'%H:%M').strftime('%H:%M')
+            if end<=start:raise ValueError('End must be after start; enter each day separately.')
+            allocation.begin_allocation(db)
+            if action=='hours':
+                db.execute('''INSERT INTO fitness_gym_hours(weekday,start_time,end_time) VALUES(?,?,?)
+                    ON CONFLICT(weekday) DO UPDATE SET start_time=excluded.start_time,end_time=excluded.end_time''',(weekday,start,end))
+            elif action=='roster':
+                uid=int(request.form.get('user_id',''));staff_id=request.form.get('staff_id') or None
+                kind,rotation=request.form.get('kind'),request.form.get('rotation')
+                if kind not in ('fitness','group') or rotation not in ('early','late','support','fixed'):raise ValueError('Choose a valid instructor type and rotation.')
+                if kind=='group' and rotation!='fixed':raise ValueError('Group instructors use their confirmed assistance hours.')
+                if not db.execute('SELECT 1 FROM users WHERE id=? AND active=1',(uid,)).fetchone():raise ValueError('Choose an active account.')
+                if staff_id and not db.execute('SELECT 1 FROM staff WHERE id=?',(staff_id,)).fetchone():raise ValueError('Choose a valid linked HR record.')
+                db.execute('''INSERT INTO fitness_allocation_roster(user_id,staff_id,kind,rotation,enabled,updated_by,updated_at)
+                    VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET staff_id=excluded.staff_id,kind=excluded.kind,
+                    rotation=excluded.rotation,enabled=excluded.enabled,updated_by=excluded.updated_by,updated_at=excluded.updated_at''',
+                    (uid,staff_id,kind,rotation,int(request.form.get('enabled')=='yes'),session['user_id'],allocation.utc_now().isoformat()))
+                db.execute('''INSERT INTO fitness_roster_windows(user_id,weekday,start_time,end_time) VALUES(?,?,?,?)
+                    ON CONFLICT(user_id,weekday) DO UPDATE SET start_time=excluded.start_time,end_time=excluded.end_time''',(uid,weekday,start,end))
+            else:raise ValueError('Choose a valid action.')
+            allocation.process_queue(db);db.commit();flash('Allocation roster saved.','success')
+        except (ValueError,TypeError) as exc:
+            db.rollback();flash(str(exc),'warning')
+        return redirect(url_for('fitness_journey.allocation_roster'))
+    roster=db.execute('''SELECT r.*,u.full_name,w.weekday,w.start_time,w.end_time FROM fitness_allocation_roster r
+        JOIN users u ON u.id=r.user_id LEFT JOIN fitness_roster_windows w ON w.user_id=r.user_id ORDER BY u.full_name,w.weekday''').fetchall()
+    return render_template('fitness/allocation_roster.html',roster=roster,
+        users=db.execute('SELECT id,full_name FROM users WHERE active=1 ORDER BY full_name').fetchall(),
+        staff=db.execute('SELECT id,first_name,last_name FROM staff ORDER BY first_name').fetchall(),
+        hours=db.execute('SELECT * FROM fitness_gym_hours ORDER BY weekday').fetchall())
+
+
+@journey_bp.route('/allocation-reviews', methods=['GET', 'POST'])
+@permission_required('fitness_module')
+def allocation_reviews():
+    from . import fitness_allocation as allocation
+    if session.get('role') not in ('admin', 'manager'):
+        abort(403)
+    db = get_db()
+    ensure_journey(db)
+    allocation.begin_allocation(db)
+    allocation.expire_offers(db)
+    if request.method == 'POST':
+        try:
+            target = int(request.form.get('target_id', ''))
+            action = request.form.get('action')
+            if action == 'classify' and request.form.get('counts') in ('yes', 'no'):
+                allocation.classify_skip(db, target, session['user_id'], request.form['counts']=='yes', request.form.get('reason',''))
+            elif action == 'decide' and request.form.get('restrict') in ('yes', 'no'):
+                allocation.decide_rights(db, target, session['user_id'], request.form['restrict']=='yes', request.form.get('reason',''))
+            else:
+                raise ValueError('Select a valid management decision.')
+            db.commit()
+        except (ValueError, TypeError) as exc:
+            db.rollback()
+            flash(str(exc), 'warning')
+        return redirect(url_for('fitness_journey.allocation_reviews'))
+    db.commit()
+    offers = db.execute('''SELECT o.*,u.full_name FROM fitness_allocation_offers o
+        JOIN users u ON u.id=o.instructor_id WHERE o.status IN ('declined','timed_out')
+        ORDER BY o.id DESC''').fetchall()
+    reviews = db.execute('''SELECT r.*,u.full_name FROM fitness_pt_reviews r
+        JOIN users u ON u.id=r.instructor_id ORDER BY r.id DESC''').fetchall()
+    return render_template('fitness/allocation_reviews.html', offers=offers, reviews=reviews)
+
+
 def intake_access(view):
     @wraps(view)
     def wrapped(**kwargs):
@@ -36,6 +181,13 @@ def ensure_journey(db):
         FOREIGN KEY(assigned_instructor_id) REFERENCES users(id))''')
     from .database import _ensure_column, _db_type
     _ensure_column(db, _db_type(), 'fitness_intake', 'started_on', 'TEXT')
+    _ensure_column(db, _db_type(), 'fitness_intake', 'program_start_on', 'TEXT')
+    _ensure_column(db, _db_type(), 'fitness_intake', 'goal_category', "TEXT DEFAULT 'unclear'")
+    _ensure_column(db, _db_type(), 'fitness_intake', 'allocation_state', "TEXT DEFAULT 'awaiting_goal_clarification'")
+    _ensure_column(db, _db_type(), 'fitness_intake', 'primary_instructor_id', 'INTEGER REFERENCES users(id)')
+    db.execute('UPDATE fitness_intake SET primary_instructor_id=assigned_instructor_id WHERE primary_instructor_id IS NULL AND assigned_instructor_id IS NOT NULL')
+    from .fitness_allocation import ensure_schema as ensure_allocation_schema
+    ensure_allocation_schema(db)
     db.execute('''CREATE TABLE IF NOT EXISTS fitness_signoffs (
         visit_id INTEGER PRIMARY KEY, client_name TEXT NOT NULL, signature TEXT NOT NULL,
         signed_at TEXT NOT NULL, captured_by INTEGER NOT NULL, instructor_id INTEGER NOT NULL,
@@ -50,12 +202,21 @@ def ensure_journey(db):
         db.execute('''UPDATE fitness_intake SET started_on=(SELECT MIN(v.visit_date) FROM onboarding_visits v
             WHERE v.member_id=fitness_intake.member_id AND v.recorded_at IS NOT NULL AND v.outcome IS NOT NULL AND v.outcome!='not_assisted')''')
     db.execute("INSERT OR IGNORE INTO fitness_intake(member_id) SELECT id FROM members WHERE outcome='joined'")
+    # Keep an already-started legacy programme intact. New programmes begin on
+    # the day after joining, independently of their first attended session.
+    for intake in db.execute('''SELECT f.member_id,f.started_on,m.join_date FROM fitness_intake f
+        JOIN members m ON m.id=f.member_id WHERE f.program_start_on IS NULL''').fetchall():
+        try:
+            start=intake['started_on'] or (date.fromisoformat(str(intake['join_date'])[:10])+timedelta(days=1)).isoformat()
+        except (TypeError,ValueError):
+            continue  # Missing/invalid joining date requires staff correction.
+        db.execute('UPDATE fitness_intake SET program_start_on=? WHERE member_id=?',(start,intake['member_id']))
     db.commit()
 
 
 def welcome_text(first_name):
     return (f'Hi {first_name}, welcome to Elev8 Health & Fitness! Thank you for trusting us to support your fitness journey. '
-            'We offer introductory instructor support during your first 10 calendar days, starting with your first session, '
+            'We offer a 10-calendar-day introductory support programme starting the day after you join, '
             'to help you get comfortable with the gym and your training. Would you like to take part? '
             'Please reply with the days and times you expect to attend so we can arrange an instructor. '
             'Afterwards, you can train independently or choose optional personal training. We look forward to welcoming you!')
@@ -128,13 +289,32 @@ def member_intake(mid):
     staff=get_fitness_staff()
     if request.method=='POST':
         interest=request.form.get('interest','awaiting_reply');trainer=request.form.get('instructor_id') or None
-        if interest not in {'awaiting_reply','interested','declined'} or (trainer and trainer not in {str(row['id']) for row in staff}):
+        if trainer and trainer not in {str(row['id']) for row in staff}:abort(400)
+        category=request.form.get('goal_category','unclear')
+        if category not in {'weight_loss','toning','muscle_gain','weight_gain','general_fitness','mixed','unclear'}:abort(400)
+        clarification=category in {'general_fitness','mixed','unclear'}
+        from .fitness_allocation import begin_allocation,process_queue
+        begin_allocation(db)
+        current=db.execute('SELECT * FROM fitness_intake WHERE member_id=?',(mid,)).fetchone()
+        # The automatic queue owns allocation. A preference edit preserves its
+        # instructor rather than overwriting it with a dropdown value.
+        trainer=current['assigned_instructor_id']
+        if interest!='interested' or current['goal_category']!=category:
+            db.execute("UPDATE fitness_allocation_offers SET status='withdrawn',reason='Member preferences changed' WHERE member_id=? AND status='pending'",(mid,))
+            db.execute("UPDATE fitness_allocation_requests SET status='cancelled',next_action='Member preferences changed; confirm a new window' WHERE member_id=? AND status IN ('waiting','offered','reserved')",(mid,))
+        if clarification and trainer:
+            flash('Ask the member to clarify their primary goal before allocating an instructor.','warning')
+            trainer=None
+        if interest not in {'awaiting_reply','interested','declined'}:
             abort(400)
         db.execute('''UPDATE fitness_intake SET interest=?,preferred_times=?,assigned_instructor_id=?,goal=?,notes=?,updated_at=?,updated_by=? WHERE member_id=?''',
                    (interest,request.form.get('preferred_times','').strip(),trainer,request.form.get('goal','').strip(),request.form.get('notes','').strip(),datetime.now(timezone.utc).isoformat(),session['user_id'],mid))
         db.execute('UPDATE members SET fitness_goal=? WHERE id=?',(request.form.get('goal','').strip(),mid))
+        db.execute('UPDATE fitness_intake SET goal_category=?,allocation_state=? WHERE member_id=?',
+                   (category,'awaiting_goal_clarification' if clarification else 'allocated' if trainer else 'awaiting_allocation',mid))
         from .database import member_activity
         member_activity(db,mid,f'Fitness preferences updated: {interest}; instructor {trainer or "unallocated"}.',user_id=session['user_id'])
+        process_queue(db)
         db.commit();flash('Fitness preferences and instructor allocation saved.','success')
         return redirect(url_for('fitness_journey.member_intake',mid=mid))
     intake=db.execute('SELECT * FROM fitness_intake WHERE member_id=?',(mid,)).fetchone()
@@ -143,7 +323,7 @@ def member_intake(mid):
         WHERE v.member_id=? ORDER BY v.visit_date DESC''',(mid,)).fetchall()
     onboarding=db.execute('SELECT * FROM member_onboarding WHERE member_id=?',(mid,)).fetchone()
     visits=[dict(row)|{'signed_label':display_stamp(row['signed_at'])} for row in visits]
-    end=(date.fromisoformat(intake['started_on'][:10])+timedelta(days=9)).isoformat() if intake['started_on'] else None
+    end=(date.fromisoformat(intake['program_start_on'][:10])+timedelta(days=9)).isoformat() if intake['program_start_on'] else None
     return render_template('fitness/intake.html',member=member,intake=intake,staff=staff,visits=visits,onboarding=onboarding,onboarding_end=end,
                            welcome_eligible=_manual_welcome_eligible(member))
 

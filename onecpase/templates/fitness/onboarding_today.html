@@ -1,22 +1,25 @@
 {% extends "base.html" %}
-{% block title %}New Member Daily Fitness Onboarding | 1Cpace{% endblock %}
-{% block page_title %}New Member Daily Fitness Onboarding{% endblock %}
+{% from '_dashboard.html' import dashboard_header %}
+{% block title %}Fitness Onboarding | 1Cpace{% endblock %}
+{% block page_title %}Fitness Onboarding{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/fitness-tools.css') }}">
-<header class="page-header"><div><h1>New Member Daily Fitness Onboarding</h1></div></header>
-<p>New members appear automatically from their recorded joining date. The default list shows everyone in the current 15th-to-14th cycle.</p>
+<div class="future-dashboard fitness-workspace">
+{{ dashboard_header('Fitness onboarding', '1Cpace fitness', 'New members appear from their joining date. Introductory programmes start the following day and last 10 calendar days; attendance, assistance and signatures are tracked separately.') }}
 {% include 'fitness/_joining_cohort.html' %}
-<p>Introductory support lasts 10 calendar days from the first session. Attendance, assistance and client signatures are tracked separately.</p>
-{% include 'fitness/_intake_register.html' %}
-<form method="get" style="display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
-  <input type="date" name="date" value="{{ day }}" onchange="this.form.submit()">
-  <a class="btn" href="{{ url_for('onboarding.report') }}">Onboarding performance</a>
-</form>
-{% if awaiting %}<div class="card" style="border-left:4px solid #dc2626;margin-bottom:18px;"><div class="card-body"><strong>{{ awaiting|length }} new member{{ '' if awaiting|length == 1 else 's' }} awaiting a fitness interaction.</strong></div></div>{% endif %}
-<div class="card" style="margin-bottom:20px;"><div class="card-header"><strong>Arrivals — {{ day }}</strong></div><div class="card-body" style="overflow-x:auto;">
-{% if visits %}<div class="table-wrap"><table class="table"><thead><tr><th>Member</th><th>Arrival</th><th>Checked in</th><th>Instructor</th><th>Assistance</th><th>Outcome</th><th></th></tr></thead><tbody>
-{% for v in visits %}<tr {% if not v.recorded_at %}style="background:#fef2f2;"{% endif %}><td><strong>{{ v.first_name }} {{ v.last_name }}</strong><br><small>{{ v.package or '—' }}</small></td><td>VISIT {{ v.visit_no }}</td><td>{{ (v.checked_in_at or '')[11:16] or '—' }}</td><td>{{ v.instructor_name or '—' }}</td><td>{% for c in (v.actions or '').split(',') if c %}<span class="badge">{{ action_labels.get(c, c) }}</span>{% endfor %}</td><td>{{ v.outcome or '—' }}</td><td><a class="btn btn-sm" href="{{ url_for('onboarding.record_visit', vid=v.id) }}">{{ 'Record' if not v.recorded_at else 'Edit' }}</a></td></tr>{% endfor %}
-</tbody></table></div>{% else %}<p style="color:#6b7280;">No new members have checked in on this date.</p>{% endif %}</div></div>
-<div class="card"><div class="card-header"><strong>Mark a manual arrival</strong></div><div class="card-body"><form method="post" action="{{ url_for('onboarding.manual_arrival') }}" style="display:flex;gap:10px;flex-wrap:wrap;"><select name="member_id" required><option value="">Select member…</option>{% for m in members_for_manual %}<option value="{{ m.id }}">{{ m.first_name }} {{ m.last_name }}</option>{% endfor %}</select><button class="btn btn-primary" type="submit">Mark arrived</button></form></div></div>
-{% if reviews_due %}<div class="card" style="margin-top:20px;"><div class="card-header"><strong>10-calendar-day reviews due ({{ reviews_due|length }})</strong></div><div class="card-body"><div class="table-wrap"><table class="table"><thead><tr><th>Member</th><th>Visits</th><th></th></tr></thead><tbody>{% for r in reviews_due %}<tr><td>{{ r.first_name }} {{ r.last_name }}</td><td>{{ r.visits_recorded }} actual arrivals</td><td><a class="btn btn-sm btn-primary" href="{{ url_for('onboarding.seven_day_review', oid=r.id) }}">Complete review</a></td></tr>{% endfor %}</tbody></table></div></div></div>{% endif %}
+<section class="card" aria-labelledby="fitness-arrivals-title">
+  <div class="card-header"><h2 id="fitness-arrivals-title">Arrivals and session records</h2><a class="btn btn-sm" href="{{ url_for('onboarding.report') }}">Onboarding performance</a></div>
+  <div class="card-body">
+    <form method="get" class="reg-filters">
+      <input type="hidden" name="cycle" value="{{ cycle }}"><input type="hidden" name="from" value="{{ from_day }}"><input type="hidden" name="to" value="{{ to_day }}">
+      <label>Arrival date<input type="date" name="date" value="{{ day }}" required></label><button class="btn">Show arrivals</button>
+    </form>
+    {% if awaiting %}<div class="callout callout-warning"><strong>{{ awaiting|length }} new member{{ '' if awaiting|length == 1 else 's' }} awaiting a fitness interaction.</strong></div>{% endif %}
+    {% if visits %}<div class="table-wrap"><table class="table" id="fitness-arrivals-register"><thead><tr><th>Member</th><th>Arrival</th><th>Checked in</th><th>Instructor</th><th>Assistance</th><th>Outcome</th><th>Session</th></tr></thead><tbody>
+    {% for v in visits %}<tr><td><a class="text-semibold" href="{{ url_for('fitness_journey.member_intake',mid=v.member_id) }}">{{ v.first_name }} {{ v.last_name }}</a><br><small class="muted">{{ v.package or '—' }}</small></td><td>Visit {{ v.visit_no }}</td><td>{{ (v.checked_in_at or '')[11:16] or '—' }}</td><td>{{ v.instructor_name or '—' }}</td><td>{% for c in (v.actions or '').split(',') if c %}<span class="badge badge-gray">{{ action_labels.get(c, c) }}</span>{% endfor %}</td><td>{% if v.recorded_at %}{{ v.outcome or '—' }}{% else %}<span class="badge badge-warning">Awaiting assistance</span>{% endif %}</td><td><a class="btn btn-sm" href="{{ url_for('onboarding.record_visit', vid=v.id) }}">{{ 'Record' if not v.recorded_at else 'Edit' }}</a></td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<p class="muted">No new members have checked in on this date.</p>{% endif %}
+  </div>
+</section>
+<section class="card"><div class="card-header"><h2>Mark a manual arrival</h2></div><div class="card-body"><form method="post" action="{{ url_for('onboarding.manual_arrival') }}" class="reg-filters"><label>Member<select name="member_id" required><option value="">Select member&hellip;</option>{% for m in members_for_manual %}<option value="{{ m.id }}">{{ m.first_name }} {{ m.last_name }}</option>{% endfor %}</select></label><button class="btn btn-primary" type="submit">Mark arrived</button></form></div></section>
+{% if reviews_due %}<section class="card"><div class="card-header"><h2>10-calendar-day reviews due</h2><span class="badge badge-warning">{{ reviews_due|length }}</span></div><div class="table-wrap"><table class="table"><thead><tr><th>Member</th><th>Visits</th><th>Review</th></tr></thead><tbody>{% for r in reviews_due %}<tr><td><a href="{{ url_for('fitness_journey.member_intake',mid=r.member_id) }}">{{ r.first_name }} {{ r.last_name }}</a></td><td>{{ r.visits_recorded }} actual arrivals</td><td><a class="btn btn-sm btn-primary" href="{{ url_for('onboarding.seven_day_review', oid=r.id) }}">Complete review</a></td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+</div>
 {% endblock %}

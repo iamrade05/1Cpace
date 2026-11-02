@@ -1,5 +1,6 @@
 """Keep five complete database snapshots and five deployment rollback sets."""
 import argparse
+import errno
 from datetime import datetime, timezone
 import json
 import os
@@ -11,6 +12,7 @@ import time
 import tempfile
 
 KEEP_BACKUPS = 5
+BACKUP_RESERVE_BYTES = 512 * 1024 * 1024
 _STAMP = re.compile(r'(\d{8})(?:[T_](\d{6}))?')
 
 
@@ -113,6 +115,22 @@ def prune_deployments(directory, keep=KEEP_BACKUPS, apply=False, minimum_age_sec
             'removed' if apply else 'would_remove': [p.name for p in removals]}
 
 
+def ensure_backup_capacity(db_path, backup_dir, reserve_bytes=BACKUP_RESERVE_BYTES):
+    """Leave working space available after copying the database and its WAL."""
+    source = Path(db_path)
+    required = source.stat().st_size
+    wal = source.with_name(source.name + '-wal')
+    if wal.exists():
+        required += wal.stat().st_size
+    required += reserve_bytes
+    available = shutil.disk_usage(backup_dir).free
+    if available < required:
+        raise OSError(errno.ENOSPC,
+                      f"Backup needs {required} free bytes including the working-space reserve; "
+                      f"only {available} bytes are available.")
+    return required
+
+
 def snapshot_database(db_path, backup_dir, filename):
     """Publish only a complete, checked snapshot, then retain the newest five."""
     backup_dir = Path(backup_dir)
@@ -121,6 +139,7 @@ def snapshot_database(db_path, backup_dir, filename):
     destination = root / filename
     if destination.parent != root or destination.exists() or destination.is_symlink():
         raise ValueError('Backup destination must be a new file in the backup directory.')
+    ensure_backup_capacity(db_path, root)
     descriptor, temporary_name = tempfile.mkstemp(prefix=destination.name + '.', suffix='.partial', dir=root)
     os.close(descriptor)
     temporary = Path(temporary_name)

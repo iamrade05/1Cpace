@@ -177,6 +177,7 @@
                  style="font-weight:800;color:#1769aa;text-decoration:none;font-size:.82rem;">
                 {{ r.reference }}
               </a>
+              {% if r.due_date and r.due_date <= today and r.status not in ['closed','resolved'] %}<div class="aflag owe">Overdue · {{ r.due_date }}</div>{% endif %}
             </td>
             <td>
               {% if r.member_id %}

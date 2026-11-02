@@ -1,7 +1,7 @@
 import logging
 from logging.handlers import RotatingFileHandler
 
-from flask import Flask, flash, g, jsonify, redirect, request, session, url_for
+from flask import Flask, abort, flash, g, jsonify, redirect, request, session, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 from . import phases
 from .permissions import MODULE_PERMISSIONS
@@ -134,6 +134,8 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(onboarding_bp)
     app.register_blueprint(journey_bp)
     app.register_blueprint(operations_bp)
+    from .reception_admin import reception_admin_bp
+    app.register_blueprint(reception_admin_bp)
     app.register_blueprint(leads_bp)
     app.register_blueprint(join_bp)
     app.register_blueprint(applications_bp)
@@ -151,6 +153,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(admin_events_bp)
     app.register_blueprint(whatsapp_web_bp)
     app.register_blueprint(webhooks_bp)
+    from . import query_forms  # Register the shared signed-query routes.
     app.register_blueprint(queries_bp)
     app.register_blueprint(sales_pipeline_bp)
     app.register_blueprint(turnstile_bp)
@@ -192,6 +195,14 @@ def create_app(test_config: dict | None = None) -> Flask:
         if app.config.get("DATABASE_URL"):
             return  # legacy single-tenant Postgres mode — tenant system inert
 
+        if request.endpoint == 'queries.member_form':
+            tenant = get_platform_db().execute('SELECT * FROM tenants WHERE slug=? AND active=1',
+                (request.view_args['tenant_slug'],)).fetchone()
+            if not tenant:
+                abort(404)
+            g.tenant, g.tenant_slug = dict(tenant), tenant['slug']
+            return
+
         slug = request.cookies.get(TENANT_COOKIE_NAME)
         if not slug:
             return
@@ -210,6 +221,8 @@ def create_app(test_config: dict | None = None) -> Flask:
 
     @app.before_request
     def _enforce_staff_access():
+        if request.endpoint == 'queries.member_form':
+            return None  # The expiring link binds the tenant; browser staff cookies do not.
         if request.blueprint == 'mobile':
             return None  # Native API uses tenant-bound bearer identity, never browser cookies.
         from .auth import _load_permissions, session_tenant_ok
@@ -217,6 +230,16 @@ def create_app(test_config: dict | None = None) -> Flask:
         from .permissions import staff_access_profile
 
         if not session.get('user_id') or not session_tenant_ok() or request.blueprint in {'platform', 'auth', 'tenants', 'health', 'comms_webhooks', 'join'} or request.endpoint in {None, 'static'}:
+            return None
+        if request.blueprint=='dashboard':
+            # Each dashboard enforces its own department boundary, including
+            # managers. Keep the operational-module profile rules separate.
+            from .dashboard_access import actor
+            dashboard_user=actor()
+            if dashboard_user:
+                session['role']=dashboard_user['role']
+                session['permissions']=sorted(_load_permissions(dashboard_user['id']))
+                session['access_profile']=staff_access_profile(dashboard_user['role'],dashboard_user['department'],dashboard_user['is_sales_consultant'])
             return None
         user = get_db().execute(
             'SELECT role, department, is_sales_consultant FROM users WHERE id=?',
@@ -228,14 +251,10 @@ def create_app(test_config: dict | None = None) -> Flask:
             return None
         session['role'] = user['role']
         session['permissions'] = sorted(_load_permissions(session['user_id']))
-        if request.endpoint == 'dashboard.dashboard':
-            return redirect(url_for('members.members_index' if profile == 'fitness' else 'leads.leads_index'))
-        if request.blueprint == 'dashboard' and (profile == 'fitness' or request.endpoint != 'dashboard.sales_dashboard'):
-            return jsonify(ok=False, error="You don't have permission to access that area."), 403
         common = {'dashboard', 'members', 'queries', 'turnstile', 'hr', 'workforce', 'contracts', 'screen_recordings', 'notifications', 'training'}
         allowed = common | ({'fitness', 'onboarding', 'fitness_journey'} if profile == 'fitness' else {'leads', 'sales_pipeline', 'applications', 'call_list', 'first_month_collections', 'comms', 'internal_comms', 'pbx', 'debicheck'})
         if profile == 'reception':
-            allowed |= {'collections', 'ptp', 'access_report', 'fitness_journey'}
+            allowed |= {'collections', 'ptp', 'access_report', 'fitness_journey', 'reception_admin'}
         if request.blueprint not in allowed:
             return jsonify(ok=False, error="You don't have permission to access that area."), 403
 
@@ -320,8 +339,19 @@ def create_app(test_config: dict | None = None) -> Flask:
         hr_admin = bool(session.get('user_id')) and request.blueprint != 'platform' and hr_is_admin(get_db())
         hr_calendar = hr_admin or (bool(session.get('user_id')) and request.blueprint != 'platform' and
                                   (hr_granted(get_db(),'hr_leave_approve') or hr_granted(get_db(),'hr_timesheet_approve')))
+        from .reception_admin import access as reception_access
+        reception_allowed, reception_manager = reception_access(get_db())
         return {"has_perm": has_perm, "module_permissions": MODULE_PERMISSIONS,
+                'reception_admin_allowed': reception_allowed, 'reception_admin_manager': reception_manager,
                 'hr_can_manage': hr_admin, 'hr_can_calendar': hr_calendar}
+
+    @app.context_processor
+    def inject_dashboard_access():
+        from .dashboard_access import current_scope,home_endpoint
+        from .auth import session_tenant_ok
+        if not session.get('user_id') or not session_tenant_ok() or request.blueprint=='platform':
+            return {'dashboard_scope':'work','department_home':'dashboard.home'}
+        return {'dashboard_scope':current_scope(),'department_home':home_endpoint()}
 
     @app.context_processor
     def inject_followups():

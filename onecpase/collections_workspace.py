@@ -6,6 +6,7 @@ template. The financial figures are summed from the same cases and the same
 reconciled payments the rest of Collections uses.
 """
 from __future__ import annotations
+from .reporting_cycle import today as business_today, cycle_key, cycle_bounds
 
 from datetime import date
 
@@ -85,11 +86,16 @@ def _scalar(db, sql, params=()):
     return (row[0] if row else 0) or 0
 
 
-def dashboard_metrics(db, *, user_id=None, today=None):
+def dashboard_metrics(db, *, user_id=None, today=None,date_from=None,date_to=None):
     """Financial position, today's work, and the figures each role cares about."""
-    today = today or date.today()
-    month = today.strftime("%Y-%m")
+    today = today or business_today()
+    month = cycle_key(today)
     day = today.isoformat()
+    first,last=cycle_bounds(month)
+    start=date_from or first.isoformat();end=date_to or last.isoformat()
+    from .members import _is_discount
+    period_payments=db.execute("SELECT amount_paid,notes FROM collections WHERE substr(collection_date,1,10)>=? AND substr(collection_date,1,10)<=? AND status IN ('paid','partial')",(start,end)).fetchall()
+    period_collected=round(sum(float(row['amount_paid'] or 0) for row in period_payments if not _is_discount(row)),2)
 
     financial = {
         "total_outstanding": float(_scalar(
@@ -98,9 +104,7 @@ def dashboard_metrics(db, *, user_id=None, today=None):
             db, f"SELECT COUNT(DISTINCT member_id) FROM collections_cases WHERE status IN {OPEN}"),
         "failed_debits": _scalar(
             db, f"SELECT COUNT(*) FROM collections_cases WHERE status IN {OPEN} AND failed_debit_date IS NOT NULL"),
-        "collected_this_month": float(_scalar(
-            db, """SELECT SUM(amount_paid) FROM collections
-                   WHERE substr(collection_date,1,7)=? AND status IN ('paid','partial')""", (month,))),
+        "collected_this_month": period_collected,
         "active_ptps": _scalar(
             db, "SELECT COUNT(*) FROM ptp_agreements WHERE ptp_status IN ('pending','partially_paid')"),
         "broken_ptps": _scalar(
@@ -151,10 +155,12 @@ def dashboard_metrics(db, *, user_id=None, today=None):
                JOIN collection_assignment_history h ON h.id = (
                     SELECT MAX(id) FROM collection_assignment_history WHERE case_id = c.id)
                WHERE c.status='closed' AND c.resolution_type='PAID_IN_FULL'
-                 AND substr(c.closed_at,1,7)=? GROUP BY 1""", (month,)).fetchall()
+                 AND substr(c.closed_at,1,10)>=? AND substr(c.closed_at,1,10)<=? GROUP BY 1""", (start,end)).fetchall()
     }
     manager = {"open_by_owner": owners, "recovered_this_month_by_owner": recoveries}
-    return {"financial": financial, "workload": workload, "sales": sales, "manager": manager}
+    first, last = cycle_bounds(month)
+    return {"financial": financial, "workload": workload, "sales": sales, "manager": manager,
+            "cycle_start": start, "cycle_end": end}
 
 
 def _ts(value):
@@ -385,30 +391,30 @@ def member_profile(db, member_id):
 # ── Reports ──────────────────────────────────────────────────────────────────
 
 def report_month(value=None):
-    """A YYYY-MM string; anything unreadable falls back to the current month."""
+    """A closing-month YYYY-MM cycle key; invalid input uses the current cycle."""
     text = str(value or "")
     if len(text) == 7 and text[4] == "-" and text[:4].isdigit() and text[5:].isdigit():
         if 2000 <= int(text[:4]) <= 2100 and 1 <= int(text[5:]) <= 12:
             return text
-    return date.today().strftime("%Y-%m")
+    return cycle_key(business_today())
 
 
 def financial_report(db, month):
-    """Money in and out of collections for one month, plus where it stands now.
+    """Money in and out of collections for one 15th?14th cycle, plus where it stands now.
     There is no opening balance: balances are not snapshotted, so one would be invented."""
     return {
-        "month": month,
+        "month": month, "cycle_start": cycle_bounds(month)[0].isoformat(), "cycle_end": cycle_bounds(month)[1].isoformat(),
         "new_arrears": float(_scalar(
-            db, "SELECT SUM(arrears_amount) FROM collections_cases WHERE substr(created_at,1,7)=?", (month,))),
+            db, "SELECT SUM(arrears_amount) FROM collections_cases WHERE strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month'))=?", (month,))),
         "collected": float(_scalar(
             db, """SELECT SUM(amount_paid) FROM collections
-                   WHERE substr(collection_date,1,7)=? AND status IN ('paid','partial')""", (month,))),
+                   WHERE strftime('%Y-%m', date(collection_date,'-14 days','start of month','+1 month'))=? AND status IN ('paid','partial')""", (month,))),
         "discounts_approved": float(_scalar(
             db, """SELECT SUM(discount_amount) FROM ptp_agreements
-                   WHERE substr(created_at,1,7)=? AND COALESCE(discount_amount,0) > 0
+                   WHERE strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month'))=? AND COALESCE(discount_amount,0) > 0
                      AND manager_approval_status IN ('approved','not_required')""", (month,))),
         "cases_resolved": _scalar(
-            db, "SELECT COUNT(*) FROM collections_cases WHERE status='closed' AND substr(closed_at,1,7)=?", (month,)),
+            db, "SELECT COUNT(*) FROM collections_cases WHERE status='closed' AND strftime('%Y-%m', date(closed_at,'-14 days','start of month','+1 month'))=?", (month,)),
         "remaining_outstanding": float(_scalar(
             db, f"SELECT SUM(arrears_amount) FROM collections_cases WHERE status IN {OPEN}")),
         "open_cases": _scalar(db, f"SELECT COUNT(*) FROM collections_cases WHERE status IN {OPEN}"),
@@ -433,14 +439,14 @@ def sales_quality_report(db, month):
            JOIN membership_applications ma ON ma.member_id = m.id
            LEFT JOIN leads l ON l.id = ma.lead_id
            LEFT JOIN users u ON u.id = COALESCE(l.assigned_to, ma.created_by)
-           WHERE substr(m.join_date,1,7)=? AND COALESCE(l.assigned_to, ma.created_by) IS NOT NULL
+           WHERE strftime('%Y-%m', date(m.join_date,'-14 days','start of month','+1 month'))=? AND COALESCE(l.assigned_to, ma.created_by) IS NOT NULL
            GROUP BY 1, 2""", (month,)).fetchall():
         row(r["staff_id"], r["name"])["new_members"] = r["n"]
 
     for r in db.execute(
         """SELECT h.to_staff_id AS staff_id, u.full_name AS name, COUNT(*) AS n
            FROM collection_assignment_history h LEFT JOIN users u ON u.id = h.to_staff_id
-           WHERE h.reason='FIRST_MONTH_FAILED_DEBIT' AND substr(h.transferred_at,1,7)=?
+           WHERE h.reason='FIRST_MONTH_FAILED_DEBIT' AND strftime('%Y-%m', date(h.transferred_at,'-14 days','start of month','+1 month'))=?
            GROUP BY 1, 2""", (month,)).fetchall():
         row(r["staff_id"], r["name"])["failed"] = r["n"]
 
@@ -448,14 +454,14 @@ def sales_quality_report(db, month):
         """SELECT h.from_staff_id AS staff_id, u.full_name AS name, COUNT(*) AS n
            FROM collection_assignment_history h LEFT JOIN users u ON u.id = h.from_staff_id
            WHERE h.reason='SECOND_MONTH_ARREARS' AND h.from_owner_type='SALES'
-             AND substr(h.transferred_at,1,7)=? GROUP BY 1, 2""", (month,)).fetchall():
+             AND strftime('%Y-%m', date(h.transferred_at,'-14 days','start of month','+1 month'))=? GROUP BY 1, 2""", (month,)).fetchall():
         row(r["staff_id"], r["name"])["transferred"] = r["n"]
 
     # Recovered by Sales: a first-month case paid in full without ever leaving Sales.
     for r in db.execute(
         """SELECT c.original_sales_consultant_id AS staff_id, u.full_name AS name, COUNT(*) AS n
            FROM collections_cases c LEFT JOIN users u ON u.id = c.original_sales_consultant_id
-           WHERE c.status='closed' AND c.resolution_type='PAID_IN_FULL' AND substr(c.closed_at,1,7)=?
+           WHERE c.status='closed' AND c.resolution_type='PAID_IN_FULL' AND strftime('%Y-%m', date(c.closed_at,'-14 days','start of month','+1 month'))=?
              AND c.original_sales_consultant_id IS NOT NULL
              AND NOT EXISTS (SELECT 1 FROM collection_assignment_history h
                               WHERE h.case_id=c.id AND h.to_owner_type='RECEPTION' AND h.from_owner_type='SALES')
@@ -473,11 +479,11 @@ def sales_quality_report(db, month):
     rows = sorted(consultants.values(), key=lambda r: (-r["failed"], r["name"]))
     for r in rows:
         r["failure_rate"] = round(100.0 * r["failed"] / r["new_members"], 1) if r["new_members"] else None
-    return {"month": month, "rows": rows}
+    return {"month": month, "cycle_start": cycle_bounds(month)[0].isoformat(), "cycle_end": cycle_bounds(month)[1].isoformat(), "rows": rows}
 
 
 def performance_report(db, month):
-    """Reception and collections activity for one month."""
+    """Reception and collections activity for one 15th?14th cycle."""
     from .collections_engine import reached_sql
 
     callers = db.execute(
@@ -485,31 +491,31 @@ def performance_report(db, month):
                   SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS calls,
                   SUM(CASE WHEN {reached_sql()} THEN 1 ELSE 0 END) AS contacts
            FROM collection_call_tasks t LEFT JOIN users u ON u.id = t.assigned_to
-           WHERE substr(t.task_date,1,7)=? GROUP BY 1, 2 ORDER BY calls DESC, name""", (month,)).fetchall()
+           WHERE strftime('%Y-%m', date(t.task_date,'-14 days','start of month','+1 month'))=? GROUP BY 1, 2 ORDER BY calls DESC, name""", (month,)).fetchall()
     totals = {
         "calls": sum(c["calls"] or 0 for c in callers),
         "contacts": sum(c["contacts"] or 0 for c in callers),
-        "ptps_created": _scalar(db, "SELECT COUNT(*) FROM ptp_agreements WHERE substr(created_at,1,7)=?", (month,)),
+        "ptps_created": _scalar(db, "SELECT COUNT(*) FROM ptp_agreements WHERE strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month'))=?", (month,)),
         "ptps_honoured": _scalar(
-            db, "SELECT COUNT(*) FROM ptp_agreements WHERE ptp_status='paid' AND substr(updated_at,1,7)=?", (month,)),
+            db, "SELECT COUNT(*) FROM ptp_agreements WHERE ptp_status='paid' AND strftime('%Y-%m', date(updated_at,'-14 days','start of month','+1 month'))=?", (month,)),
         "ptps_broken": _scalar(
-            db, "SELECT COUNT(*) FROM ptp_agreements WHERE ptp_status='broken' AND substr(updated_at,1,7)=?", (month,)),
+            db, "SELECT COUNT(*) FROM ptp_agreements WHERE ptp_status='broken' AND strftime('%Y-%m', date(updated_at,'-14 days','start of month','+1 month'))=?", (month,)),
         "arrangements": _scalar(
             db, """SELECT COUNT(*) FROM ptp_agreements
-                   WHERE substr(created_at,1,7)=? AND COALESCE(arrangement_type,'full') <> 'full'""", (month,)),
+                   WHERE strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month'))=? AND COALESCE(arrangement_type,'full') <> 'full'""", (month,)),
         "debichecks": _scalar(
-            db, "SELECT COUNT(*) FROM debicheck_mandates WHERE substr(created_at,1,7)=?", (month,)),
+            db, "SELECT COUNT(*) FROM debicheck_mandates WHERE strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month'))=?", (month,)),
         "amount_collected": float(_scalar(
             db, """SELECT SUM(amount_paid) FROM collections
-                   WHERE substr(collection_date,1,7)=? AND status IN ('paid','partial')""", (month,))),
+                   WHERE strftime('%Y-%m', date(collection_date,'-14 days','start of month','+1 month'))=? AND status IN ('paid','partial')""", (month,))),
         "discount_requests": _scalar(
             db, """SELECT COUNT(*) FROM ptp_agreements
-                   WHERE substr(created_at,1,7)=? AND COALESCE(discount_pct,0) > 0""", (month,)),
+                   WHERE strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month'))=? AND COALESCE(discount_pct,0) > 0""", (month,)),
         "access_restrictions": _scalar(
-            db, "SELECT COUNT(*) FROM access_decisions WHERE access_status='BLOCKED' AND substr(evaluated_at,1,7)=?", (month,)),
+            db, "SELECT COUNT(*) FROM access_decisions WHERE access_status='BLOCKED' AND strftime('%Y-%m', date(evaluated_at,'-14 days','start of month','+1 month'))=?", (month,)),
     }
     totals["contact_rate"] = round(100.0 * totals["contacts"] / totals["calls"], 1) if totals["calls"] else None
-    return {"month": month, "callers": callers, "totals": totals}
+    return {"month": month, "cycle_start": cycle_bounds(month)[0].isoformat(), "cycle_end": cycle_bounds(month)[1].isoformat(), "callers": callers, "totals": totals}
 
 
 def _min_talk(db):
@@ -518,7 +524,7 @@ def _min_talk(db):
     return get_collection_rule_int(db, "contact_talk_seconds", DEFAULT_CONTACT_TALK_SECONDS)
 
 
-def daily_call_report(db, day, call_target=100, contact_target=10):
+def daily_call_report(db, day, call_target=80, contact_target=10):
     """Attempts use the actual call date; pending work uses its assigned date.
 
     Reached follows a saved contact outcome; PBX confirmation is a separate count.

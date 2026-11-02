@@ -1,4 +1,5 @@
 from datetime import datetime
+import pytest
 
 from onecpase.dashboard import (
     _build_trend_ranges,
@@ -6,6 +7,14 @@ from onecpase.dashboard import (
 )
 from onecpase.database import get_db
 from onecpase.member_counts import get_member_counts
+
+
+@pytest.fixture(autouse=True)
+def dashboard_admin(app):
+    with app.app_context():
+        db=get_db()
+        db.execute("INSERT INTO users(id,username,password_hash,full_name,role,active) VALUES(1,'dashboard-admin','x','Dashboard Admin','admin',1)")
+        db.commit()
 
 
 def test_reconciliation_sync_route_uses_reconciliation_payload(app, monkeypatch):
@@ -52,8 +61,8 @@ def test_sales_dashboard_counts_legacy_activity_milestones(app):
     with app.app_context():
         db = get_db()
         db.execute(
-            "INSERT INTO users (username, password_hash, full_name) VALUES (?, ?, ?)",
-            ("sales", "hash", "Sales User"),
+            "INSERT INTO users (username, password_hash, full_name,department) VALUES (?, ?, ?, ?)",
+            ("sales", "hash", "Sales User", "Sales"),
         )
         user_id = db.execute("SELECT id FROM users WHERE username='sales'").fetchone()[0]
         db.execute(

@@ -97,41 +97,6 @@
         {% endfor %}
       </tbody>
     </table></div>
-    <div class="member-card-list">
-      {% for m in members %}
-      <article class="member-list-card">
-        <div class="member-list-card__header">
-          <div>
-            <a href="{{ url_for('members.member_detail', mid=m.id) }}"
-               class="member-list-card__name">{{ m.first_name }} {{ m.last_name }}</a>
-            <div class="member-list-card__id">{{ m.member_ref }}</div>
-          </div>
-          {% if m.member_status == 'Active' %}<span class="badge badge-success">Active</span>
-          {% elif m.member_status == 'Frozen' %}<span class="badge badge-info">Frozen</span>
-          {% elif m.member_status == 'Cancelled' %}<span class="badge badge-danger">Cancelled</span>
-          {% else %}<span class="badge badge-gray">{{ m.member_status }}</span>{% endif %}
-        </div>
-        <div class="member-list-card__details">
-          <div class="member-list-card__detail">
-            <span class="member-list-card__label">Contact</span>
-            <span class="member-list-card__value">{{ m.contact or '—' }}</span>
-          </div>
-          <div class="member-list-card__detail">
-            <span class="member-list-card__label">Email</span>
-            <span class="member-list-card__value">{{ m.email or '—' }}</span>
-          </div>
-          <div class="member-list-card__detail">
-            <span class="member-list-card__label">Joined</span>
-            <span class="member-list-card__value">{{ m.join_date or m.created_at[:10] }}</span>
-          </div>
-        </div>
-        <div class="member-list-card__actions">
-          <a href="{{ url_for('members.member_detail', mid=m.id) }}" class="btn btn-ghost btn-sm">View</a>
-          <a href="{{ url_for('members.member_edit', mid=m.id) }}" class="btn btn-ghost btn-sm">Edit</a>
-        </div>
-      </article>
-      {% endfor %}
-    </div>
     {% else %}
     <div class="empty-state">
       <div class="empty-icon">{% if search or status_filter %}{% else %}{% endif %}</div>

@@ -241,27 +241,126 @@ def _member_status(app, mid):
         return get_db().execute("SELECT member_status FROM members WHERE id=?", (mid,)).fetchone()[0]
 
 
-def test_staff_cannot_cancel_a_member_without_a_manager(app, client, ids):
+def _pay(app, mid, amount, method="cash", status="paid", when=None):
+    from datetime import date
+    with app.app_context():
+        db = get_db()
+        cur = db.execute(
+            """INSERT INTO collections (member_id, outstanding_balance, amount_paid,
+                   collection_date, method, status, notes)
+               VALUES (?, 0, ?, ?, ?, ?, 'cancellation settlement')""",
+            (mid, amount, when or date.today().isoformat(), method, status))
+        db.commit()
+        return cur.lastrowid
+
+
+# m0: 24-month contract, 10 months done, R400/month, no arrears -> fee R2,400,
+# middle band -> cash R1,920 (20% off), six instalments R2,160 (10% off).
+
+def test_logging_a_cancellation_never_cancels_the_member(app, client, ids):
+    for user in (RECEPTION, MANAGER):
+        _login(client, user)
+        client.post("/queries/add", data=_cancel_form(ids["m0"], cancel_member="1"))
+        qry = _last_query(app)
+        assert qry["member_cancelled"] == 0 and qry["cancel_member_requested"] == 0
+        assert _member_status(app, ids["m0"]) == "Active"
+
+
+def test_unsigned_cash_cancellation_cannot_use_legacy_manager_approval(app, client, ids):
     _login(client, RECEPTION)
-    client.post("/queries/add", data=_cancel_form(ids["m0"], cancel_member="1"))
-    qry = _last_query(app)
-    assert qry["approval_status"] == "pending" and qry["cancel_member_requested"] == 1
+    client.post("/queries/add", data=_cancel_form(ids["m0"]))
+    qid = _last_query(app)["id"]
+    ask = {"cancel_member": "1", "approval_reason": "Member paid at reception"}
+
+    client.post(f"/queries/{qid}/request-approval", data=ask)      # nothing paid yet
+    assert _query(app, qid)["approval_status"] == "not_required"
+    _pay(app, ids["m0"], 1000)                                       # part payment
+    client.post(f"/queries/{qid}/request-approval", data=ask)
+    assert _query(app, qid)["approval_status"] == "not_required"
+
+    _pay(app, ids["m0"], 920)                                        # R1,920 in total
+    client.post(f"/queries/{qid}/request-approval", data=ask)
+    qry = _query(app, qid)
+    assert qry["approval_status"] == "not_required" and qry["cancel_member_requested"] == 0
     assert _member_status(app, ids["m0"]) == "Active"
 
     _login(client, MANAGER)
-    client.post(f"/queries/{qry['id']}/decide", data={"decision": "approved"})
-    assert _member_status(app, ids["m0"]) == "Cancelled"
-    assert _query(app, qry["id"])["member_cancelled"] == 1
+    client.post(f"/queries/{qid}/decide", data={"decision": "approved"})
+    assert _member_status(app, ids["m0"]) == "Active"
+    assert _query(app, qid)["member_cancelled"] == 0
 
 
 def test_rejected_cancellation_leaves_the_member_active(app, client, ids):
     _login(client, RECEPTION)
-    client.post("/queries/add", data=_cancel_form(ids["m0"], cancel_member="1"))
+    client.post("/queries/add", data=_cancel_form(ids["m0"]))
     qid = _last_query(app)["id"]
+    _pay(app, ids["m0"], 1920)
+    client.post(f"/queries/{qid}/request-approval",
+                data={"cancel_member": "1", "approval_reason": "Paid cash"})
     _login(client, MANAGER)
     client.post(f"/queries/{qid}/decide", data={"decision": "rejected", "approval_notes": "Retention offer first"})
     assert _member_status(app, ids["m0"]) == "Active"
-    assert _query(app, qid)["approval_status"] == "rejected"
+    assert _query(app, qid)["approval_status"] == "not_required"
+
+
+def test_manager_cannot_skip_signed_funnel_even_when_cash_is_paid(app, client, ids):
+    _login(client, MANAGER)
+    client.post("/queries/add", data=_cancel_form(ids["m0"]))
+    qid = _last_query(app)["id"]
+    _pay(app, ids["m0"], 1920, method="card")
+    client.post(f"/queries/{qid}/request-approval",
+                data={"cancel_member": "1", "approval_reason": "Paid by card at reception"})
+    qry = _query(app, qid)
+    assert qry["approval_status"] == "not_required"
+    assert _member_status(app, ids["m0"]) == "Active"
+
+
+def test_instalment_cancellation_cannot_be_cancelled_now(app, client, ids):
+    _login(client, MANAGER)
+    from datetime import date, timedelta
+    client.post("/queries/add", data=_cancel_form(
+        ids["m0"], cancellation_payment_method="new_debit",
+        cancellation_first_payment_date=(date.today() + timedelta(days=7)).isoformat()))
+    qid = _last_query(app)["id"]
+    _pay(app, ids["m0"], 5000)
+    client.post(f"/queries/{qid}/request-approval",
+                data={"cancel_member": "1", "approval_reason": "Try"})
+    assert _query(app, qid)["approval_status"] == "not_required"
+    assert _member_status(app, ids["m0"]) == "Active"
+    page = client.get(f"/queries/{qid}").get_data(as_text=True)
+    assert 'name="cancel_member"' not in page
+    assert "signed request workflow" in page
+
+
+def test_debit_orders_and_reversed_payments_do_not_settle_cash(app, client, ids):
+    _login(client, MANAGER)
+    client.post("/queries/add", data=_cancel_form(ids["m0"]))
+    qid = _last_query(app)["id"]
+    _pay(app, ids["m0"], 1920, method="debicheck")
+    _pay(app, ids["m0"], 1920, status="reversed")
+    _pay(app, ids["m0"], 1920, status="pending")
+    _pay(app, ids["m0"], 1920, when="2020-01-01")                  # before the quote
+    client.post(f"/queries/{qid}/request-approval",
+                data={"cancel_member": "1", "approval_reason": "Try"})
+    assert _member_status(app, ids["m0"]) == "Active"
+
+
+def test_approval_rechecks_the_payment(app, client, ids):
+    _login(client, RECEPTION)
+    client.post("/queries/add", data=_cancel_form(ids["m0"]))
+    qid = _last_query(app)["id"]
+    pay_id = _pay(app, ids["m0"], 1920)
+    client.post(f"/queries/{qid}/request-approval",
+                data={"cancel_member": "1", "approval_reason": "Paid cash"})
+    with app.app_context():
+        db = get_db()
+        db.execute("UPDATE collections SET status='reversed' WHERE id=?", (pay_id,))
+        db.commit()
+    _login(client, MANAGER)
+    client.post(f"/queries/{qid}/decide", data={"decision": "approved"})
+    assert _query(app, qid)["approval_status"] == "not_required"
+    assert _member_status(app, ids["m0"]) == "Active"
+    assert _query(app, qid)["member_cancelled"] == 0
 
 
 def test_blank_months_completed_is_refused_not_maximum_penalty(app, client, ids):
@@ -275,6 +374,14 @@ def test_owing_cancellation_cannot_be_resolved_through_update(app, client, ids):
     _login(client, MANAGER)
     client.post("/queries/add", data=_cancel_form(ids["m2"]))
     qid = _last_query(app)["id"]
+    # Isolate the owing-account acknowledgment guard after the signed funnel
+    # has finished; an unsigned cancellation now has its own closure blocker.
+    with app.app_context():
+        from onecpase.encryption import encrypt
+        db = get_db()
+        db.execute("INSERT INTO query_workflows(query_id,kind,stage,owner_id,details,updated_at) VALUES(?,'cancellation','complete',?,?,?)",
+                   (qid, MANAGER, encrypt('{}'), '2026-10-29T10:00:00+02:00'))
+        db.commit()
     client.post(f"/queries/{qid}/update", data={"status": "resolved"})
     assert _query(app, qid)["status"] == "open"
     client.post(f"/queries/{qid}/update", data={"status": "closed"})

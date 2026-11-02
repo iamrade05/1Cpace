@@ -1,7 +1,8 @@
 {% extends "base.html" %}
-{% block content %}
+{% block title %}PBX Call Log | 1Cpace{% endblock %}
+{% block content %}{% from '_ui.html' import page_header %}
 <div class="container">
-  <h1>PBX Call Log</h1>
+  {{ page_header('PBX Call Log') }}
   <p>Calls are automatically linked to leads or members by phone number. Record the outcome to complete the CRM timeline.</p>
   <div class="table-wrap"><table class="table">
     <thead><tr><th>Time</th><th>Direction</th><th>Staff</th><th>Contact</th><th>Status</th><th>Talk</th><th>Outcome / Next action</th></tr></thead>

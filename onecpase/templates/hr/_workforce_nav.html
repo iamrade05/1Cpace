@@ -1,10 +1,27 @@
-<nav aria-label="HR" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
-  <a class="btn btn-secondary" href="{{ url_for('workforce.dashboard') }}">My HR</a>
-  <a class="btn btn-ghost" href="{{ url_for('hr.leave_index') }}">Leave requests</a>
-  <a class="btn btn-ghost" href="{{ url_for('workforce.weeks') }}">Weekly timesheets</a>
-  <a class="btn btn-ghost" href="{{ url_for('workforce.roster') }}">Roster & lunch</a>
-  <a class="btn btn-ghost" href="{{ url_for('hr.staff_index') }}">Staff directory</a>
-  {% if hr_can_calendar %}<a class="btn btn-ghost" href="{{ url_for('workforce.calendar') }}">Team availability</a>{% endif %}
-  {% if hr_can_calendar %}<a class="btn btn-ghost" href="{{ url_for('workforce.reviews') }}">Review queue</a>{% endif %}
-  {% if hr_can_manage %}<a class="btn btn-ghost" href="{{ url_for('workforce.setup') }}">Employee setup</a>{% endif %}
+{% set endpoint=request.endpoint or '' %}
+{% macro item(target,label,active=false) %}<a href="{{ url_for(target) }}"{% if active %} class="is-current" aria-current="page"{% endif %}>{{ label }}</a>{% endmacro %}
+<nav class="hr-nav" aria-label="HR workspace">
+  <div class="hr-nav-primary">
+    {{ item('workforce.dashboard','My HR',endpoint=='workforce.dashboard') }}
+    {{ item('hr.leave_index','Leave',endpoint in ('hr.leave_index','hr.leave_request','workforce.balances')) }}
+    {{ item('workforce.weeks','Timesheets',endpoint in ('workforce.weeks','hr.timesheets_index','hr.timesheet_staff_week')) }}
+    {{ item('workforce.roster','Roster',endpoint=='workforce.roster') }}
+  </div>
+  <div class="hr-nav-tools">
+    <details class="hr-nav-menu"{% if endpoint in ('workforce.calendar','workforce.reviews','hr.staff_index','hr.staff_add','hr.staff_edit','hr.employee_index','hr.employee_add','hr.employee_edit','hr.employee_detail') %} data-current-group{% endif %}>
+      <summary>Team</summary><div class="hr-nav-options">
+        {{ item('hr.staff_index','Staff directory',endpoint in ('hr.staff_index','hr.staff_add','hr.staff_edit')) }}
+        {% if hr_can_calendar %}{{ item('workforce.calendar','Team availability',endpoint=='workforce.calendar') }}{{ item('workforce.reviews','Approvals',endpoint=='workforce.reviews') }}{% endif %}
+        {% if hr_can_manage %}{{ item('hr.employee_index','Employee records',endpoint in ('hr.employee_index','hr.employee_add','hr.employee_edit','hr.employee_detail')) }}{% endif %}
+      </div>
+    </details>
+    {% if hr_can_manage or has_perm('hr_payroll') %}
+    <details class="hr-nav-menu"{% if endpoint in ('workforce.setup','hr.payroll_index','hr.access_attendance') %} data-current-group{% endif %}>
+      <summary>Administration</summary><div class="hr-nav-options">
+        {% if hr_can_manage %}{{ item('workforce.setup','Employment & balances',endpoint=='workforce.setup') }}{{ item('hr.access_attendance','Access-card attendance',endpoint=='hr.access_attendance') }}{% endif %}
+        {% if has_perm('hr_payroll') %}{{ item('hr.payroll_index','Payroll',endpoint=='hr.payroll_index') }}{% endif %}
+      </div>
+    </details>
+    {% endif %}
+  </div>
 </nav>

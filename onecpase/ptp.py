@@ -10,6 +10,7 @@ from flask import (Blueprint, abort, current_app, flash, jsonify, redirect,
 from werkzeug.utils import secure_filename
 
 from .auth import permission_required, roles_required
+from .dashboard_access import dashboard_only
 from .database import get_db, member_activity
 from .collections_engine import (
     apply_manager_exception,
@@ -261,9 +262,12 @@ def _debt_collection_member_rows(db) -> list[dict]:
 
 @ptp_bp.route("/ptp/")
 @permission_required("all_collections")
+@dashboard_only('reception')
 def ptp_dashboard():
     db  = get_db()
-    today = date.today().isoformat()
+    from .dashboard_reporting import resolve_period,dashboard_context
+    period=resolve_period()
+    today=period.today.isoformat()
     members = _debt_collection_member_rows(db)
 
     # KPIs
@@ -329,6 +333,7 @@ def ptp_dashboard():
 
     return render_template(
         "ptp/dashboard.html",
+        **dashboard_context(db,'ptp',session['user_id'],period=period),
         members=filtered,
         total_clients=total_clients,
         total_arrears=total_arrears_r,
@@ -763,6 +768,10 @@ def ptp_create(mid: int):
         abort(404)
 
     f = request.form
+    contact_channel = (f.get("contact_channel") or "unknown").strip()
+    if contact_channel not in {"call", "walk_in", "other", "unknown"}:
+        flash("Select a valid PTP contact channel.", "error")
+        return redirect(url_for("members.member_detail", mid=mid) + "#ptp")
     promise_amount   = (f.get("promise_amount") or "0").strip()
     promise_date     = (f.get("promise_date") or "").strip()
     payment_method   = (f.get("payment_method") or "").strip()
@@ -920,6 +929,8 @@ def ptp_create(mid: int):
           float(recovery_plan["recovery_installment"]),
           int(recovery_plan["recovery_months"])))
     ptp_id = cursor.lastrowid
+    from .staff_kpi import record_ptp_channel
+    record_ptp_channel(db, ptp_id, contact_channel)
     # Record the agreement against the rule that priced it, then list the
     # DebiCheck mandates that must be approved before it can be granted.
     from . import ptp_grant

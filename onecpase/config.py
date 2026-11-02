@@ -66,6 +66,8 @@ class Config:
     # server, SQLite-per-tenant deployment. Runs PTP automations and the
     # Itensity/collections import nightly instead of waiting for a staff click.
     SCHEDULER_ENABLED = os.environ.get("SCHEDULER_ENABLED", "1") == "1"
+    PAYMENT_SYNC_ENABLED = os.environ.get('PAYMENT_SYNC_ENABLED', '1') == '1'
+    PAYMENT_SYNC_LOOKBACK_DAYS = int(os.environ.get('PAYMENT_SYNC_LOOKBACK_DAYS', '120'))
     # Itensity credentials (RADEPULSE_PATH .env) are one shared login, not
     # per-tenant yet — this is the one tenant the scheduled Itensity jobs run
     # against. Defaults to the same tenant access_report.py already restricts

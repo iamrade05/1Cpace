@@ -5,7 +5,7 @@ must never prevent the lead or application transaction from completing.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any
 
@@ -19,7 +19,7 @@ CHECKLIST_FIELDS = (
 
 
 def _now() -> str:
-    return datetime.now().isoformat(timespec="seconds", sep=" ")
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds", sep=" ")
 
 
 def ensure_sales_kpi_schema(db, backend: str) -> None:
@@ -58,6 +58,8 @@ def ensure_sales_kpi_schema(db, backend: str) -> None:
         for name, definition in additions:
             if name not in existing:
                 db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+    from .staff_kpi import ensure_schema as ensure_staff_kpi_schema
+    ensure_staff_kpi_schema(db, backend)
     db.commit()
 
 
@@ -180,17 +182,45 @@ def _report_pct(value: int, total: int) -> float | None:
     return round(value * 100.0 / total, 1) if total else None
 
 
+def credited_sales(db, in_window, in_scope, applications=None):
+    """Share the existing compliance-complete credit rule with daily scorecards."""
+    from .applications import compliance_completion_blockers
+    if applications is None:
+        applications = _report_rows(db, "SELECT id FROM membership_applications")
+    apps_by_id = {app["id"]: app for app in applications}
+    completion_events = _report_rows(db, """SELECT se.* FROM stage_events se
+        JOIN (SELECT application_id, MIN(id) AS first_id FROM stage_events
+              WHERE entity_type='compliance' AND field='overall_status' AND to_value='complete'
+              GROUP BY application_id) first_completion ON se.id=first_completion.first_id""")
+    result = []
+    for event in completion_events:
+        app = apps_by_id.get(event["application_id"])
+        if (not app or not in_window(event["occurred_at"])
+                or not in_scope(event['owner_id'])
+                or compliance_completion_blockers(db, app["id"])):
+            continue
+        result.append({**app, "credited_at": event["occurred_at"], "credited_to": event["owner_id"]})
+    return result
+
+
 def build_sales_report(db, date_from: str, date_to: str,
-                       user_id: int | None = None) -> dict[str, Any]:
+                       user_id: int | None = None, *, allowed_user_ids=None,business_dates=False) -> dict[str, Any]:
     """Build the complete sales-to-join report with Analytics-compatible rules."""
+    allowed=set(allowed_user_ids) if allowed_user_ids is not None else None
+    def in_scope(owner):
+        return (user_id is None or owner==user_id) and (allowed is None or owner in allowed)
     try:
         start = datetime.fromisoformat(date_from).date()
         end = datetime.fromisoformat(date_to).date()
     except ValueError:
-        start, end = datetime.now().date().replace(day=1), datetime.now().date()
+        from .reporting_cycle import current_cycle
+        start, end = current_cycle()
 
     def in_window(value):
-        stamp = _report_date(value)
+        if business_dates:
+            from .staff_kpi import business_day
+            stamp=business_day(value)
+        else:stamp = _report_date(value)
         return stamp is not None and start <= stamp <= end
 
     leads = _report_rows(
@@ -213,7 +243,7 @@ def build_sales_report(db, date_from: str, date_to: str,
     stages = {"contacted": 0, "appointment": 0, "show": 0, "joined": 0}
     scoped_leads = []
     for lead in leads:
-        if user_id is not None and lead["assigned_to"] != user_id:
+        if not in_scope(lead['assigned_to']):
             continue
         if not in_window(lead["assigned_at"] or lead["created_at"]):
             continue
@@ -235,22 +265,10 @@ def build_sales_report(db, date_from: str, date_to: str,
     )
     scoped_apps = [app for app in applications if in_window(app["created_at"])
                    and app["lead_id"] in scoped_lead_ids
-                   and (user_id is None or app["owner_id"] == user_id)]
+                   and in_scope(app['owner_id'])]
     active_apps = sum(app["application_status"] == "active" for app in scoped_apps)
     from .applications import compliance_completion_blockers
-    completion_events = _report_rows(db, """SELECT se.* FROM stage_events se
-        JOIN (SELECT application_id, MIN(id) AS first_id FROM stage_events
-              WHERE entity_type='compliance' AND field='overall_status' AND to_value='complete'
-              GROUP BY application_id) first_completion ON se.id=first_completion.first_id""")
-    apps_by_id = {app["id"]: app for app in applications}
-    credited_sales = []
-    for event in completion_events:
-        app = apps_by_id.get(event["application_id"])
-        if (not app or not in_window(event["occurred_at"])
-                or (user_id is not None and event["owner_id"] != user_id)
-                or compliance_completion_blockers(db, app["id"])):
-            continue
-        credited_sales.append({**app, "credited_at": event["occurred_at"], "credited_to": event["owner_id"]})
+    completed_sales = credited_sales(db, in_window, in_scope, applications)
     completed_cohort = sum(not compliance_completion_blockers(db, app["id"]) for app in scoped_apps)
     stale_cutoff = datetime.now().date() - timedelta(days=7)
     stalled = [app for app in scoped_apps
@@ -295,7 +313,7 @@ def build_sales_report(db, date_from: str, date_to: str,
     for event in stage_events:
         if not in_window(event["occurred_at"]):
             continue
-        if user_id is not None and event["owner_id"] != user_id:
+        if not in_scope(event['owner_id']):
             continue
         old_rank = stage_order.get(event["from_value"])
         new_rank = stage_order.get(event["to_value"])
@@ -308,7 +326,7 @@ def build_sales_report(db, date_from: str, date_to: str,
     durations: dict[str, list[float]] = {}
     grouped_events: dict[tuple[Any, str], list[dict[str, Any]]] = {}
     for event in duration_events:
-        if in_window(event["occurred_at"]) and (user_id is None or event["owner_id"] == user_id):
+        if in_window(event["occurred_at"]) and in_scope(event['owner_id']):
             grouped_events.setdefault((event["application_id"], event["field"]), []).append(event)
     for events in grouped_events.values():
         events.sort(key=lambda event: str(event["occurred_at"] or ""))
@@ -328,7 +346,7 @@ def build_sales_report(db, date_from: str, date_to: str,
                   FROM debicheck_mandates m"""
     )
     scoped_mandates = [m for m in mandates if in_window(m["submitted_at"] or m["created_at"])
-                       and (user_id is None or m["owner_id"] == user_id)]
+                       and in_scope(m['owner_id'])]
     checked = sum(bool(m["last_checked_at"]) for m in scoped_mandates)
     checked_sla = 0
     for mandate in scoped_mandates:
@@ -344,7 +362,7 @@ def build_sales_report(db, date_from: str, date_to: str,
                   FROM mandate_followups f JOIN debicheck_mandates m ON m.id = f.mandate_id"""
     )
     scoped_followups = [f for f in followups if in_window(f["checked_at"])
-                        and (user_id is None or f["owner_id"] == user_id)]
+                        and in_scope(f['owner_id'])]
     failures = [f for f in scoped_followups if f["status_found"] in {"expired", "failed", "not_found", "rejected", "suspended"}]
     capture_errors = sum(f["failure_reason"] in {"wrong_account_number", "wrong_branch_code", "account_name_mismatch", "wrong_account_type", "wrong_cell_number"} for f in failures)
     recovered = sum(f["resolution"] == "recovered" for f in failures)
@@ -353,7 +371,7 @@ def build_sales_report(db, date_from: str, date_to: str,
                   FROM stage_events WHERE entity_type = 'compliance'"""
     )
     scoped_compliance = [e for e in compliance_events if in_window(e["occurred_at"])
-                         and (user_id is None or e["owner_id"] == user_id)]
+                         and in_scope(e['owner_id'])]
     compliance_apps = {e["application_id"] for e in scoped_compliance}
     corrected_apps = set()
     for event in scoped_compliance:
@@ -366,6 +384,7 @@ def build_sales_report(db, date_from: str, date_to: str,
                WHERE status_found IN ('expired','failed','not_found','rejected','suspended')"""
     )
     failure_mix: dict[str, dict[str, int]] = {}
+    if allowed is not None or user_id is not None:failure_rows=failures
     for failure in failure_rows:
         reason = failure["failure_reason"] or "unknown"
         item = failure_mix.setdefault(reason, {"reason": reason, "count": 0, "recovered": 0})
@@ -373,11 +392,16 @@ def build_sales_report(db, date_from: str, date_to: str,
         item["recovered"] += int(failure["resolution"] == "recovered")
 
     approval_rows = _report_rows(
-        db, "SELECT created_at, approved_at, status FROM approvals WHERE approval_type='manager'"
+        db, """SELECT a.created_at,a.approved_at,a.status,COALESCE(l.assigned_to,ma.created_by) AS owner_id
+               FROM approvals a LEFT JOIN membership_applications ma ON ma.id=a.application_id
+               LEFT JOIN leads l ON l.id=ma.lead_id WHERE a.approval_type='manager'"""
     )
     approval_hours = []
     pending_approvals = 0
+    if allowed is not None or user_id is not None:
+        approval_rows=[row for row in approval_rows if in_scope(row['owner_id'])]
     for approval in approval_rows:
+        if allowed is not None and not in_scope(approval['owner_id']):continue
         requested = _report_date(approval["created_at"])
         decided = _report_date(approval["approved_at"])
         if requested and start <= requested <= end:
@@ -392,15 +416,16 @@ def build_sales_report(db, date_from: str, date_to: str,
                WHERE a.discount_percent > 0"""
     )
     discounts = [row for row in discount_rows if in_window(row["occurred_at"])
-                 and (user_id is None or row["assigned_to"] == user_id)]
+                 and in_scope(row['assigned_to'])]
     active_missing = _report_rows(
         db, """SELECT mem.id AS member_id, mem.first_name, mem.last_name,
-                       mem.member_status, d.status AS mandate_status
+                       mem.member_status, d.status AS mandate_status,mem.uploaded_by_id AS owner_id
                   FROM members mem LEFT JOIN debicheck_mandates d
                     ON d.id = (SELECT MAX(d2.id) FROM debicheck_mandates d2 WHERE d2.member_id=mem.id)
                  WHERE mem.member_status='Active'
                    AND (d.id IS NULL OR LOWER(COALESCE(d.status,'unknown')) NOT IN ('active','cancelled'))"""
     )
+    if allowed is not None or user_id is not None:active_missing=[row for row in active_missing if in_scope(row['owner_id'])]
     quality_rows = _report_rows(
         db, """SELECT ma.date_joined, ma.created_at, mem.member_status,
                        d.status AS mandate_status, ma.created_by
@@ -408,7 +433,7 @@ def build_sales_report(db, date_from: str, date_to: str,
                   LEFT JOIN debicheck_mandates d ON d.id=(SELECT MAX(d2.id) FROM debicheck_mandates d2 WHERE d2.member_id=ma.member_id)"""
     )
     quality = [row for row in quality_rows if in_window(row["date_joined"] or row["created_at"])
-               and (user_id is None or row["created_by"] == user_id)
+               and in_scope(row['created_by'])
                and (_report_date(row["date_joined"] or row["created_at"]) or end) <= end - timedelta(days=30)]
     quality_good = sum(row["member_status"] == "Active" and str(row["mandate_status"] or "").lower() == "active" for row in quality)
 
@@ -419,7 +444,8 @@ def build_sales_report(db, date_from: str, date_to: str,
     )
     consultant_cards = []
     for consultant in consultants:
-        card = build_sales_report(db, date_from, date_to, consultant["id"]) if user_id is None else None
+        if not in_scope(consultant['id']):continue
+        card = build_sales_report(db, date_from, date_to, consultant["id"],allowed_user_ids=allowed,business_dates=business_dates) if user_id is None else None
         if card is not None:
             consultant_cards.append({"user_id": consultant["id"], "username": consultant["username"],
                                      "funnel": card["funnel"], "application_rate_pct": card["application_rate_pct"],
@@ -434,7 +460,7 @@ def build_sales_report(db, date_from: str, date_to: str,
     return {
         "date_from": start.isoformat(), "date_to": end.isoformat(),
         "funnel": funnel,
-        "completed_sales": {"count": len(credited_sales), "applications": credited_sales},
+        "completed_sales": {"count": len(completed_sales), "applications": completed_sales},
         "contact_rate_pct": _report_pct(funnel["contacted"], funnel["assigned"]),
         "appointment_rate_pct": _report_pct(funnel["appointments"], funnel["contacted"]),
         "show_rate_pct": _report_pct(funnel["shows"], funnel["appointments"]),

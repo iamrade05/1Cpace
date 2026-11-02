@@ -100,6 +100,8 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
 
     from .mobile_api import ensure_schema as ensure_mobile_schema
     ensure_mobile_schema(db)
+    from .query_forms import ensure_schema as ensure_query_forms_schema
+    ensure_query_forms_schema(db, backend)
 
     # ── Additive column migrations ────────────────────────────────────────────
     _ensure_column(db, backend, "users", "must_change_password", "INTEGER DEFAULT 0")
@@ -444,9 +446,12 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
         ("cancellation_settlement_amount", f"{real} DEFAULT 0"),
         ("cancellation_settlement_rule",  "TEXT"),
         ("cancellation_discount_pct",     f"{real} DEFAULT 0"),
+        ("cancellation_first_payment_date", "TEXT"),
         ("member_cancelled",              "INTEGER DEFAULT 0"),
     ]:
         _ensure_column(db, backend, "queries", col, defn)
+    _ensure_column(db, backend, "cancellation_quotes", "first_payment_date", "TEXT")
+    _ensure_column(db, backend, "cancellation_quotes", "instalment_dates", "TEXT")
 
     # Queries: manager approval workflow and closure reason
     for col, defn in [
@@ -473,6 +478,9 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
     _backfill_contract_config(db)
     from .hr_workforce import migrate as migrate_hr_workforce
     migrate_hr_workforce(db, backend)
+    from .reception_ops import migrate as migrate_reception_ops
+    migrate_reception_ops(db, backend)
+    db.commit()
 
 
 def member_ref_prefix(tenant_name: str) -> str:

@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Boarded Members | 1Cpace{% endblock %}
+{% block page_title %}Boarded Members{% endblock %}
+{% block content %}
+<header class="page-header"><div><h1>Boarded Members</h1><p>{{ total }} member{{ '' if total == 1 else 's' }} with a completed onboarding programme and a recorded completion review. Review outcomes show any further support needed.</p></div></header>
+<section class="card"><div class="card-body">
+  <h2>Fitness tools</h2>
+  {% for permission, label, endpoint in [('assessments', 'Assessments', 'fitness.assessments_index'), ('body_matrix', 'Body Matrix', 'fitness.body_matrix_index'), ('workout_plans', 'Workout Plans', 'fitness.workout_plans_index'), ('classes', 'Classes and Bookings', 'fitness.fitness_index'), ('supplements', 'Supplements', 'fitness.supplements_index')] %}
+  {% if has_perm(permission) %}<a class="btn" href="{{ url_for(endpoint) }}">{{ label }}</a> {% endif %}
+  {% endfor %}
+</div></section>
+<div class="card"><div class="card-body"><div class="table-wrap"><table class="table">
+  <thead><tr><th>Member</th><th>Package</th><th>Review date</th><th>Review outcome</th><th>Record</th></tr></thead>
+  <tbody>{% for m in members %}<tr>
+    <td>{{ m.first_name }} {{ m.last_name }}</td><td>{{ m.package or '—' }}</td><td>{{ m.review_date or '—' }}</td>
+    <td>{{ review_labels.get(m.review_outcome, m.review_outcome or 'Not recorded') }}</td>
+    <td><a class="btn btn-sm" href="{{ url_for('fitness_journey.member_intake', mid=m.member_id) }}">Fitness record</a></td>
+  </tr>{% else %}<tr><td colspan="5">No boarded members yet. Complete the onboarding review from Onboarding to include a member here.</td></tr>{% endfor %}</tbody>
+</table></div></div></div>
+{% if pages > 1 %}<nav aria-label="Boarded members pages">
+  {% if page > 1 %}<a class="btn" href="{{ url_for('onboarding.boarded_members', page=page-1) }}">Previous</a>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="btn" href="{{ url_for('onboarding.boarded_members', page=page+1) }}">Next</a>{% endif %}
+</nav>{% endif %}
+{% endblock %}

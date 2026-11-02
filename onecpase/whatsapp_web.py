@@ -316,11 +316,15 @@ def _poll_login_state(page, session_dir: Path) -> bool:
     try:
         qr = page.locator(QR_SELECTOR).first
         if qr.is_visible(timeout=1000):
-            qr.screenshot(path=str(_qr_path(session_dir)))
-            _set_state(logged_in=False, last_qr_at=_now_iso())
+            # Publish a complete image; polling clients must not read a PNG
+            # while the browser is still writing it.
+            temporary=session_dir/'.qr-new.png'
+            qr.screenshot(path=str(temporary))
+            temporary.replace(_qr_path(session_dir))
+            _set_state(logged_in=False, last_qr_at=_now_iso(),last_error=None)
             return False
-    except Exception:
-        pass
+    except Exception as exc:
+        if _browser_gone(exc):raise
     _set_state(logged_in=False)
     return False
 
@@ -368,7 +372,7 @@ def _run_worker(app, session_dir: Path, delay: float) -> None:
                     context.close()
 
     session_dir.mkdir(parents=True, exist_ok=True)
-    _set_state(started=True, browser=app.config.get('WHATSAPP_WEB_BROWSER','playwright'))
+    _set_state(started=True,last_qr_at=None,browser=app.config.get('WHATSAPP_WEB_BROWSER','playwright'))
     try:
         from .fitness_journey import sync_welcomes
         sync_welcomes(app, send=False)
@@ -517,9 +521,13 @@ def qr_image():
     session_dir = Path(current_app.config["WHATSAPP_WEB_SESSION_DIR"])
     path = _qr_path(session_dir)
     status = get_status()
-    if not path.exists() or status.get('logged_in') or status.get('syncing'):
+    if not path.exists() or not status.get('started') or status.get('logged_in') or status.get('syncing'):
         abort(404)
-    if status.get('last_qr_at') and (datetime.now(timezone.utc)-datetime.fromisoformat(status['last_qr_at'])).total_seconds() > 90:
+    try:
+        captured=datetime.fromisoformat(status.get('last_qr_at') or '')
+        age=(datetime.now(timezone.utc)-captured).total_seconds()
+    except (ValueError,TypeError):abort(404)
+    if not 0<=age<=90:
         abort(404)
     response = send_file(str(path), mimetype="image/png", max_age=0, conditional=False)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'

@@ -1,0 +1,24 @@
+{% if daily_kpis is defined %}
+<section class="fd-panel" aria-label="Daily staff targets">
+  <div class="fd-panel-head"><h2 class="fd-panel-title">Daily staff targets</h2><span>{{ daily_kpis.day }} · South African time</span></div>
+  <form method="get" class="sales-filter">
+    {% include '_dashboard_period_values.html' %}
+    {% for key in ('consultant',) %}{% if request.args.get(key) %}<input type="hidden" name="{{ key }}" value="{{ request.args.get(key) }}">{% endif %}{% endfor %}
+    <label>Day<input class="form-control" type="date" name="kpi_date" value="{{ daily_kpis.day }}" required></label>
+    <button class="btn btn-primary" type="submit">View daily targets</button>
+  </form>
+  <p class="card-note">Each target is per staff member, per day. Cells show actual / target and percentage achieved. Connected calls require at least {{ daily_kpis.min_talk }} seconds of recorded outbound talk time.</p>
+  <div class="table-wrap"><table class="table">
+    <thead><tr><th scope="col">Staff member</th>{% for key,label,target in daily_kpis.targets %}<th scope="col">{{ label }}<br><small>Target {{ target }}{% if key in ('calls','referrals') %}+{% endif %}</small></th>{% endfor %}</tr></thead>
+    <tbody>{% for person in daily_kpis.rows %}<tr><th scope="row">{{ person.name }}</th>
+      {% for cell in person.cells %}<td><strong>{{ cell.actual }} / {{ cell.target }}</strong><br><span class="badge {% if cell.met %}badge-success{% else %}badge-warning{% endif %}">{{ cell.percent }}%{% if cell.met %} · Met{% endif %}</span></td>{% endfor %}
+    </tr>{% else %}<tr><td colspan="{{ daily_kpis.targets|length + 1 }}">No active staff in this department.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if daily_kpis.scope == 'sales' %}
+  <p class="card-note">Referrals count new, non-duplicate leads captured by that staff member. Appointments count the first recorded booking for each prospect. Joined members count completed, compliant sales credited to the consultant.</p>
+  {% else %}
+  <p class="card-note">Phone and walk-in PTPs are counted separately. Cancelled, rejected and superseded promises are excluded. DebiChecks count once, on the day authentication is first confirmed, for the staff member who submitted the mandate. Pending submissions and older authentications without a recorded completion date do not count.</p>
+  {% if daily_kpis.missing_ptp_channel %}<p class="card-note">{{ daily_kpis.missing_ptp_channel }} PTP(s) recorded for this day have no confirmed contact channel and are excluded from the phone/walk-in targets.</p>{% endif %}
+  {% endif %}
+</section>
+{% endif %}

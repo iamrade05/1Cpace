@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Fitness allocations{% endblock %}
+{% block content %}
+<header class="page-header"><div><h1>Fitness allocations</h1>
+<p>All times are Africa/Johannesburg. Group instructor offers expire after eight hours. A reservation still needs confirmation with the member.</p></div></header>
+{% if manager %}<p><a class="btn" href="{{ url_for('fitness_journey.allocation_roster') }}">Manage roster and gym hours</a> <a class="btn" href="{{ url_for('fitness_journey.allocation_reviews') }}">Decline and PT-rights reviews</a></p>{% endif %}
+<h2>Appointments and next actions</h2>
+<div class="table-wrap"><table class="table"><thead><tr><th>Member</th><th>Start / end</th><th>Instructor</th><th>Status</th><th>Next action</th></tr></thead><tbody>
+{% for r in allocations %}<tr><td><a href="{{ url_for('fitness_journey.member_intake',mid=r.member_id) }}">Member {{ r.member_id }}</a></td><td>{{ r.start_label }}<br>{{ r.end_label }}</td><td>{{ r.full_name or 'Unallocated' }}</td><td>{{ r.status }}{% if r.confirmed_at %}<br>Member confirmed{% endif %}</td><td>{{ r.next_action }}
+{% if r.status in ('waiting','offered','reserved','attendance_due') %}<details><summary>Update appointment</summary><form method="post" action="{{ url_for('fitness_journey.appointment',rid=r.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Action<select name="action">{% if r.status=='reserved' and not r.confirmed_at %}<option value="confirm">Record member confirmation</option>{% endif %}<option value="cancelled">Cancel</option>{% if r.status=='attendance_due' %}<option value="attended">Attended and assisted</option><option value="missed">Missed appointment</option>{% endif %}</select></label><label>Confirmation method or outcome reason<textarea name="reason" required maxlength="4000"></textarea></label><label>Recorded session ID (required for attended)<input type="number" name="visit_id" min="1"></label><button class="btn">Save appointment update</button></form></details>{% endif %}
+</td></tr>{% else %}<tr><td colspan="5">No allocation requests.</td></tr>{% endfor %}
+</tbody></table></div>
+<h2>Instructor offers</h2>
+{% for o in offers %}<div class="card"><div class="card-body"><h3>Offer {{ o.id }} — {{ o.full_name }}</h3><p>Member {{ o.member_id }} · {{ o.status|replace('_',' ') }} · Deadline {{ o.deadline_label }}</p>
+{% if o.status=='pending' and o.instructor_id==session.get('user_id') %}
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="offer_id" value="{{ o.id }}"><button name="action" value="accept" class="btn btn-primary">Accept</button></form>
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="offer_id" value="{{ o.id }}"><label>Reason for declining<textarea class="form-control" name="reason" required maxlength="4000"></textarea></label><button name="action" value="decline" class="btn">Decline</button></form>
+{% endif %}{% if o.reason %}<p>{{ o.reason }}</p>{% endif %}</div></div>{% else %}<p>No offers.</p>{% endfor %}
+{% endblock %}

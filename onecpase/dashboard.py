@@ -2,12 +2,13 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 
 from .auth import login_required
 from .database import get_db
 from .member_counts import get_member_counts
 from .elev8_data import get_elev8_member_count
+from .dashboard_access import dashboard_only, current_scope, home_endpoint, actor
 
 
 dashboard_bp = Blueprint("dashboard", __name__)
@@ -238,7 +239,11 @@ def sync_itensity_members_to_local(db):
 
 def _trend_windows(now: datetime):
     today = datetime(now.year, now.month, now.day)
-    next_month = _shift_month(today, 1)
+    from .reporting_cycle import current_cycle
+    first, last = current_cycle(today.date())
+    cycle_start = datetime.combine(first, datetime.min.time())
+    next_month = datetime.combine(last + timedelta(days=1), datetime.min.time())
+    previous_cycle = _shift_month(cycle_start, -1).replace(day=15)
     return {
         "24h": {
             "label": "24H",
@@ -261,32 +266,32 @@ def _trend_windows(now: datetime):
             "bucket": "day",
         },
         "30d": {
-            "label": "30D",
-            "title": "Last 30 days",
+            "label": "Cycle",
+            "title": "Reporting cycle (15th to 14th)",
             "grain": "Daily",
-            "start": today - timedelta(days=29),
-            "end": today + timedelta(days=1),
-            "previous_start": today - timedelta(days=59),
-            "bucket_count": 30,
+            "start": cycle_start,
+            "end": next_month,
+            "previous_start": previous_cycle,
+            "bucket_count": (next_month - cycle_start).days,
             "bucket": "day",
         },
         "6m": {
             "label": "6M",
-            "title": "Last 6 months",
-            "grain": "Monthly",
-            "start": _shift_month(today, -5),
+            "title": "Last 6 reporting cycles",
+            "grain": "15th to 14th cycles",
+            "start": _shift_month(cycle_start, -5).replace(day=15),
             "end": next_month,
-            "previous_start": _shift_month(today, -11),
+            "previous_start": _shift_month(cycle_start, -11).replace(day=15),
             "bucket_count": 6,
             "bucket": "month",
         },
         "1y": {
             "label": "1Y",
-            "title": "Last 12 months",
-            "grain": "Monthly",
-            "start": _shift_month(today, -11),
+            "title": "Last 12 reporting cycles",
+            "grain": "15th to 14th cycles",
+            "start": _shift_month(cycle_start, -11).replace(day=15),
             "end": next_month,
-            "previous_start": _shift_month(today, -23),
+            "previous_start": _shift_month(cycle_start, -23).replace(day=15),
             "bucket_count": 12,
             "bucket": "month",
         },
@@ -303,7 +308,7 @@ def _series_for_window(rows, window, value_field=None):
             continue
         amount = float(row[value_field] or 0) if value_field else 1.0
 
-        if window["previous_start"] <= occurred_at < window["start"]:
+        if window["previous_start"] <= occurred_at < window.get("previous_end",window["start"]):
             previous_total += amount
             continue
         if not window["start"] <= occurred_at < window["end"]:
@@ -314,11 +319,10 @@ def _series_for_window(rows, window, value_field=None):
         elif window["bucket"] == "day":
             index = (occurred_at.date() - window["start"].date()).days
         else:
-            index = (
-                (occurred_at.year - window["start"].year) * 12
-                + occurred_at.month
-                - window["start"].month
-            )
+            from .reporting_cycle import cycle_key
+            event_cycle = cycle_key(occurred_at.date())
+            start_cycle = cycle_key(window['start'].date())
+            index = (int(event_cycle[:4]) - int(start_cycle[:4])) * 12 + int(event_cycle[5:]) - int(start_cycle[5:])
         if 0 <= index < len(values):
             values[index] += amount
 
@@ -336,7 +340,7 @@ def _series_for_window(rows, window, value_field=None):
     else:
         date_format = "%b" if window["bucket_count"] == 6 else "%b %y"
         labels = [
-            _shift_month(window["start"], index).strftime(date_format)
+            (_shift_month(window["start"], index + 1)).strftime(date_format)
             for index in range(window["bucket_count"])
         ]
 
@@ -359,6 +363,8 @@ def _build_trend_ranges(collection_rows, member_rows, now: datetime):
             "label": window["label"],
             "title": window["title"],
             "grain": window["grain"],
+            "date_from": window["start"].date().isoformat(),
+            "date_to": (window["end"] - timedelta(days=1)).date().isoformat(),
             "labels": revenue.pop("labels"),
             "revenue": revenue,
             "members": members,
@@ -368,14 +374,34 @@ def _build_trend_ranges(collection_rows, member_rows, now: datetime):
     return payload
 
 
+def _selected_trend(collection_rows,member_rows,period):
+    """The same bounded, like-for-like dates used by the comparison table."""
+    def midnight(day):return datetime.combine(day,datetime.min.time())
+    cycles=period.mode in ('3cycles','6cycles','12cycles')
+    window=dict(start=midnight(period.start),end=midnight(period.end+timedelta(days=1)),
+        previous_start=midnight(period.previous_start),previous_end=midnight(period.previous_end+timedelta(days=1)),
+        bucket_count=int(period.mode.replace('cycles','')) if cycles else 8 if period.mode=='day' else period.days,
+        bucket='month' if cycles else 'hour' if period.mode=='day' else 'day')
+    revenue=_series_for_window(collection_rows,window,'amount')
+    members=_series_for_window(member_rows,window)
+    labels=revenue.pop('labels');members.pop('labels')
+    return dict(label=period.title,title=period.title,grain='Reporting cycles' if cycles else '3-hour intervals' if period.mode=='day' else 'Daily',
+        date_from=period.date_from,date_to=period.date_to,labels=labels,revenue=revenue,members=members)
+
+
 @dashboard_bp.route("/dashboard")
 @login_required
 def dashboard():
+    if not actor():
+        from flask import abort
+        abort(403)
+    if current_scope()!='admin':return redirect(url_for(home_endpoint()))
     db = get_db()
-    now = datetime.now()
-    selected_range = request.args.get("range", "30d")
-    if selected_range not in _trend_windows(now):
-        selected_range = "30d"
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo("Africa/Johannesburg")).replace(tzinfo=None)
+    from .dashboard_reporting import resolve_period,dashboard_context
+    period=resolve_period(today=now.date())
+    selected_range=period.mode
 
     # ── KPI totals ──────────────────────────────────────────────────────────
     member_counts = get_member_counts(db)
@@ -409,24 +435,24 @@ def dashboard():
 
     # Pull one bounded, reusable history extract. It covers the current and
     # comparison periods for every supported range, including the 1Y view.
-    earliest_start = min(
-        window["previous_start"] for window in _trend_windows(now).values()
-    ).strftime("%Y-%m-%d")
+    earliest_start=period.previous_start.isoformat()
     collection_rows = db.execute(
         """SELECT collection_date AS event_date,
-                  COALESCE(amount_paid, 0) AS amount
+                  COALESCE(amount_paid, 0) AS amount, notes
            FROM collections
            WHERE collection_date >= ?
              AND status IN ('paid','partial')""",
         (earliest_start,),
     ).fetchall()
+    from .members import _is_discount
+    collection_rows=[row for row in collection_rows if not _is_discount(row)]
     member_rows = db.execute(
         """SELECT join_date AS event_date
            FROM members
-           WHERE join_date >= ?""",
+           WHERE join_date >= ? AND outcome='joined'""",
         (earliest_start,),
     ).fetchall()
-    trend_ranges = _build_trend_ranges(collection_rows, member_rows, now)
+    trend_ranges={selected_range:_selected_trend(collection_rows,member_rows,period)}
 
     # ── Portfolio breakdowns (all-time/current-state context) ───────────────
     status_rows = db.execute(
@@ -478,8 +504,10 @@ def dashboard():
         live_total=itensity_snapshot["total_count"] if itensity_snapshot else 0,
     )
 
+    from .payment_sync import status_rows
     return render_template(
         "dashboard.html",
+        **dashboard_context(db,'admin',session['user_id'],period=period),
         active_members=active_members,
         total_members=total_members,
         itensity_snapshot=itensity_snapshot,
@@ -492,6 +520,8 @@ def dashboard():
         trend_ranges=trend_ranges,
         selected_range=selected_range,
         dashboard_updated_at=now.strftime("%d %b %Y · %H:%M"),
+        payment_sync_status=status_rows(db),
+        payment_sync_enabled=current_app.config.get('SCHEDULER_ENABLED') and current_app.config.get('PAYMENT_SYNC_ENABLED', True),
         payment_status_labels=payment_status_labels,
         payment_status_values=payment_status_values,
         package_labels=package_labels,
@@ -504,28 +534,40 @@ def dashboard():
 
 @dashboard_bp.route("/sales-dashboard")
 @login_required
+@dashboard_only('sales')
 def sales_dashboard():
     """Sales-to-join funnel with consultant workload and exception queues."""
     db = get_db()
-    today = datetime.now().date()
-    date_from = request.args.get("from", "2000-01-01")
-    date_to = request.args.get("to", today.isoformat())
+    from .dashboard_reporting import resolve_period,dashboard_context,activity_rows
+    period=resolve_period()
+    date_from,date_to=period.date_from,period.date_to
     consultant = request.args.get("consultant", "")
     selected_user = int(consultant) if consultant.isdigit() else None
+    from .dashboard_access import team_ids
+    allowed=team_ids(db,'sales') if current_scope()!='admin' else None
+    if selected_user is not None and allowed is not None and selected_user not in allowed:
+        from flask import abort
+        abort(403)
     from .sales_kpi import build_sales_report
-    report = build_sales_report(db, date_from, date_to, selected_user)
+    report = build_sales_report(db, date_from, date_to, selected_user,allowed_user_ids=allowed,business_dates=True)
+    comparison_ids=[selected_user] if selected_user is not None else allowed
+    comparison=activity_rows(db,period,'sales',session['user_id'],allowed_ids=comparison_ids)
     consultants = db.execute(
         """SELECT DISTINCT u.id, u.username FROM users u JOIN leads l ON l.assigned_to = u.id
            WHERE u.username NOT LIKE '__1cpase_power_%' ORDER BY u.username"""
     ).fetchall()
+    if allowed is not None:consultants=[u for u in consultants if u['id'] in allowed]
     funnel = [(label, report["funnel"][key]) for label, key in (
         ("Assigned", "assigned"), ("Contacted", "contacted"),
         ("Appointments", "appointments"), ("Shows", "shows"),
         ("Agreed to Join", "joined"),
         ("Application Started", "applications"), ("Activated", "activated"),
     )]
+    from .staff_kpi import build_daily_scorecard
     return render_template(
         "sales_dashboard.html", funnel=funnel, report=report,
+        **dashboard_context(db,'sales',session['user_id'],period=period,rows=comparison),
+        daily_kpis=build_daily_scorecard(db, "sales", request.args.get("kpi_date") or (period.date_to if period.mode=='day' else None), user_id=selected_user),
         untouched=report["untouched_leads"], stalled=report["stalled_applications"], consultants=consultants,
         selected_consultant=consultant, date_from=date_from, date_to=date_to,
         selected_user=session.get("user_id"),
@@ -534,6 +576,7 @@ def sales_dashboard():
 
 @dashboard_bp.route("/dashboard/reconciliation")
 @login_required
+@dashboard_only('admin')
 def dashboard_reconciliation():
     db = get_db()
     itensity_snapshot = db.execute("SELECT * FROM itensity_live_snapshot WHERE id = 1").fetchone()
@@ -567,6 +610,7 @@ def dashboard_reconciliation():
 
 @dashboard_bp.route("/dashboard/reconciliation/sync", methods=["POST"])
 @login_required
+@dashboard_only('admin')
 def dashboard_reconciliation_sync():
     db = get_db()
     try:
@@ -591,3 +635,42 @@ def dashboard_reconciliation_sync():
 @login_required
 def home():
     return redirect(url_for("dashboard.dashboard"))
+
+
+def _department_dashboard(scope,title):
+    from . import department_metrics as metrics
+    from .dashboard_reporting import resolve_period,dashboard_context
+    period=resolve_period()
+    start,end,today=period.date_from,period.date_to,period.today
+    builder=getattr(metrics,scope)
+    content=builder(get_db(),start,end,today,session['user_id']) if scope=='work' else builder(get_db(),start,end,today)
+    reporting=dashboard_context(get_db(),scope,session['user_id'],period=period)
+    if scope == 'reception':
+        from .staff_kpi import build_daily_scorecard
+        content['daily_kpis'] = build_daily_scorecard(get_db(), scope, request.args.get('kpi_date') or (period.date_to if period.mode=='day' else None))
+        compared={row['label']:row for row in reporting['period_rows']}
+        for card in content['cards']:
+            if card['label']=='PBX calls made':card['value']=compared['Outbound calls']['current']
+            elif card['label']=='Call connection rate':
+                card['value']=compared['Call connection rate']['current']
+                card['note']='Selected-period outbound calls meeting the daily connection target'
+    return render_template('department_dashboard.html',title=title,date_from=start,date_to=end,
+        **reporting,**content)
+
+
+@dashboard_bp.route('/reception-dashboard')
+@login_required
+@dashboard_only('reception')
+def reception_dashboard():return _department_dashboard('reception','Reception dashboard')
+
+
+@dashboard_bp.route('/fitness-dashboard')
+@login_required
+@dashboard_only('fitness')
+def fitness_dashboard():return _department_dashboard('fitness','Fitness dashboard')
+
+
+@dashboard_bp.route('/my-dashboard')
+@login_required
+@dashboard_only('work')
+def work_dashboard():return _department_dashboard('work','My work dashboard')

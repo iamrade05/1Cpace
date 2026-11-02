@@ -146,6 +146,17 @@ def test_call_list_opens_client_brief_profile(app):
         assert b"Open Client Profile" in queue.data
         profile = client.get(f"/collections/call-queue/{task['id']}/profile")
         assert profile.status_code == 200
+        assert f'/members/{task["member_id"]}?call_task={task["id"]}'.encode() in profile.data
+        with app.app_context():
+            db = get_db()
+            db.execute('DELETE FROM turnstile_events WHERE member_id=?', (task['member_id'],))
+            db.commit()
+        with client.session_transaction() as sess:
+            sess['role'] = 'admin'
+        member_profile = client.get(f'/members/{task["member_id"]}?call_task={task["id"]}')
+        assert member_profile.status_code == 200
+        assert b'Back to Call Queue Profile' in member_profile.data
+        assert f'/collections/call-queue/{task["id"]}/profile'.encode() in member_profile.data
         for text in (
             b"Total Owing", b"Months Owing", b"Failed Payments",
             b"DebiCheck in place", b"Last Gym Visit", b"Payment Arrangements",

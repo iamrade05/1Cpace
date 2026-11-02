@@ -1,0 +1,6 @@
+{% if dashboard_period is defined %}
+<input type="hidden" name="period" value="{{ dashboard_period.mode }}">
+{% if dashboard_period.mode in ('day','week') %}<input type="hidden" name="on" value="{{ dashboard_period.anchor }}">
+{% elif dashboard_period.mode=='custom' %}<input type="hidden" name="from" value="{{ dashboard_period.start }}"><input type="hidden" name="to" value="{{ dashboard_period.full_end }}">
+{% else %}<input type="hidden" name="cycle" value="{{ dashboard_period.cycle }}">{% endif %}
+{% endif %}

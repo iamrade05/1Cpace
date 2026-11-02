@@ -1,26 +1,18 @@
 {% extends "base.html" %}
 
 {% block title %}HR & Staff | 1Cpace{% endblock %}
-{% block page_title %}HR & Staff{% endblock %}
+{% block page_title %}Staff directory{% endblock %}
 
 {% block content %}
-<header class="page-header"><div><h1>HR & Staff</h1></div></header>
-{% include 'hr/_workforce_nav.html' %}
-<div style="display:flex; gap:12px; margin-bottom:24px; flex-wrap:wrap;">
-  {% if has_perm('user_management') %}<a href="{{ url_for('hr.staff_add') }}" class="btn btn-primary">+ Add Staff</a>{% endif %}
-  <a href="{{ url_for('hr.leave_index') }}" class="btn btn-secondary">Leave Requests</a>
-  <a href="{{ url_for('hr.leave_request') }}" class="btn btn-ghost">Request Leave</a>
-  {% if hr_can_manage %}<a href="{{ url_for('workforce.setup') }}" class="btn btn-ghost">Employee setup & balances</a><a href="{{ url_for('hr.employee_index') }}" class="btn btn-ghost">Employee Register</a>{% endif %}
-  {% if has_perm('hr_payroll') %}<a href="{{ url_for('hr.payroll_index') }}" class="btn btn-ghost">Payroll</a>{% endif %}
-  {% if has_perm('hr_timesheets') %}<a href="{{ url_for('hr.timesheets_index') }}" class="btn btn-ghost">Timesheets</a>{% endif %}
-  {% if hr_can_manage %}<a href="{{ url_for('hr.access_attendance') }}" class="btn btn-secondary">Access Card Attendance</a>{% endif %}
-</div>
+<header class="page-header"><div><h1>Staff directory</h1></div></header>
+
+<div class="hr-section-heading"><p class="hr-muted">Staff accounts, departments and contact details.</p><div class="hr-actions">{% if hr_can_manage %}<a class="btn btn-secondary" href="{{ url_for('hr.employee_index') }}">Employee records</a>{% endif %}{% if has_perm('user_management') %}<a href="{{ url_for('hr.staff_add') }}" class="btn btn-primary">Add staff</a>{% endif %}</div></div>
 
 <div class="card">
   <div class="card-header">
     <h2>Staff Directory</h2>
     <form method="get" style="display:flex; gap:8px;">
-      <input type="text" name="q" value="{{ search }}" placeholder="Search name, username, dept…"
+      <input type="text" name="q" value="{{ search }}" aria-label="Search staff" placeholder="Search staff…"
              style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius:6px; font-size:0.85rem; width:220px;">
       <button type="submit" class="btn btn-secondary btn-sm">Search</button>
       {% if search %}<a href="{{ url_for('hr.staff_index') }}" class="btn btn-ghost btn-sm">Clear</a>{% endif %}

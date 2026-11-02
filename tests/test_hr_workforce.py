@@ -53,6 +53,62 @@ def test_employee_dashboard_unknown_balance_and_sensitive_routes(app,client,work
     assert client.get('/hr/timesheets',follow_redirects=True).status_code==200
 
 
+def test_unconfirmed_leave_setup_explains_missing_fields_and_does_not_classify_as_contractor(app,client,workforce):
+    from bs4 import BeautifulSoup
+    with app.app_context():
+        db=get_db();db.execute("UPDATE hr_profiles SET employment_type='unconfirmed',start_date=NULL,weekdays=NULL WHERE user_id=1");db.commit()
+    page=BeautifulSoup(client.get('/hr/leave/request').data,'html.parser')
+    text=page.select_one('.content').get_text(' ',strip=True)
+    assert 'HR setup needs confirmation' in text
+    assert all(label in text for label in ('Confirmed employment type','Employment start date','Normal working days'))
+    assert 'independent contractor' not in text
+    assert page.select_one('button[type="submit"]')['disabled']==''
+    assert page.select_one('a[href="/hr/people?user_id=1"]') is None
+    response=client.post('/hr/leave/request',data=request_form())
+    assert b'Your employment type is not yet confirmed.' in response.data
+    with app.app_context():
+        db=get_db();assert db.execute('SELECT count(*) FROM hr_requests').fetchone()[0]==0
+        assert db.execute('SELECT employment_type FROM hr_profiles WHERE user_id=1').fetchone()[0]=='unconfirmed'
+
+
+def test_admin_gets_link_to_own_setup_without_automatic_confirmation(app,client,workforce):
+    workforce(2)
+    with app.app_context():
+        db=get_db();db.execute("UPDATE hr_profiles SET employment_type='unconfirmed' WHERE user_id=2");db.commit()
+    page=client.get('/hr/leave/request')
+    assert b'href="/hr/people?user_id=2"' in page.data
+    with app.app_context():
+        assert get_db().execute('SELECT employment_type FROM hr_profiles WHERE user_id=2').fetchone()[0]=='unconfirmed'
+
+
+def test_confirmed_contractor_gets_unpaid_option_and_distinct_paid_leave_error(app,client,workforce):
+    from bs4 import BeautifulSoup
+    with app.app_context():
+        db=get_db();db.execute("UPDATE hr_profiles SET employment_type='contractor' WHERE user_id=1");db.commit()
+    page=BeautifulSoup(client.get('/hr/leave/request').data,'html.parser')
+    assert [option['value'] for option in page.select('#leave_type option')]==['unpaid']
+    assert 'disabled' not in page.select_one('button[type="submit"]').attrs
+    assert b'recorded as an independent contractor' in client.post('/hr/leave/request',data=request_form()).data
+    assert client.post('/hr/leave/request',data=request_form()|{'leave_type':'unpaid'}).status_code==302
+    with app.app_context():
+        assert [r[0] for r in get_db().execute('SELECT leave_type FROM hr_requests')]==['unpaid']
+
+
+def test_confirmed_employee_can_submit_for_review_before_balance_verification(app,client,workforce):
+    from bs4 import BeautifulSoup
+    page=BeautifulSoup(client.get('/hr/leave/request').data,'html.parser')
+    assert [option['value'] for option in page.select('#leave_type option')]==list(hr.LEAVE_TYPES)
+    assert 'disabled' not in page.select_one('button[type="submit"]').attrs
+    assert client.post('/hr/leave/request',data=request_form()).status_code==302
+
+
+def test_invalid_saved_working_pattern_shows_setup_notice_instead_of_error_page(app,client,workforce):
+    with app.app_context():
+        db=get_db();db.execute("UPDATE hr_profiles SET weekdays='invalid-json' WHERE user_id=1");db.commit()
+    page=client.get('/hr/leave/request')
+    assert page.status_code==200 and b'Normal working days' in page.data
+
+
 def test_profile_links_do_not_repurpose_external_reference(app,client,workforce):
     with app.app_context():
         db=get_db(); db.execute('UPDATE users SET staff_id=999,employee_number=? WHERE id=1',('1001',)); db.commit()

@@ -125,6 +125,9 @@ def import_transactions(
     db: sqlite3.Connection, rows: list[dict[str, str]]
 ) -> tuple[Counter, Counter]:
     result = Counter()
+    # Serialize the read/dedup/write cycle with automatic payment imports.
+    if not db.in_transaction:
+        db.execute('BEGIN IMMEDIATE')
     unmatched_refs = Counter()
     member_refs = {
         str(row["itensity_ref"]): row["id"]
@@ -148,6 +151,18 @@ def import_transactions(
                FROM collections"""
         )
     }
+    import re
+    def financial_key(values):
+        match = re.search(r'(?:^|\|)\s*type=([^|]+)',values['notes'] or '')
+        return (values['member_id'],values['collection_date'],
+                round(float(values['outstanding_balance'] or 0),2),
+                round(float(values['amount_paid'] or 0),2),match.group(1).strip() if match else '')
+    automated_keys = {
+        financial_key(dict(row)) for row in db.execute('''SELECT member_id,collection_date,
+            outstanding_balance,amount_paid,notes FROM collections WHERE notes LIKE '%Itensity%'
+            OR notes LIKE 'Reviewed payment ledger%' OR notes LIKE 'WEBAPPL ledger import%'
+            OR notes LIKE '%nupay_txn=%' ''')
+    }
 
     for row in rows:
         ref = text(row.get("Ref"))
@@ -167,7 +182,7 @@ def import_transactions(
             values["status"],
             values["notes"],
         )
-        if key in existing_keys:
+        if key in existing_keys or financial_key(values) in automated_keys:
             result["duplicates"] += 1
             continue
 

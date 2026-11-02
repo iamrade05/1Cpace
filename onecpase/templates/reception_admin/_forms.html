@@ -1,0 +1,8 @@
+{% macro money(value) %}R{{ '{:,.2f}'.format((value or 0)/100) }}{% endmacro %}
+{% macro start(action) %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="{{ action }}"><input type="hidden" name="token" value="{{ token }}">{% if active is defined and active %}<input type="hidden" name="shift_id" value="{{ active.id }}">{% elif record is defined %}<input type="hidden" name="shift_id" value="{{ record.shift.id }}">{% endif %}{% endmacro %}
+{% macro counts(inventory) %}
+<div class="table-wrap"><table class="table"><thead><tr><th>Item</th><th>Recorded stock</th><th>Physical count</th></tr></thead><tbody>{% for item in inventory %}<tr><th scope="row">{{ item.name }}</th><td>{{ item.on_hand if item.baseline_set else 'Not counted yet' }}</td><td><input aria-label="Physical count: {{ item.name }}" type="number" name="count_{{ item.id }}" min="0" max="1000000" step="1" required></td></tr>{% endfor %}</tbody></table></div>
+{% endmacro %}
+{% macro member_field(person,required=true) %}
+{% if person %}<input type="hidden" name="member_id" value="{{ person.id }}"><p class="ra-selected"><strong>{{ person.first_name }} {{ person.last_name }}</strong> · {{ person.member_ref or ('Member ' ~ person.id) }}</p>{% else %}<input type="hidden" name="member_id" value=""><p class="card-note">{% if required %}Search for and choose a member above before submitting.{% else %}No member selected — counter merchandise sales can be recorded without a member.{% endif %}</p>{% endif %}
+{% endmacro %}

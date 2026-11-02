@@ -1,0 +1,46 @@
+.ra-workspace { max-width:1440px;margin:auto;min-width:0; }
+.ra-workspace .card { margin:20px 0;box-shadow:none;min-width:0; }
+.ra-workspace .card-body { min-width:0; }
+.ra-workspace form { display:grid;gap:14px; }
+.ra-workspace label { display:grid;gap:6px;font-weight:550;font-size:.9rem;min-width:0; }
+.ra-workspace input,.ra-workspace select,.ra-workspace textarea { width:100%;max-width:100%;min-height:40px; }
+.ra-workspace small,.ra-workspace .card-note { display:block;color:var(--t2);font-size:.83rem;font-weight:400; }
+.ra-workspace button { justify-self:start; }
+.ra-workspace h2 { margin:0 0 16px; }
+.ra-workspace p { margin:12px 0; }
+.ra-tabs { display:flex;gap:6px;border-bottom:1px solid var(--b1);overflow-x:auto;margin:0 0 22px; }
+.ra-tabs a { padding:12px 15px;white-space:nowrap;color:var(--t2);font-weight:550;text-decoration:none;border-bottom:2px solid transparent; }
+.ra-tabs a[aria-current] { color:var(--navy);border-bottom-color:var(--red);background:var(--s1); }
+.ra-workspace .ra-date { display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap; }
+.oc .content .ra-date label { color:var(--s1); }
+.ra-fields { display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;align-items:end; }
+.ra-shift-banner { display:flex;justify-content:space-between;align-items:center;gap:16px;border:1px solid var(--b1);padding:16px 20px;background:var(--s1);border-radius:8px;margin:0 0 20px; }
+.ra-shift-banner span { display:block;color:var(--t2);margin-top:4px;font-size:.9rem; }
+.ra-shift-banner .btn { flex-shrink:0; }
+.ra-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px; }
+.ra-grid .card { margin:0; }
+.ra-kpis { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:20px 0; }
+.ra-kpis article { display:grid;gap:10px;align-content:start;background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:20px;min-width:0; }
+.ra-kpis article > span { color:var(--t2);font-size:.9rem; }
+.ra-kpis strong { font-size:1.65rem;color:var(--navy);font-variant-numeric:tabular-nums;overflow-wrap:anywhere; }
+.ra-kpis a { font-size:.85rem; }
+.ra-checks { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px; }
+.ra-checks > div { border-left:3px solid var(--red);padding:10px 14px;background:var(--s2); }
+.ra-checks span { display:block;margin-top:6px;color:var(--t2);font-size:.85rem; }
+.ra-list { list-style:none;padding:0;margin:0; }
+.ra-list li { padding:12px 0;border-bottom:1px solid var(--b1);overflow-wrap:anywhere; }
+.ra-list span { display:block;color:var(--t2);font-size:.85rem; }
+.ra-detail { border:1px solid var(--b1);border-radius:8px;background:var(--s1);padding:18px 20px;margin:20px 0; }
+.ra-detail summary { font-weight:600;cursor:pointer; }
+.ra-detail[open] > form { margin-top:18px; }
+.ra-selected { border-left:3px solid var(--red);padding:10px 14px;background:var(--s2); }
+.ra-workspace .ra-checkbox { display:flex;gap:10px;align-items:center; }
+.ra-checkbox input { width:18px;min-height:18px; }
+.ra-workspace .table-wrap { max-width:100%;overflow:auto; }
+.ra-workspace .table input { min-width:90px;max-width:150px; }
+.ra-workspace .table td { overflow-wrap:anywhere; }
+.ra-workspace .table thead th { white-space:nowrap; }
+@media(max-width:700px){.ra-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;overflow:visible}.ra-tabs a{text-align:center;font-size:.85rem}}
+@media(max-width:1000px){.ra-kpis,.ra-checks{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:700px){.ra-grid,.ra-fields{grid-template-columns:minmax(0,1fr)}.ra-kpis{gap:10px}.ra-kpis article{padding:14px}.ra-kpis strong{font-size:1.35rem}.ra-shift-banner{align-items:flex-start;flex-direction:column}.ra-tabs a{padding:10px}.ra-workspace .ra-date{width:100%}.ra-workspace .card-body{padding:16px}.ra-checks{gap:10px}}
+@media print{.sidebar,.topbar,.ra-tabs,.ra-detail,form,.page-header .btn{display:none!important}.main{margin:0!important}.content{padding:0!important}.ra-workspace .card{break-inside:avoid}.ra-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}

@@ -1,27 +1,21 @@
 {% extends "base.html" %}
+{% from '_dashboard.html' import dashboard_header %}
 {% block title %}Sales KPI | Sales Funnel | 1Cpace{% endblock %}
 {% block page_title %}Sales KPI{% endblock %}
 {% block content %}
+<p class="card-note">Monthly reporting cycle: 15th to 14th. Daily targets remain per day.</p>
 
-<div class="sales-page">
-  <header class="sales-hero page-header">
-    <div>
-      <div class="sales-eyebrow">Revenue command view</div>
-      <h1>Sales performance</h1>
-      <p>Track lead activity, activation and completed sales. Consultant sales credit requires completed compliance.</p>
-    </div>
-    <div class="sales-period"><strong>{{ report.date_from }}</strong> to <strong>{{ report.date_to }}</strong></div>
-  </header>
+<div class="future-dashboard sales-page">
+  {% call dashboard_header('Sales performance', '1Cpace sales performance', 'Track lead activity, activation and completed sales. Consultant sales credit requires completed compliance.') %}
+    <div class="dashboard-period"><strong>{{ report.date_from }}</strong> to <strong>{{ report.date_to }}</strong></div>
+  {% endcall %}
 
-  <form class="sales-filter" method="get">
-    <label>From<input type="date" name="from" value="{{ date_from }}"></label>
-    <label>To<input type="date" name="to" value="{{ date_to }}"></label>
-    <label>Consultant<select name="consultant"><option value="">Everyone</option>{% for person in consultants %}<option value="{{ person.id }}" {% if selected_consultant == person.id|string %}selected{% endif %}>{{ person.username }}</option>{% endfor %}</select></label>
-    <button class="btn btn-primary" type="submit">Update view</button>
-  </form>
+  {% include '_dashboard_period.html' %}
+
+  {% include '_daily_staff_kpis.html' %}
 
   <section class="sales-section sales-card">
-    <h2>Monthly Credited Sales: {{ report.completed_sales.count }}</h2>
+    <h2>Credited sales in selected period: {{ report.completed_sales.count }}</h2>
     <p class="card-note">Credit belongs to the consultant when compliance first becomes complete, regardless of when the application started. Activated applications with unpaid registration fees or unsigned contracts earn no sales credit.</p>
     {% if report.completed_sales.applications %}
     <div class="table-wrap"><table class="table"><tr><th>Member</th><th>Completed</th><th>Application</th></tr>
@@ -44,7 +38,7 @@
 
   <section class="sales-section">
     <div class="sales-section-heading"><h2>Sales funnel</h2><span>Counts stay within the selected lead cohort</span></div>
-    <p class="card-note">Contacted counts successful conversations. Walk-ins count as attendance without implying an appointment. Activated counts Itensity activation. Monthly credited sales require complete compliance, a signed contract and a fully paid registration fee.</p>
+    <p class="card-note">This funnel shows the latest progress of leads assigned in the selected period; it is a cohort view, not a historical snapshot. The period comparison above uses dated activity and actual sales-credit dates. Contacted counts successful conversations. Walk-ins count as attendance without implying an appointment. Activated counts Itensity activation. Credited sales require complete compliance, a signed contract and a fully paid registration fee.</p>
     {% if report.funnel_variances %}<div class="sales-card" style="margin-bottom:12px;padding:12px 15px;border-color:rgba(242,166,111,.35);color:var(--sales-orange);font-size:.78rem"><strong>Data check:</strong> a later-stage count exceeds the prior stage in this period. Review the underlying lead/application records before using the rate as a target.</div>{% endif %}
     <div class="sales-funnel">
       {% for label, value in funnel %}<div class="sales-stage" style="--stage-color:{% if loop.index == 1 %}#002e45{% elif loop.index == 2 %}#1f4a63{% elif loop.index == 3 %}#3f6b82{% elif loop.index == 4 %}#6a8794{% elif loop.index == 5 %}#8a9e96{% elif loop.index == 6 %}#dcc79e{% else %}#b0842d{% endif %}"><span class="stage-number">0{{ loop.index }}</span><strong>{{ value }}</strong><span>{{ label }}</span></div>{% endfor %}

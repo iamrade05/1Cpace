@@ -518,6 +518,8 @@ def test_dashboard_surfaces_the_pending_manager_queue(app, client):
     """A manager needs a signal that something is waiting; before this the
     queue could only be found by navigating to it directly."""
     _seed(app)
+    with app.app_context():
+        db=get_db();db.execute("UPDATE users SET department='Collections' WHERE id=1");db.commit()
     _sign_in(client, permissions=["all_collections"])
 
     response = client.get("/ptp/")

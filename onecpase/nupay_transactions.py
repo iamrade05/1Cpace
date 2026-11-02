@@ -100,9 +100,8 @@ def plan_import(db, rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     by_ref, by_id = _member_indexes(db)
     already = set()
     for entry in db.execute(f"SELECT notes FROM collections WHERE notes LIKE '%{TXN_TAG}%'"):
-        found = re.search(re.escape(TXN_TAG) + r"(\S+)", entry["notes"] or "")
-        if found:
-            already.add(found.group(1))
+        for found in re.finditer(re.escape(TXN_TAG) + r"([^|]+)", entry["notes"] or ""):
+            already.add(found.group(1).strip())
 
     months: dict[tuple[int, str], int] = {}
     for entry in db.execute(

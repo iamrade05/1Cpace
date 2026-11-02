@@ -170,6 +170,7 @@ def test_coverage_search_filters_by_name(client):
 
 
 def test_coverage_requires_the_debicheck_permission(client):
+    _login(client)
     with client.session_transaction() as session:
         session["user_id"] = 1
         session["role"] = "staff"

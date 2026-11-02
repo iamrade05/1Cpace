@@ -1,9 +1,10 @@
 import sqlite3
+from types import SimpleNamespace
 from contextlib import closing
 
 import pytest
 
-from onecpase.backup_retention import prune_databases, prune_deployments, snapshot_database
+from onecpase.backup_retention import ensure_backup_capacity, prune_databases, prune_deployments, snapshot_database
 
 
 def database(path):
@@ -88,3 +89,25 @@ def test_failed_snapshot_never_displaces_existing_backups(tmp_path):
     with pytest.raises(sqlite3.DatabaseError):
         snapshot_database(source, root, 'backup_20261006.db')
     assert list(root.iterdir()) == []
+
+
+def test_low_disk_space_preserves_existing_backups_and_creates_no_partial(tmp_path, monkeypatch):
+    root = tmp_path / 'backups'; root.mkdir()
+    source = tmp_path / 'source.db'; database(source)
+    for day in range(1, 6):
+        database(root / f'backup_202610{day:02d}.db')
+    before = {p.name: p.read_bytes() for p in root.iterdir()}
+    monkeypatch.setattr('onecpase.backup_retention.shutil.disk_usage', lambda _: SimpleNamespace(free=1))
+    with pytest.raises(OSError, match='working-space reserve'):
+        snapshot_database(source, root, 'backup_20261006.db')
+    assert {p.name: p.read_bytes() for p in root.iterdir()} == before
+
+
+def test_capacity_includes_wal_and_keeps_working_space(tmp_path, monkeypatch):
+    source = tmp_path / 'source.db'; source.write_bytes(b'a' * 100)
+    source.with_name('source.db-wal').write_bytes(b'b' * 50)
+    monkeypatch.setattr('onecpase.backup_retention.shutil.disk_usage', lambda _: SimpleNamespace(free=349))
+    with pytest.raises(OSError):
+        ensure_backup_capacity(source, tmp_path, reserve_bytes=200)
+    monkeypatch.setattr('onecpase.backup_retention.shutil.disk_usage', lambda _: SimpleNamespace(free=350))
+    assert ensure_backup_capacity(source, tmp_path, reserve_bytes=200) == 350

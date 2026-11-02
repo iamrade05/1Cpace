@@ -326,6 +326,9 @@ def sync_debicheck_to_application(db, mandate_id: int, actor_id: int | None = No
            ORDER BY ma.id DESC LIMIT 1""",
         (mandate_id,),
     ).fetchone()
+    if row:
+        from .staff_kpi import record_authentication
+        record_authentication(db, mandate_id, row["status"])
     if not row or not row["application_id"]:
         return None
 

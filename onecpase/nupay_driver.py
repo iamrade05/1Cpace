@@ -873,6 +873,64 @@ def fetch_mandate_report_rows(
     return rows, f"{len(rows)} rows read"
 
 
+def fetch_transaction_report_rows(start: date, end: date) -> list[dict[str, Any]]:
+    """Read all local Tabulator rows, including hidden status tabs and pages.
+
+    The transaction tables are populated after Alpine initializes; their HTML
+    x-data arrays are empty even when thousands of rows exist in the live grid.
+    """
+    missing = _require_creds()
+    if missing:
+        raise RuntimeError("Missing NuPay credentials: " + ", ".join(missing))
+    access_id = _env("NUPAY_NEW_ACCESS_ID") or DEFAULT_ACCESS_ID
+    statuses = {"transaction_report_success": "Success", "transaction_report_failed": "Failed",
+                "transaction_report_at_issuer": "At Issuer", "transaction_report_dispute": "Disputed"}
+    rows = []
+    with PLAYWRIGHT_LOCK, sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            _login(page)
+            while start <= end:
+                stop = min(start + timedelta(days=30), end)
+                page.goto(f"{BASE}/debicheck/{access_id}/transaction-search",
+                          wait_until="networkidle", timeout=60000)
+                page.locator('select[name="delivery_criteria"]').select_option(label="Screen Enquiry")
+                for checkbox in page.locator('input[name="status[]"]').all():
+                    checkbox.check()
+                _set_date(page, "#from_date", start.isoformat())
+                _set_date(page, "#to_date", stop.isoformat())
+                page.get_by_role("button", name=re.compile("^CONTINUE$", re.I)).first.click()
+                page.wait_for_selector('[x-data^="tabulatorComponent("]', timeout=60000)
+                page.wait_for_load_state("networkidle", timeout=60000)
+                page.wait_for_function("""() => typeof Tabulator !== 'undefined' &&
+                    ['transaction_report_success','transaction_report_failed',
+                     'transaction_report_at_issuer','transaction_report_dispute'].every(id => {
+                        const e=document.getElementById(id);
+                        return e && Tabulator.findTable(e).length;
+                    })""", timeout=60000)
+                tables = page.evaluate("""() => Array.from(document.querySelectorAll('.tabulator'))
+                    .map(e => {const t=Tabulator.findTable(e)[0]; return {
+                        id:e.id, remote:t.options.paginationMode === 'remote' || !!t.options.ajaxURL,
+                        count:t.getDataCount(), rows:t.getData()};})""")
+                for table in tables:
+                    if table["id"] not in statuses:
+                        continue
+                    if table["remote"] or len(table["rows"]) != table["count"]:
+                        raise RuntimeError("NuPay report is incomplete; payments were not imported")
+                    for raw in table["rows"]:
+                        row = dict(raw, status=statuses[table["id"]])
+                        row["instalment_amount"] = row.get("collection_amount")
+                        row["total_instalments"] = row.get("instalments")
+                        row["tracking"] = row.get("tracking_desc")
+                        # unique_tabulator_id is a presentation index, not a debit identity.
+                        rows.append(row)
+                start = stop + timedelta(days=1)
+        finally:
+            browser.close()
+    return rows
+
+
 def _acceptance_key(row: dict[str, Any]) -> str:
     # Full-precision timestamp when available ('2024-09-18 11:33:03.843'),
     # else the plain created date - both sort correctly as ISO-ish strings,

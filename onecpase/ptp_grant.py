@@ -193,6 +193,8 @@ def create_arrangement(db, member_id, offer, *, user_id, normal_active, notes=""
          (upfront * 100 / arrears) if arrears else 0, upfront, float(offer["ptp_balance"]),
          first_amount, len(schedule)))
     ptp_id = cursor.lastrowid
+    from .staff_kpi import record_ptp_channel
+    record_ptp_channel(db, ptp_id, "call")
     db.execute(
         """UPDATE ptp_agreements SET rule_version=?, arrears_category=?, months_owing=?, payment_count=?,
                first_collection_date=?, existing_mandate_ok=? WHERE id=?""",

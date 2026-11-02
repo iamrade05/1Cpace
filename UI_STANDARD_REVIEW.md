@@ -84,3 +84,33 @@ The per-template tracker is `tests/template_ui_baseline.json`. Tests reject any 
 - Screenshots and measured results are in `artifacts/ui-review/`. `scripts/verify_ui.py` uses disposable databases and synthetic example records.
 
 The user authorised commit and deployment on 6 October 2026. The release includes the UI changes and the existing query/reconciliation application dependencies used by these templates. Scratch files, local databases, credentials, and operational data are excluded.
+
+## Dashboard consistency update — 25 October 2026
+
+The user's requirement is that all dashboards follow the same established design. The current colour source is `onecpase/static/css/tokens.css`: navy frame, gold accents, slate/sage/sand supporting colours, light workspace, Barlow/Barlow Condensed typography and shared spacing. The fitness onboarding plan also explicitly requires the main and Collections dashboard design.
+
+The admin, Sales, Reception, Fitness, personal-work, Collections, PTP and My HR dashboards now share the header macro in `onecpase/templates/_dashboard.html`. Department dashboards use the existing `fd-kpi`, `fd-panel` and filter components rather than independent department-card styling. The PTP dashboard's separate stylesheet was removed; its cards, status colours and filters now use the shared tokens and components. Shared responsive rules handle phones, and the main dashboard range controls retain readable contrast within the navy header. Metrics, filters, action handlers and department access rules are retained.
+
+Validation: 49 focused tests passed. Playwright checked eight pages at 1366px, 768px and 390px (24 renders), with no page overflow or JavaScript errors; it also exercised chart range switching and Sales date filtering. All seven changed template files meet the existing style-debt limits. The wider style audit still flags existing changes in `queries/member_form.html` and `queries/workflow.html`, which are outside this release. A server-side copied-database rehearsal rendered 22 pages and verified 26 denied-access cases with no provider actions.
+
+Eight presentation files were deployed; unrelated working changes were excluded. Evidence is in `artifacts/dashboard-design-release/`; rollback backup: `/opt/onecpase-backups/workflow_dashboard_design_20261025_190512`. To provide sufficient deployment space, the database files in our three preceding dashboard/menu release backups were gzip-compressed and SHA-256 verified before their uncompressed copies were removed. Their `database-map.json` files identify the compressed paths and original hashes. Live databases were not compressed.
+
+## Staff sections and merged fitness intake — 25 October 2026
+
+The joining-cohort and intake-follow-up tables on Fitness Onboarding are now one **New member intake** register. Each row retains the member name, joining date, package, support interest/welcome status, preferred times, instructor and assisted/signed session counts. Both the member name and Open intake action use the fitness intake route. Arrivals/session records and completion reviews remain separate. Joining-cycle and date filters remain intact, and selecting an arrival date preserves the chosen joining period. The intake page links back to the register and shows joining/package details; its main-profile shortcut was removed.
+
+The existing shared navy/gold header treatment now applies to staff page headers across sections. Shared table headings use navy with gold accents; panels have consistent headings, spacing and padded content. Allocation, roster and review pages gained standard page headers, and incidents/supplements layouts were corrected for narrow screens. The shared stylesheet URL is versioned so browsers request the updated design. Public tenant-branded request forms remain outside the staff-workspace selectors.
+
+Validation: 58 focused fitness/access checks passed, along with the final template-structure check. Playwright rendered 28 representative staff pages at 1366px, 768px and 390px (84 views), with no document overflow or JavaScript errors, and exercised the intake-name link, chart range controls and Sales date filtering. The changed templates meet the existing style-debt limits. A copied-live-data rehearsal rendered 26 pages and verified 26 denied-access cases without provider actions. All deployed files were compared to the live baseline to exclude unrelated work.
+
+Eleven presentation files were deployed. Evidence: `artifacts/fitness-onboarding-design-release/`; rollback backup: `/opt/onecpase-backups/workflow_fitness_onboarding_design_20261025_195826`. Immediate post-deployment retention succeeded, retaining five rollback sets, and rehearsal copies were cleaned automatically.
+
+## Page consistency and ELEv8 query forms — 28 October 2026
+
+The shared page header now covers the remaining admin, HR, PBX and query screens. Employee detail stacks on narrow screens. Query workflow panels and member-facing request forms use consistent spacing and controls. ELEv8 member forms retain the existing red (`#D51F37`), white and dark text branding and logo, with the installed `elev8.svg` as the fallback when no uploaded logo is configured. All six request types and the submitted/expired states share that header. Form method handling no longer fails when a payment field is named `method`.
+
+Local validation: 53 focused consistency tests passed; 11 query/template checks passed after the ELEv8 branding adjustment. The final browser evidence covers 135 URLs at 1366, 768 and 390px (405 views) with no remaining flagged layout or JavaScript issues. ELEv8 branding, logo loading, correction-field behavior and signature drawing/clearing passed for all six variants at all three widths.
+
+The user authorized deployment. All 20 live presentation files matched the session's before-work baseline, so the release excludes unrelated workspace changes. A server rehearsal compiled 187 installed templates and rendered 27 pages with disposable synthetic records. The same checks passed after installation. Both public hostnames report healthy; the delivered CSS, JavaScript and ELEv8 logo hashes match the installed files. No database or provider actions were included.
+
+Evidence: `artifacts/page-consistency-release-20261028/`. Presentation-only rollback backup: `/opt/onecpase-backups/workflow_page_consistency_20261028_170051`. Existing retention ran successfully and retained five deployment sets. Disposable rehearsal files were removed.

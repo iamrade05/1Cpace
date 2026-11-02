@@ -55,3 +55,19 @@ def test_staff_notifications_refresh_every_five_minutes(app):
     jobs = _init_and_get_jobs(app)
     assert jobs['staff_notifications'].trigger.interval == timedelta(minutes=5)
     assert jobs['staff_notifications'].max_instances == 1
+
+
+def test_fitness_allocation_expiry_checked_every_minute(app):
+    from datetime import timedelta
+    jobs=_init_and_get_jobs(app)
+    assert jobs['fitness_allocations'].trigger.interval==timedelta(minutes=1)
+    assert jobs['fitness_allocations'].max_instances==1
+
+
+def test_payment_sync_runs_daily_with_recovery(app):
+    from datetime import timedelta
+    jobs = _init_and_get_jobs(app)
+    assert _minutes_of_day(jobs['daily_payment_sync']) == 5*60+30
+    assert str(jobs['daily_payment_sync'].trigger.timezone) == 'Africa/Johannesburg'
+    assert jobs['daily_payment_sync'].max_instances == 1
+    assert jobs['payment_sync_recovery'].trigger.interval == timedelta(minutes=15)

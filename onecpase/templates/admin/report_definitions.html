@@ -3,10 +3,9 @@
 {% block page_title %}Saved Reports{% endblock %}
 
 {% block content %}
-<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
-  <div><h1 style="font-size:1.25rem;margin-bottom:5px;">Saved report definitions</h1><p style="color:var(--t2);font-size:.84rem;">Create reusable reports for members, collections, arrears, queries, and contact activity.</p></div>
-  <a href="{{ url_for('admin.report_definition_add') }}" class="btn btn-primary">+ Create Report</a>
-</div>
+{% from '_ui.html' import page_header %}
+{% set header_actions %}<a href="{{ url_for('admin.report_definition_add') }}" class="btn btn-primary">+ Create Report</a>{% endset %}
+{{ page_header('Saved report definitions', subtitle='Create reusable reports for members, collections, arrears, queries, and contact activity.', actions=header_actions) }}
 <div class="table-card"><div class="table-wrap"><table class="data-table table"><thead><tr><th>Report</th><th>Data Source</th><th>Status</th><th>Updated</th><th>Actions</th></tr></thead><tbody>
 {% for report in reports %}<tr>
   <td><strong>{{ report.name }}</strong>{% if report.description %}<div style="color:var(--t2);font-size:.76rem;margin-top:4px;max-width:420px;">{{ report.description }}</div>{% endif %}</td>

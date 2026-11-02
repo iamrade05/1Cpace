@@ -91,9 +91,9 @@ def test_sales_quality_failure_rate_recovery_and_transfer(app, monkeypatch):
         # m1 pays in full and stays with Sales; m2 reaches two months and moves to Reception.
         db.execute("UPDATE collections SET amount_paid=500, status='paid' WHERE member_id=?", (m1,))
         reconcile_open_cases(db, [m1])
-        db.execute("UPDATE collections_cases SET closed_at='2026-09-20 10:00:00' WHERE id=?", (c1,))
+        db.execute("UPDATE collections_cases SET closed_at='2026-09-12 10:00:00' WHERE id=?", (c1,))
         apply_case_ownership(db, c2, months_owing=2)
-        db.execute("UPDATE collection_assignment_history SET transferred_at='2026-09-25 10:00:00' "
+        db.execute("UPDATE collection_assignment_history SET transferred_at='2026-09-13 10:00:00' "
                    "WHERE case_id=? AND reason='SECOND_MONTH_ARREARS'", (c2,))
         db.commit()
 
@@ -130,7 +130,7 @@ def test_performance_report_totals(app):
             mid = _member(db, 21 + int(day[-1]))
         db.execute("""INSERT INTO ptp_agreements (member_id, promise_amount, promise_date, payment_method, ptp_status,
                           created_at, updated_at, discount_pct)
-                      VALUES (?, 500, '2026-09-30', 'eft', 'broken', '2026-09-10 08:00:00', '2026-09-30 08:00:00', 25)""", (mid,))
+                      VALUES (?, 500, '2026-09-30', 'eft', 'broken', '2026-09-10 08:00:00', '2026-09-12 08:00:00', 25)""", (mid,))
         db.commit()
         report = performance_report(db, MONTH)
         totals = report["totals"]
@@ -174,7 +174,7 @@ def test_daily_call_stats_use_call_date_and_count_reactivation(app):
         report = daily_call_report(db, '2026-09-02')
         assert (report['calls'], report['contacts'], report['pending'], report['contact_rate']) == (2, 1, 1, 50.0)
         caller = next(c for c in report['callers'] if c['staff_id'] == 1)
-        assert caller['call_progress'] == 2.0
+        assert caller['call_progress'] == 2.5
         assert caller['contact_progress'] == 10.0
         assert {r['outcome']: r['total'] for r in report['outcomes']} == {'want_to_reactivate': 1, 'no_answer': 1}
         assert daily_call_report(db, '2025-01-01')['contact_rate'] is None

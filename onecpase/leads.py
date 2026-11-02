@@ -586,11 +586,13 @@ def leads_index():
         + count_scope_sql,
         count_scope_params,
     ).fetchone()[0]
+    from .reporting_cycle import current_cycle
+    first, last = current_cycle()
     joined_month = db.execute(
         """SELECT COUNT(*) FROM leads WHERE lead_status = 'joined'
-           AND strftime('%Y-%m', updated_at) = strftime('%Y-%m', 'now')"""
+           AND substr(updated_at,1,10) BETWEEN ? AND ?"""
         + count_scope_sql,
-        count_scope_params,
+        [first.isoformat(), last.isoformat(), *count_scope_params],
     ).fetchone()[0]
     due_followups_sql = """SELECT COUNT(*) FROM lead_activities la
            JOIN leads l ON la.lead_id = l.id

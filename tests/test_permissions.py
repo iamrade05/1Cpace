@@ -72,9 +72,9 @@ def test_staff_profiles_override_old_grants(role, department, allowed, denied):
 
 
 @pytest.mark.parametrize('role,department,landing', [
-    ('staff', 'Sales', '/leads/'),
-    ('reception', 'Reception', '/leads/'),
-    ('trainer', 'Training', '/members'),
+    ('staff', 'Sales', '/sales-dashboard'),
+    ('reception', 'Reception', '/reception-dashboard'),
+    ('trainer', 'Training', '/fitness-dashboard'),
 ])
 def test_staff_access_refreshes_existing_sessions(client, role, department, landing):
     _login(client, role, department)

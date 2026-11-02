@@ -404,6 +404,46 @@ def _job_staff_notifications(app):
         finally:
             conn.close()
 
+def _job_fitness_allocations(app) -> None:
+    """Local queue maintenance; does not send WhatsApp or create paid bookings."""
+    from flask import g
+    from .phases import is_enabled
+    from .database import get_db
+    from .fitness_journey import ensure_journey
+    from .fitness_allocation import begin_allocation, process_queue
+    if not is_enabled('fitness_journey',app.config.get('ACTIVE_PHASE',1)):
+        return
+    for tenant in _active_tenants(app):
+        with app.app_context():
+            g.tenant=dict(tenant);g.tenant_slug=tenant['slug']
+            db=get_db()
+            try:
+                ensure_journey(db)
+                begin_allocation(db);process_queue(db);db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception('[scheduler] Fitness allocation failed for tenant %s',tenant['slug'])
+
+
+def _job_query_funnel(app):
+    from flask import g
+    from .phases import is_enabled
+    from .database import get_db
+    from .query_funnel import refresh, dispatch
+    if not is_enabled('queries', app.config.get('ACTIVE_PHASE',1)):
+        return
+    for tenant in _active_tenants(app):
+        with app.app_context():
+            g.tenant=dict(tenant); g.tenant_slug=tenant['slug']
+            db=get_db()
+            try:
+                refresh(db); db.commit()
+                dispatch(db)
+            except Exception:
+                db.rollback()
+                logger.exception('Query funnel refresh failed for tenant %s',tenant['slug'])
+
+
 def init_scheduler(app) -> None:
     """Start the background scheduler for this process, once."""
     global _scheduler
@@ -422,6 +462,18 @@ def init_scheduler(app) -> None:
         return
 
     scheduler = BackgroundScheduler(timezone="Africa/Johannesburg")
+    scheduler.add_job(lambda: _job_query_funnel(app), IntervalTrigger(minutes=1),
+                      id='query_funnel',replace_existing=True,max_instances=1,coalesce=True)
+    scheduler.add_job(lambda: _job_fitness_allocations(app), IntervalTrigger(minutes=1),
+                      id='fitness_allocations',replace_existing=True,misfire_grace_time=60,max_instances=1)
+    if app.config.get('PAYMENT_SYNC_ENABLED', True):
+        from .payment_sync import run_daily, run_due
+        scheduler.add_job(lambda: run_daily(app), CronTrigger(hour=5, minute=30, timezone="Africa/Johannesburg"),
+                          id='daily_payment_sync', replace_existing=True,
+                          misfire_grace_time=3600, max_instances=1)
+        scheduler.add_job(lambda: run_due(app), IntervalTrigger(minutes=15),
+                          id='payment_sync_recovery', replace_existing=True,
+                          misfire_grace_time=600, max_instances=1)
     scheduler.add_job(lambda: _job_staff_notifications(app), IntervalTrigger(minutes=5),
                       id="staff_notifications", replace_existing=True,
                       misfire_grace_time=300, max_instances=1)

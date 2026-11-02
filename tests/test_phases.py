@@ -58,6 +58,11 @@ def build_app(tmp_path, phase):
 def render_nav(app):
     """The dashboard as an admin sees it — admin passes every has_perm check,
     so anything missing from this nav is missing because of the phase."""
+    from onecpase.database import get_db
+    with app.app_context():
+        db=get_db()
+        db.execute("INSERT OR IGNORE INTO users(id,username,password_hash,full_name,role,active) VALUES(1,'phase-admin','x','Admin','admin',1)")
+        db.commit()
     with app.test_client() as client:
         with client.session_transaction() as session:
             session["user_id"] = 1

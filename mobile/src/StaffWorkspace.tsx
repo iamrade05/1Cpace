@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { File, Paths } from 'expo-file-system';
 import { printAsync } from 'expo-print';
+import { shareAsync } from 'expo-sharing';
 import { WebView } from 'react-native-webview';
-import { navigationAction, readPrintMessage, workspaceOrigin } from './workspacePolicy';
+import { navigationAction, readDownloadMessage, readPrintMessage, workspaceOrigin } from './workspacePolicy';
 import { workspaceBridge } from './workspaceBridge';
 
 export default function StaffWorkspace({ onClose }: { onClose: () => void }) {
@@ -32,7 +34,24 @@ export default function StaffWorkspace({ onClose }: { onClose: () => void }) {
   }
 
   function external(url: string) {
+    if (Platform.OS === 'ios' && /\.apk$/i.test(new URL(url).pathname)) { setNotice('The Android installer cannot be used on iPhone or iPad.'); return; }
     Linking.openURL(url).catch(() => setNotice('No app could open this link.'));
+  }
+
+  // Android hands attachments to DownloadManager; iOS needs the page to fetch
+  // them, then the share sheet offers Save to Files, AirDrop or another app.
+  async function saveDownload(data: string, url: string) {
+    if (data.startsWith('{"type":"downloadTooLarge"')) { setNotice('This file is too large to download on iPhone. Open it from a computer instead.'); return; }
+    const download = readDownloadMessage(data, url, origin);
+    if (!download) { setNotice('This file could not be downloaded. Try again.'); return; }
+    const file = new File(Paths.cache, download.name);
+    try {
+      if (file.exists) file.delete();
+      file.write(download.data, { encoding: 'base64' });
+      setNotice('');
+      await shareAsync(file.uri, { mimeType: download.mime, dialogTitle: download.name });
+    } catch { setNotice('The file could not be saved. Try again.'); }
+    finally { try { if (file.exists) file.delete(); } catch { /* The system clears its cache later. */ } }
   }
 
   return <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
@@ -72,7 +91,14 @@ export default function StaffWorkspace({ onClose }: { onClose: () => void }) {
         onError={() => { setLoading(false); setFailed(true); }}
         onRenderProcessGone={() => { setLoading(false); setFailed(true); }}
         onContentProcessDidTerminate={() => { setLoading(false); setFailed(true); }}
+        onFileDownload={({ nativeEvent }) => {
+          setLoading(false);
+          if (navigationAction(nativeEvent.downloadUrl, origin) !== 'internal') { setNotice('This file cannot be downloaded in the workspace.'); return; }
+          setNotice('Preparing download…');
+          web.current?.injectJavaScript('window.__onecpaseDownload(' + JSON.stringify(nativeEvent.downloadUrl) + ');true;');
+        }}
         onMessage={async ({ nativeEvent }) => {
+          if (Platform.OS === 'ios' && nativeEvent.data.startsWith('{"type":"download')) { await saveDownload(nativeEvent.data, nativeEvent.url); return; }
           const printable = readPrintMessage(nativeEvent.data, nativeEvent.url, origin);
           if (!printable || printing.current) {
             if (!printable && navigationAction(nativeEvent.url, origin) === 'internal') setNotice('This page could not be prepared for printing.');

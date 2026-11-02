@@ -1,0 +1,6 @@
+{% extends 'base.html' %}{% block title %}Signed-query workflow ownership | 1Cpace{% endblock %}
+{% block content %}{% from '_ui.html' import page_header %}{{ page_header('Signed-query workflow ownership') }}
+<section class="panel workflow-content">
+<p>ELEv8: Mvuleni Radebe performs reception manager checks. Ayrton Emanuel reviews and processes refunds after Reception verification.</p>
+<form method="post"><label>Approving manager<select name="approver_id" class="form-control" required>{% for person in staff if person.role in ['admin','manager'] %}<option value="{{ person.id }}" {% if setting and setting.approver_id==person.id %}selected{% endif %}>{{ person.full_name or person.username }} — {{ person.role }}</option>{% endfor %}</select></label>
+<label>Refund reviewer and processor (Ayrton Emanuel or authorised replacement)<select name="processor_id" class="form-control" required>{% for person in staff %}<option value="{{ person.id }}" {% if setting and setting.refund_processor_id==person.id %}selected{% endif %}>{{ person.full_name or person.username }} — {{ person.role }}</option>{% endfor %}</select></label><button class="btn btn-primary">Save tenant workflow ownership</button></form></section>{% endblock %}

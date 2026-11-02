@@ -24,6 +24,28 @@ export function navigationAction(value: string, origin: string): NavigationActio
   return 'blocked';
 }
 
+// iOS cannot hand protected files to a system download manager, so the page
+// fetches them with its own session and the app saves them for sharing.
+export const DOWNLOAD_LIMIT_BYTES = 20_000_000;
+
+export type DownloadMessage = { name: string; mime: string; data: string };
+
+export function safeFileName(value: unknown): string {
+  const name = typeof value === 'string' ? value.replace(/[\u0000-\u001f\\/:*?"<>|]/g, '_').replace(/^\.+/, '').trim() : '';
+  return name.slice(-120) || 'download';
+}
+
+export function readDownloadMessage(data: string, sourceUrl: string, origin: string): DownloadMessage | null {
+  if (navigationAction(sourceUrl, origin) !== 'internal' || data.length > DOWNLOAD_LIMIT_BYTES * 1.4) return null;
+  try {
+    const message = JSON.parse(data);
+    if (message.type !== 'download' || message.page !== sourceUrl || navigationAction(message.url, origin) !== 'internal') return null;
+    if (typeof message.data !== 'string' || !message.data || !/^[A-Za-z0-9+/]+=*$/.test(message.data)) return null;
+    const mime = typeof message.mime === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(message.mime) ? message.mime : 'application/octet-stream';
+    return { name: safeFileName(message.name), mime, data: message.data };
+  } catch { return null; }
+}
+
 export function readPrintMessage(data: string, sourceUrl: string, origin: string): { html: string } | null {
   if (navigationAction(sourceUrl, origin) !== 'internal' || data.length > 8_000_000) return null;
   try {

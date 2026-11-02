@@ -32,11 +32,11 @@
     <div class="kpi-value">{{ stats.total_members | default(0) }}</div>
   </div>
   <div class="kpi-card" style="border-left-color:#17a2b8;">
-    <div class="kpi-label">New This Month</div>
+    <div class="kpi-label">New This Cycle</div>
     <div class="kpi-value" style="color:#17a2b8;">{{ stats.new_this_month | default(0) }}</div>
   </div>
   <div class="kpi-card" style="border-left-color:#28a745;">
-    <div class="kpi-label">Collected (Month)</div>
+    <div class="kpi-label">Collected (Cycle)</div>
     <div class="kpi-value" style="color:#28a745;">R {{ '{:,.2f}'.format(stats.collected_this_month | float) }}</div>
   </div>
   <div class="kpi-card" style="border-left-color:#dc3545;">
@@ -143,7 +143,7 @@
   <!-- Queries this month -->
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">Queries This Month by Category</h3>
+      <h3 class="card-title">Queries This Cycle by Category</h3>
       <a href="{{ url_for('reports.queries_report') }}" class="btn btn-xs btn-outline">Full Report →</a>
     </div>
     <div class="card-body" style="padding:0;">

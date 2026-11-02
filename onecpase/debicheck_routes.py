@@ -601,6 +601,8 @@ def check_status(mandate_id):
     )
     from .ptp_grant import on_mandate_status_changed
     on_mandate_status_changed(db, mandate_id)
+    from .query_forms import refresh_banking_workflows
+    refresh_banking_workflows(db,mandate_id)
     member_activity(
         db, row["member_id"],
         f"DebiCheck mandate #{mandate_id} status check: {message}"

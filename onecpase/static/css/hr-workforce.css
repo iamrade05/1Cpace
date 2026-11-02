@@ -26,3 +26,120 @@
   .hr-workforce h2 { font-size: 1.3rem; }
   .hr-workforce .form-row { gap: 8px; }
 }
+
+/* HR workspace: consistent navigation, restrained hierarchy and task-focused forms. */
+.oc .content .hr-workforce .page-header { background: transparent; color: var(--txt); border: 0; border-radius: 0; padding: 0; }
+.oc .content .hr-workforce .page-header h1 { color: var(--navy); -webkit-text-fill-color: var(--navy); font-family: var(--font-body); font-size: 1.8rem; }
+.oc .content .hr-workforce .page-header p,.oc .content .hr-workforce .page-header .muted { color: var(--t2); font-family: var(--font-body); }
+.oc .content .hr-workforce h2,.oc .content .hr-workforce h3 { font-family: var(--font-body); }
+.oc .content .hr-workforce .card-body > h2:first-child,.oc .content .hr-workforce .card-header h2 { font: 650 1.1rem var(--font-body); }
+.oc .content .hr-workforce .card-header { background: var(--s1); border-top: 0; }
+.oc .content .hr-workforce .table > thead > tr > th { background: var(--s2); color: var(--t2); border-bottom: 1px solid var(--b1); }
+.hr-workforce a:not(.btn):not(.nav-item) { color: var(--navy-l); text-underline-offset: 3px; }
+.hr-workforce { max-width: 1440px; margin-inline: auto; color: var(--txt); }
+.hr-workforce h1,.hr-workforce h2,.hr-workforce h3 { font-family: var(--font-body); }
+.hr-workforce h1 { font-size: 1.8rem; font-weight: 650; margin: 0; }
+.hr-workforce h2 { font-size: 1.1rem; font-weight: 650; }
+.hr-workforce h3 { font-size: .95rem; }
+.hr-workforce .page-header { margin: 0 0 24px; padding: 0; border: 0; }
+.hr-workforce .page-header p { color: var(--t2); margin: 6px 0 0; max-width: 65ch; }
+.hr-workforce .page-header .hr-eyebrow { margin: 0 0 6px; color: var(--red-d); font-size: .72rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.hr-workforce .card { box-shadow: none; border: 1px solid var(--b1); border-radius: 10px; }
+.hr-workforce .card-header { background: var(--s1); flex-wrap: wrap; gap: 12px; }
+.hr-workforce .card-header h2 { margin: 0; }
+.hr-workforce .table thead th { background: var(--s2); color: var(--t2); border-bottom: 1px solid var(--b1); font-family: var(--font-body); text-transform: none; letter-spacing: 0; font-size: .8rem; }
+.hr-workforce .table td,.hr-workforce .table th { vertical-align: middle; padding: 12px; }
+.hr-workforce .table tbody th { font-weight: 500; }
+.hr-workforce .table small { display: block; color: var(--t3); font-weight: 400; }
+.hr-workforce .table-wrap { border-radius: 6px; }
+.hr-workforce .hr-muted { color: var(--t2); font-size: .88rem; }
+.hr-nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--b1); margin-bottom: 28px; }
+.hr-nav-primary,.hr-nav-tools { display: flex; gap: 4px; align-items: center; min-width: 0; }
+.hr-nav a { text-decoration: none; color: var(--t2); }
+.hr-nav-primary > a { padding: 12px 14px; border-bottom: 2px solid transparent; white-space: nowrap; font-size: .9rem; font-weight: 550; }
+.hr-nav-primary > a:hover,.hr-nav-primary > a.is-current { color: var(--navy); border-bottom-color: var(--red); background: var(--s1); }
+.hr-workforce .hr-nav-menu { position: relative; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.hr-nav-menu summary { padding: 10px 12px; color: var(--t2); font-size: .87rem; font-weight: 550; }
+.hr-nav-menu[data-current-group] > summary { color: var(--navy); text-decoration: underline; text-decoration-color: var(--red); text-underline-offset: 7px; }
+.hr-nav-options { position: absolute; z-index: 30; right: 0; top: calc(100% + 6px); min-width: 225px; background: var(--s1); border: 1px solid var(--b1); padding: 6px; border-radius: 8px; box-shadow: var(--fp-shadow); }
+.hr-nav-options a { display: block; padding: 10px 12px; border-radius: 5px; font-size: .9rem; }
+.hr-nav-options a:hover,.hr-nav-options a.is-current { background: var(--s3); color: var(--navy); }
+.hr-section-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.hr-section-heading h2,.hr-section-heading p { margin: 0; }
+.hr-section-heading a:not(.btn) { font-size: .85rem; font-weight: 550; }
+.hr-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hr-notice { display: grid; gap: 4px; padding: 14px 18px; background: #fff9ed; border: 1px solid #e9d9b8; border-left: 3px solid var(--red); border-radius: 8px; margin-bottom: 24px; font-size: .9rem; }
+.hr-notice span { color: var(--t2); }
+.hr-balance-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
+.hr-balance-card { background: var(--s1); border: 1px solid var(--b1); border-radius: 10px; padding: 20px; min-width: 0; }
+.hr-balance-card h3 { margin: 0 0 18px; color: var(--t2); font-weight: 550; }
+.hr-balance-card p:last-child { margin-bottom: 0; }
+.hr-workforce .hr-balance-value { margin: 0; font-size: 1.9rem; font-weight: 650; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.hr-balance-value span { display: block; font-size: .8rem; color: var(--t2); margin-top: 6px; font-weight: 400; }
+.hr-workforce .hr-balance-pending { font-size: 1.05rem; font-weight: 600; margin: 0; }
+.hr-overview-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+.hr-overview-grid .card { margin: 8px 0 0; min-width: 0; }
+.hr-workforce .hr-record-list { margin: 0; padding: 0; list-style: none; }
+.hr-record-list li { padding: 13px 0; border-top: 1px solid var(--b1); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; font-size: .9rem; }
+.hr-record-list li > div { min-width: 0; }
+.hr-record-list li > div > span { display: block; color: var(--t2); font-size: .82rem; margin-top: 4px; }
+.hr-record-list .hr-empty { color: var(--t2); min-height: 64px; align-items: center; }
+.hr-status { display: inline-block; font-size: .74rem; font-weight: 550; padding: 3px 9px; border-radius: 20px; background: var(--s3); color: var(--t2); white-space: nowrap; }
+.hr-status--submitted { background: #fff3d8; color: #805500; }
+.hr-status--approved { background: #eaf5ef; color: #246041; }
+.hr-status--rejected,.hr-status--returned { background: #fcefee; color: #93352e; }
+.hr-workforce .hr-disclosure { background: var(--s1); border: 1px solid var(--b1); border-radius: 10px; padding: 0 20px; margin: 16px 0; }
+.hr-disclosure > summary { padding: 16px 0; font-size: .92rem; color: var(--navy); }
+.hr-disclosure > summary > span { font-size: .8rem; font-weight: 400; color: var(--t2); margin-left: 10px; }
+.hr-disclosure[open] { padding-bottom: 18px; }
+.hr-disclosure .hr-disclosure-body > :last-child { margin-bottom: 0; }
+.hr-activity .dashboard-reporting { border: 0; box-shadow: none; margin: 0; padding: 12px 0 0; }
+.hr-workforce .hr-filter { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; background: var(--s1); padding: 16px; border: 1px solid var(--b1); border-radius: 8px; margin: 18px 0; }
+.hr-workforce .hr-filter label { margin: 0; min-width: 180px; font-size: .85rem; }
+.hr-workforce .hr-filter > button { margin: 0; }
+.hr-workforce form label { font-size: .87rem; font-weight: 550; }
+.hr-workforce input:not([type=checkbox]):not([type=radio]):not([type=hidden]),.hr-workforce select,.hr-workforce textarea { border-radius: 6px; min-height: 40px; font-family: inherit; }
+.hr-workforce .hr-terms-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px 24px; }
+.hr-terms-form > p { margin: 0; }
+.hr-terms-form > fieldset,.hr-terms-form > p:has(select[name=manager_id]),.hr-terms-form > p:has(select[name=manager_id]) + p { grid-column: 1 / -1; }
+.hr-workforce .hr-terms-form > p:has(select[name=manager_id]) + p { color: var(--t2); font-size: .85rem; margin-bottom: 10px; }
+.hr-workforce .hr-terms-form > button { justify-self: start; margin-bottom: 0; }
+.hr-workforce fieldset { border-color: var(--b1); }
+.hr-workforce fieldset label { margin: 6px 14px 6px 0; }
+.hr-workforce .hr-review-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+.hr-workforce .hr-review-grid .card { margin-top: 0; }
+.hr-workforce .hr-request-summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.hr-request-summary h2 { margin: 0; }
+.hr-request-meta { color: var(--t2); font-size: .9rem; }
+.hr-workforce .hr-request-detail { margin-bottom: 0; }
+.hr-workforce .hr-request-detail > summary { font-size: .86rem; }
+.hr-workforce .form-card { box-shadow: none; border: 1px solid var(--b1); max-width: 960px; }
+.hr-workforce .form-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.hr-workforce .form-actions > label { flex-basis: 100%; }
+.hr-workforce .page-header .btn { flex-shrink: 0; }
+.hr-workforce .hr-receipts { margin-top: 24px; }
+@media (max-width: 1000px) {
+  .hr-nav { flex-wrap: wrap; gap: 0; }
+  .hr-nav-tools { padding: 4px 0 8px; margin-left: auto; }
+  .hr-balance-grid { gap: 10px; }
+  .hr-balance-card { padding: 16px; }
+}
+@media (max-width: 700px) {
+  .hr-workforce .hr-overview-grid,.hr-workforce .hr-review-grid,.hr-workforce .hr-terms-form { grid-template-columns: minmax(0,1fr); }
+  .hr-balance-grid { grid-template-columns: minmax(0,1fr); }
+  .hr-balance-card { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 6px 12px; align-items: center; }
+  .hr-balance-card h3 { margin: 0; }
+  .hr-balance-card p:last-child { grid-column: 1 / -1; margin: 4px 0 0; }
+  .hr-workforce .hr-balance-value { font-size: 1.5rem; text-align: right; }
+  .hr-workforce .hr-balance-pending { font-size: .9rem; text-align: right; }
+  .hr-nav { margin-bottom: 22px; }
+  .hr-nav-primary { width: 100%; justify-content: space-between; gap: 0; }
+  .hr-nav-primary > a { padding: 11px 7px; font-size: .82rem; }
+  .hr-nav-menu summary { font-size: .82rem; }
+  .hr-workforce .hr-page-header { gap: 16px; align-items: flex-start; }
+  .hr-section-heading { align-items: flex-start; }
+  .hr-workforce .hr-disclosure { padding-inline: 14px; }
+  .hr-disclosure > summary > span { display: block; margin: 4px 0 0; }
+  .hr-workforce .hr-filter { padding: 12px; }
+  .hr-workforce .hr-filter label { flex: 1 1 180px; }
+}

@@ -52,6 +52,10 @@ The signed version 1.0.0 installer is [1Cpace-Android.apk](../artifacts/apk/1Cpa
 
 Restart the local download server with `node scripts/serve-apk.cjs` from this directory. Its address can change when the PC changes networks. Signature, alignment, embedded-bundle and full-download hash checks passed; actual phone installation and sign-in remain to be verified. See the standalone installer record in `MOBILE_IMPLEMENTATION.md` for build and signing details.
 
+## iOS
+
+The same source builds for iPhone and iPad. On iOS, protected workspace downloads open the share sheet (Save to Files, AirDrop or another app) instead of a download manager. Files over 20 MB must be downloaded from a computer. Windows cannot compile iOS. Use EAS cloud builds (below) with an Apple Developer Program membership; EAS creates and stores the signing certificate and provisioning profile. Distribute through TestFlight or the App Store. An `internal` (ad hoc) build installs only on iPhones whose device IDs are registered first (`npx eas-cli device:create`). There is no iOS equivalent of the APK download link.
+
 ## Builds
 
 The identifiers `com.onecpase.mobile` are project defaults; confirm ownership before signing a release. The app icon is rendered from the repository's existing 1Cpace SVG logo.

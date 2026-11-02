@@ -52,7 +52,7 @@ function showUiMessage(message, tone = 'info') {
   box.scrollIntoView({block:'nearest'});
 }
 document.querySelectorAll('form').forEach(form => {
-  if (form.method.toLowerCase() === 'get' || form.querySelector('[name="csrf_token"]')) return;
+  if ((form.getAttribute('method') || 'get').toLowerCase() === 'get' || form.querySelector('[name="csrf_token"]')) return;
   const token = document.querySelector('meta[name="csrf-token"]')?.content;
   if (!token) return;
   const input = document.createElement('input');
@@ -62,6 +62,19 @@ document.querySelectorAll('form').forEach(form => {
   form.prepend(input);
 });
 // Refresh staff alerts without reloading the current work page.
+document.querySelectorAll('[data-dashboard-period-form]').forEach(form => {
+  const choice=form.querySelector('[data-dashboard-period]');
+  const update=()=>{
+    const group=['day','week'].includes(choice.value)?'date':choice.value==='custom'?'custom':'cycle';
+    form.querySelectorAll('[data-period-field]').forEach(label=>{
+      const active=label.dataset.periodField===group;
+      label.hidden=!active;
+      label.querySelectorAll('input').forEach(input=>{input.disabled=!active;});
+    });
+  };
+  choice.addEventListener('change',update);
+  update();
+});
 document.addEventListener('DOMContentLoaded', () => {
   const link = document.querySelector('[data-notification-count-url]');
   if (!link) return;

@@ -10,7 +10,7 @@ def seed(app,client):
     with app.app_context():
         db=get_db()
         db.execute("INSERT INTO users(id,username,password_hash,full_name,role,active) VALUES(1,'fitness-test','x','Instructor','trainer',1)")
-        mid=db.execute("INSERT INTO members(first_name,last_name,id_number,contact,join_date,date_of_birth,gender) VALUES('New','Client','journey-id','0821234567',?,'1990-01-01','male')",(today().isoformat(),)).lastrowid
+        mid=db.execute("INSERT INTO members(first_name,last_name,id_number,contact,join_date,date_of_birth,gender) VALUES('New','Client','journey-id','0821234567',?,'1990-01-01','male')",((today()-timedelta(days=1)).isoformat(),)).lastrowid
         db.commit();ensure_onboarding_rows(db)
         vid=register_arrival(db,mid,'manual',datetime.combine(today(),datetime.min.time()))
     with client.session_transaction() as session:
@@ -18,10 +18,11 @@ def seed(app,client):
     return mid,vid
 
 
-def test_calendar_window_starts_on_assistance_not_arrival(app,client):
+def test_programme_starts_day_after_joining_and_tracks_first_assistance_separately(app,client):
     mid,vid=seed(app,client)
     with app.app_context():
         assert get_db().execute('SELECT started_on FROM fitness_intake WHERE member_id=?',(mid,)).fetchone()[0] is None
+        assert get_db().execute('SELECT program_start_on FROM fitness_intake WHERE member_id=?',(mid,)).fetchone()[0]==today().isoformat()
     assert client.post(f'/fitness/onboarding/visit/{vid}',data={'instructor_id':1,'outcome':'assisted','actions':['gym_intro']}).status_code==302
     with app.app_context():
         db=get_db();start=db.execute('SELECT started_on FROM fitness_intake WHERE member_id=?',(mid,)).fetchone()[0]
@@ -63,7 +64,7 @@ def test_session_signature_needs_assistance_and_baseline_and_locks_record(app,cl
 def test_intake_tracks_interest_times_allocation_and_register(app,client):
     mid,vid=seed(app,client)
     path=f'/fitness/intake/{mid}'
-    assert client.post(path,data={'interest':'interested','preferred_times':'Weekdays 17:00','instructor_id':'1','goal':'Strength'}).status_code==302
+    assert client.post(path,data={'interest':'interested','preferred_times':'Weekdays 17:00','instructor_id':'1','goal':'Strength','goal_category':'muscle_gain'}).status_code==302
     response=client.get(path)
     assert b'Weekdays 17:00' in response.data and b'Not signed' in response.data
     assert client.post(path,data={'interest':'interested','instructor_id':'99999'}).status_code==400
@@ -140,7 +141,7 @@ def test_calendar_boundaries_and_johannesburg_arrival_dates(app,client):
         db=get_db()
         local=register_arrival(db,mid,'turnstile',datetime(2026,10,16,23,30,tzinfo=timezone.utc))
         assert db.execute('SELECT visit_date FROM onboarding_visits WHERE id=?',(local,)).fetchone()[0]=='2026-10-17'
-        db.execute("UPDATE fitness_intake SET started_on='2026-12-28' WHERE member_id=?",(mid,));db.commit()
+        db.execute("UPDATE fitness_intake SET program_start_on='2026-12-28' WHERE member_id=?",(mid,));db.commit()
         assert register_arrival(db,mid,'manual',datetime(2027,1,6,10))
         assert register_arrival(db,mid,'manual',datetime(2027,1,7,10)) is None
 

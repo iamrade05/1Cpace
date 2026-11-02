@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Instructor allocation reviews{% endblock %}
+{% block content %}
+<header class="page-header"><div><h1>Instructor allocation reviews</h1>
+<p>Offers expire after 8 hours. Management decides whether each decline or timeout counts as a skip. The fourth counted skip raises a PT-rights review. Only a recorded management decision changes PT eligibility.</p></div></header>
+<h2>PT-rights decisions</h2>
+{% for r in reviews %}
+<div class="card"><div class="card-body"><h3>{{ r.full_name }} — {{ r.status }}</h3>
+{% if r.status == 'pending' %}
+<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="decide"><input type="hidden" name="target_id" value="{{ r.id }}">
+<label>PT rights <select name="restrict" required><option value="">Choose</option><option value="yes">Restrict</option><option value="no">Retain</option></select></label>
+<label>Management reason <textarea name="reason" required maxlength="4000"></textarea></label><button class="btn btn-primary">Record decision</button></form>
+{% else %}<p>{{ r.decision }} · {{ r.reason }} · {{ r.decided_at }}</p>{% endif %}</div></div>
+{% else %}<p>No PT-rights reviews.</p>{% endfor %}
+<h2>Declines and timeouts</h2>
+{% for o in offers %}
+<div class="card"><div class="card-body"><h3>{{ o.full_name }} — {{ o.status|replace('_',' ') }}</h3><p>Offer {{ o.id }} · Member {{ o.member_id }} · {{ o.reason }}</p>
+{% if o.reviewed_at %}<p>Counts as skip: {{ 'Yes' if o.counts_as_skip else 'No' }} · {{ o.review_reason }}</p>
+{% else %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="classify"><input type="hidden" name="target_id" value="{{ o.id }}">
+<label>Count as skip? <select name="counts" required><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+<label>Management reason <textarea name="reason" required maxlength="4000"></textarea></label><button class="btn btn-primary">Record classification</button></form>{% endif %}</div></div>
+{% else %}<p>No declined or timed-out offers.</p>{% endfor %}
+{% endblock %}

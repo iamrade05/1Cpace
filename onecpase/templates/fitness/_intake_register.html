@@ -1,3 +1,14 @@
-<div class="card" style="margin:18px 0;"><div class="card-header"><h2>Client onboarding follow-up</h2></div><div class="table-wrap"><table class="table"><thead><tr><th>Client</th><th>Interest / welcome</th><th>Preferred times</th><th>Instructor</th><th>Assisted / signed sessions</th><th></th></tr></thead><tbody>
-{% for member in members %}{% set f=intake_map.get(member.id,{}) %}<tr><td>{{ member.first_name }} {{ member.last_name }}</td><td>{{ f.get('interest','awaiting_reply')|replace('_',' ') }}<br>{{ f.get('welcome_status','pending')|replace('_',' ') }}</td><td>{{ f.get('preferred_times') or 'Awaiting client reply' }}</td><td>{{ f.get('instructor_name') or 'Not allocated' }}</td><td>{{ f.get('assisted_sessions',0) }} assisted / {{ f.get('signed_sessions',0) }} signed</td><td><a class="btn btn-sm" href="{{ url_for('fitness_journey.member_intake',mid=member.id) }}">Open intake</a></td></tr>{% else %}<tr><td colspan="6">No new clients in this joining period.</td></tr>{% endfor %}
-</tbody></table></div></div>
+<section class="card" aria-labelledby="fitness-intake-title">
+  <div class="card-header"><div><h2 id="fitness-intake-title">New member intake</h2><p>Joining details, onboarding progress and instructor follow-up in one register.</p></div><span class="badge badge-gray">{{ members|length }} members</span></div>
+  <div class="table-wrap fit-table"><table class="table" id="fitness-intake-register">
+    <thead><tr><th>Member</th><th>Joined</th><th>Package</th><th>Interest / welcome</th><th>Preferred times</th><th>Instructor</th><th>Assisted / signed sessions</th><th>Intake</th></tr></thead>
+    <tbody>{% for member in members %}{% set f=(intake_map|default({})).get(member.id,{}) %}<tr>
+      <td><a class="text-semibold" href="{{ url_for('fitness_journey.member_intake',mid=member.id) }}">{{ member.first_name }} {{ member.last_name }}</a></td>
+      <td class="mono-cell">{{ member.join_date or '—' }}</td><td>{{ member.package or '—' }}</td>
+      <td><span class="badge badge-gray">{{ f.get('interest','awaiting_reply')|replace('_',' ') }}</span><br><small class="muted">{{ f.get('welcome_status','pending')|replace('_',' ') }}</small></td>
+      <td>{{ f.get('preferred_times') or 'Awaiting client reply' }}</td><td>{{ f.get('instructor_name') or 'Not allocated' }}</td>
+      <td>{{ f.get('assisted_sessions',0) }} assisted / {{ f.get('signed_sessions',0) }} signed</td>
+      <td><a class="btn btn-sm" href="{{ url_for('fitness_journey.member_intake',mid=member.id) }}">Open intake</a></td>
+    </tr>{% else %}<tr><td colspan="8">No members have a recorded joining date in this period.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>

@@ -1,0 +1,49 @@
+{% extends 'public.html' %}
+{% block title %}{{ tenant.name }} — Member request{% endblock %}
+{% block content %}
+{% set is_elev8 = tenant.slug|default('') == 'elev8' %}
+{% set request_logo = tenant.logo_filename or ('elev8.svg' if is_elev8 else '') %}
+<section class="card member-request{% if is_elev8 %} member-request--elev8{% endif %}">
+<header class="page-header member-request-header"><div>
+{% if request_logo %}<img src="{{ url_for('static',filename='tenant_logos/' + request_logo) }}" alt="{{ tenant.name }} logo">{% endif %}
+<h1>{{ tenant.name }}</h1>
+<p>Member request</p></div></header>
+<div class="card-body">
+{% if expired %}<h2>This link is unavailable</h2><p>Please contact reception for a replacement link.</p>
+{% elif submitted %}<h2>Your signed request has been received</h2><p>Your documents have been retained for staff review.</p><p class="callout callout-info">{{ notice }}</p>
+{% else %}<h2>{{ kind|replace('_',' ')|title }} request</h2>
+<p>{{ member.first_name }} {{ member.last_name }}<br>{{ member.contact or '' }}<br>{{ member.email or '' }}</p>
+<form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% if information_request %}<p class="callout callout-info">Information needed: {{ information_request }}</p>{% endif %}
+<label>Are these details correct?<select name="details_correct" id="correct" required><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+<label id="correctionLabel" hidden>Correct details<input name="correction" maxlength="500" id="correction"></label>
+{% if kind=='refund' %}
+<label>Refund reason<select name="reason" required><option value="incorrect_debit">Incorrect debit</option><option value="double_debit">Double debit</option><option value="after_contract_end">Debit after contract ended</option><option value="after_cancellation">Debit after cancellation</option><option value="reception_and_debit">Paid at Reception and debit also ran</option><option value="other">Other refund reason</option></select></label>
+<label>How many times/months?<select name="occurrences"><option value="1">Once / one month</option><option value="2">Twice / two months</option></select></label>
+<p>Any approved refund will be paid back to the same bank account from which the original payment or debit was made.</p>
+{% elif kind=='freeze' %}
+<label>Reason<select name="reason"><option value="medical">Medical</option><option value="holiday">Holiday / travel</option><option value="financial">Financial</option><option value="exams">Exams — timetable showing your details</option><option value="employment">Employment — employer-issued letter</option><option value="study_travel">Study travel — organisation-issued letter</option><option value="other">Other — supporting explanation</option></select></label>
+<label>Requested start<input type="date" name="start_date" required></label><label>Requested end<input type="date" name="end_date" required></label>
+<p>Apply at least 14 days before your payment due date. Late applications take effect in the following month's payment cycle, subject to approval.</p>
+{% elif kind=='complaint' %}<label>What happened?<textarea name="description" maxlength="4000" required></textarea></label>
+{% elif kind=='banking' %}
+{% for key,label in [('account_name','Account holder'),('bank','Bank'),('account_type','Account type'),('account_number','Account number'),('branch_code','Branch code')] %}<label>{{ label }}<input name="{{ key }}" maxlength="100" required></label>{% endfor %}
+{% elif kind=='cancellation' %}
+{% if quote %}<p>Saved quote v{{ quote.version }}: total before discount R{{ '%.2f'|format(quote.gross_total) }}. Cash total R{{ '%.2f'|format(quote.cash_total) }}. Six-instalment total R{{ '%.2f'|format(quote.instalment_total) }}.</p><input type="hidden" name="quote_id" value="{{ quote.id }}">{% endif %}
+<label>Your settlement option<select name="payment_option" required><option value="">Choose your option</option><option value="cash">Cash settlement</option><option value="instalments">Six monthly instalments</option></select></label>
+<p>Payments made after this signed request is returned will be checked against your settlement, together with non-attendance. Reception verifies settlement before the reception manager cancels the debit order.</p>
+{% elif kind=='proof_of_payment' %}<label>Payment reference, if available<input name="payment_reference" maxlength="200"></label>{% endif %}
+<label>{% if kind=='refund' %}Bank statement showing the payment{% elif kind=='freeze' %}Supporting organisation-issued evidence{% elif kind=='proof_of_payment' %}Proof of payment{% else %}Supporting documents (optional){% endif %}<input type="file" name="evidence" accept="application/pdf,image/png,image/jpeg" multiple {% if kind in ['refund','freeze','proof_of_payment'] %}required{% endif %}></label><p>PDF, PNG or JPEG; up to five files, 5 MB each.</p>
+<p class="callout callout-info">{{ notice }}</p><label><input type="checkbox" name="acknowledge" value="yes" required> I acknowledge this notice and confirm this request.</label>
+<label for="signatureCanvas">Your signature</label><canvas id="signatureCanvas" width="600" height="180"></canvas><button class="btn btn-secondary" type="button" id="clearSignature">Clear / redraw signature</button><input type="hidden" name="signature" id="signature" value="[]">
+<button class="btn btn-primary" type="submit">Submit signed request</button></form>
+<script>
+const canvas=document.getElementById('signatureCanvas'),ctx=canvas.getContext('2d');let lines=[],line=null;
+function point(e){const r=canvas.getBoundingClientRect();return [Math.max(0,Math.min(600,(e.clientX-r.left)*600/r.width)),Math.max(0,Math.min(180,(e.clientY-r.top)*180/r.height))]}
+canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);line=[point(e)];lines.push(line);ctx.beginPath();ctx.moveTo(...line[0])});
+canvas.addEventListener('pointermove',e=>{if(!line)return;const p=point(e);if(lines.flat().length>=3000)return;line.push(p);ctx.lineTo(...p);ctx.stroke()});
+function finish(){line=null;document.getElementById('signature').value=JSON.stringify(lines)}canvas.addEventListener('pointerup',finish);canvas.addEventListener('pointercancel',finish);
+document.getElementById('clearSignature').onclick=()=>{lines=[];line=null;ctx.clearRect(0,0,600,180);finish()};
+document.getElementById('correct').onchange=e=>{const no=e.target.value==='no';document.getElementById('correctionLabel').hidden=!no;document.getElementById('correction').required=no};
+</script>{% endif %}</div></section>
+{% endblock %}

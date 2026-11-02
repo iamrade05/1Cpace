@@ -3,13 +3,9 @@
 {% block page_title %}Contract Templates{% endblock %}
 
 {% block content %}
-<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
-  <div>
-    <h1 style="font-size:1.25rem;margin-bottom:5px;">Contract templates</h1>
-    <p style="color:var(--t2);font-size:.84rem;">Create and edit the legal wording used when member contracts are generated.</p>
-  </div>
-  <a href="{{ url_for('admin.contract_template_add') }}" class="btn btn-primary">+ Create Contract Template</a>
-</div>
+{% from '_ui.html' import page_header %}
+{% set header_actions %}<a href="{{ url_for('admin.contract_template_add') }}" class="btn btn-primary">+ Create Contract Template</a>{% endset %}
+{{ page_header('Contract templates', subtitle='Create and edit the legal wording used when member contracts are generated.', actions=header_actions) }}
 
 <div class="table-card">
   <div class="table-wrap"><table class="data-table table">

@@ -1089,6 +1089,9 @@ def member_download_doc(mid: int, doc_id: int):
     ).fetchone()
     if doc is None:
         abort(404)
+    if doc['stored_name'].startswith('query-form:'):
+        from .query_forms import protected_document
+        return protected_document(db,mid,doc_id)
     path = Path(current_app.config["UPLOAD_FOLDER"]) / "members" / str(mid) / doc["stored_name"]
     if not path.exists():
         abort(404)
@@ -1159,6 +1162,8 @@ def member_delete_doc(mid: int, doc_id: int):
         "SELECT * FROM member_documents WHERE id = ? AND member_id = ?", (doc_id, mid)
     ).fetchone()
     if doc:
+        if doc['stored_name'].startswith('query-form:'):
+            abort(409, description='Signed query evidence is retained with its original submission.')
         path = Path(current_app.config["UPLOAD_FOLDER"]) / "members" / str(mid) / doc["stored_name"]
         if path.exists():
             os.remove(str(path))

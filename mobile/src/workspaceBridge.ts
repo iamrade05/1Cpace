@@ -63,6 +63,32 @@ export const workspaceBridge = String.raw`
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'printError', url: location.href }));
     } finally { window.dispatchEvent(new Event('afterprint')); }
   };
+  window.__onecpaseDownload = async function (href) {
+    var page = location.href;
+    try {
+      var url = new URL(href, document.baseURI);
+      if (url.origin !== location.origin) throw new Error('cross-origin');
+      var response = await fetch(url.href, { credentials: 'same-origin' });
+      if (!response.ok) throw new Error('status');
+      var blob = await response.blob();
+      if (blob.size > 20000000) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'downloadTooLarge', url: url.href, page: page }));
+        return;
+      }
+      var disposition = response.headers.get('Content-Disposition') || '';
+      var match = /filename\*=UTF-8''([^;]+)/i.exec(disposition) || /filename="?([^";]+)"?/i.exec(disposition);
+      var name = match ? decodeURIComponent(match[1]) : decodeURIComponent(url.pathname.split('/').pop() || '');
+      var data = await new Promise(function (resolve, reject) {
+        var reader = new FileReader(); reader.onload = function () { resolve(String(reader.result).split(',')[1] || ''); };
+        reader.onerror = reject; reader.readAsDataURL(blob);
+      });
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'download', url: url.href, page: page, name: name, mime: blob.type.split(';')[0], data: data
+      }));
+    } catch (_) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'downloadError', url: href, page: page }));
+    }
+  };
   true;
 })();
 true;

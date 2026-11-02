@@ -13,13 +13,16 @@ Discounts above the staff ceiling, accounts at manager discretion and member
 cancellations requested by staff go through Pending Approval: the agent
 proposes, a manager approves or rejects, and only then does the query move on.
 """
+import calendar
 import json
 import sqlite3
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 
 from flask import (Blueprint, render_template, request, session,
-                   redirect, url_for, flash, jsonify, has_request_context)
+                   redirect, url_for, flash, jsonify, has_request_context, abort)
 from datetime import datetime, date, timedelta
 
+from .query_funnel import local_today
 from .database import get_db, audit_log, member_activity
 from .collections_engine import (
     arrears_discount_policy, discount_needs_manager, STAFF_DISCOUNT_CEILING,
@@ -49,18 +52,42 @@ MANAGER_ROLES = {'admin', 'manager'}
 # Default follow-up window for a new query (working days).
 FOLLOW_UP_WORKING_DAYS = 5
 
-# Cancellation settlement negotiation policy — a member owing money on top of
-# the cancellation fee gets a different settlement path depending how they're
-# paying, but only once the combined total clears this threshold.
-CANCELLATION_SETTLEMENT_THRESHOLD = 2000.0
-CANCELLATION_LUMPSUM_DISCOUNT_PCT = 50
-CANCELLATION_INSTALLMENT_FLAT_AMOUNT = 1500.0
+# Cancellation settlement policy (agreed 24 October 2026). The discount base
+# is the cancellation fee plus the outstanding balance, before discount; the
+# band it falls in sets the discount for each payment option. Exactly R2,000
+# and R3,000 fall in the middle band.
+CANCELLATION_QUOTE_POLICY_VERSION = 'cancellation-bands-2026-10-24'
+CANCELLATION_INSTALMENT_COUNT = 6
+CANCELLATION_BAND_LOWER = Decimal('2000.00')
+CANCELLATION_BAND_UPPER = Decimal('3000.00')
+CANCELLATION_DISCOUNT_BANDS = {
+    # band: (cash %, six-instalment %)
+    'below_2000':     (Decimal('0'), Decimal('0')),
+    '2000_to_3000':   (Decimal('20'), Decimal('10')),
+    'above_3000':     (Decimal('35'), Decimal('20')),
+}
+CANCELLATION_BAND_LABELS = {
+    'below_2000':   'Below R2,000',
+    '2000_to_3000': 'R2,000 – R3,000',
+    'above_3000':   'Above R3,000',
+}
 CANCELLATION_CONTRACT_MONTHS = (12, 24, 36)
 CANCELLATION_PAYMENT_METHODS = [
-    ('lumpsum', 'Lump Sum'),
-    ('existing_debit', 'Existing Debit Order'),
-    ('new_debit', 'New Debit Order'),
+    ('lumpsum', 'Cash — full payment upfront'),
+    ('existing_debit', 'Six instalments — existing debit order'),
+    ('new_debit', 'Six instalments — new debit order'),
 ]
+# Which quote option each payment method takes up.
+CANCELLATION_METHOD_OPTION = {
+    'lumpsum': 'cash',
+    'existing_debit': 'instalments',
+    'new_debit': 'instalments',
+}
+_CENT = Decimal('0.01')
+
+
+def _cents(value) -> Decimal:
+    return Decimal(str(value or 0)).quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
 def calculate_cancellation_fee(contract_months: int, months_completed: int, monthly_fee: float) -> tuple[float, int]:
@@ -85,51 +112,64 @@ def calculate_cancellation_fee(contract_months: int, months_completed: int, mont
         penalty = 2 if months_completed >= 6 else 4
     else:
         penalty = 0
-    return round(penalty * monthly_fee, 2), penalty
+    return float(_cents(penalty * _cents(monthly_fee))), penalty
 
 
-def calculate_cancellation_settlement(
-    cancellation_fee: float,
-    outstanding_balance: float,
-    payment_method: str,
-    manual_discount_pct: float = 0.0,
-) -> dict:
-    """Cancellation settlement, combining the cancellation fee with any
-    outstanding balance owed. The auto-rules below only ever apply to a
-    member who actually has an outstanding balance — the plain contract
-    penalty (calculate_cancellation_fee) always stays in effect on its own
-    for a member with no balance owing, no matter how large the fee itself is.
+def cancellation_discount_band(discount_base) -> str:
+    base = _cents(discount_base)
+    if base < CANCELLATION_BAND_LOWER:
+        return 'below_2000'
+    if base <= CANCELLATION_BAND_UPPER:
+        return '2000_to_3000'
+    return 'above_3000'
 
-    When the member DOES have an outstanding balance and (fee + balance)
-    exceeds CANCELLATION_SETTLEMENT_THRESHOLD:
-      - lump sum payers automatically get CANCELLATION_LUMPSUM_DISCOUNT_PCT%
-        off the combined total (owed + fee) — overrides any manually entered
-        discount.
-      - installment (existing/new debit) payers pay a flat
-        CANCELLATION_INSTALLMENT_FLAT_AMOUNT instead of the combined total.
-    Otherwise (no balance owing, or combined total at/below the threshold):
-    only the cancellation fee itself is reduced by the manually entered
-    discount percentage; the outstanding balance (if any) is unaffected and
-    still owed in full."""
-    combined_total = round(cancellation_fee + outstanding_balance, 2)
-    has_outstanding_balance = outstanding_balance > 0.009
-    if has_outstanding_balance and combined_total > CANCELLATION_SETTLEMENT_THRESHOLD and payment_method == "lumpsum":
-        discount_pct = CANCELLATION_LUMPSUM_DISCOUNT_PCT
-        settlement_amount = round(combined_total * (1 - discount_pct / 100), 2)
-        rule = "discount_50"
-    elif has_outstanding_balance and combined_total > CANCELLATION_SETTLEMENT_THRESHOLD and payment_method in ("existing_debit", "new_debit"):
-        discount_pct = 0.0
-        settlement_amount = CANCELLATION_INSTALLMENT_FLAT_AMOUNT
-        rule = "flat_1500"
-    else:
-        discount_pct = max(0.0, min(100.0, manual_discount_pct))
-        settlement_amount = round(cancellation_fee * (1 - discount_pct / 100), 2)
-        rule = "none"
+
+def _quote_option(gross: Decimal, pct: Decimal, payments: int) -> dict:
+    # Round the discount to cents first, then subtract it from the gross total.
+    discount = (gross * pct / 100).quantize(_CENT, rounding=ROUND_HALF_UP)
+    net = gross - discount
+    # Equal payments rounded down to the cent; the last payment carries any
+    # remainder so the schedule always sums exactly to the net total.
+    regular = (net / payments).quantize(_CENT, rounding=ROUND_DOWN)
+    schedule = [regular] * (payments - 1) + [net - regular * (payments - 1)]
     return {
-        "combined_total": combined_total,
-        "discount_pct": discount_pct,
-        "settlement_amount": settlement_amount,
-        "rule": rule,
+        "discount_pct": float(pct),
+        "discount_amount": float(discount),
+        "net_total": float(net),
+        "payments": [float(amount) for amount in schedule],
+        "final_adjustment": float(schedule[-1] - regular),
+    }
+
+
+def cancellation_payment_dates(first_payment: date, count: int = CANCELLATION_INSTALMENT_COUNT) -> list[date]:
+    """Monthly payment dates from the agreed first payment, on the same day of
+    the month (the last day in a shorter month)."""
+    dates = []
+    for offset in range(count):
+        month_index = first_payment.month - 1 + offset
+        year, month = first_payment.year + month_index // 12, month_index % 12 + 1
+        dates.append(date(year, month, min(first_payment.day, calendar.monthrange(year, month)[1])))
+    return dates
+
+
+def calculate_cancellation_quote(cancellation_fee, outstanding_balance) -> dict:
+    """Both settlement options for a cancellation: cash (full payment upfront)
+    and six monthly instalments. The outstanding balance is added once — it
+    already includes any arrears — and a credit balance is not netted off."""
+    fee = _cents(cancellation_fee)
+    outstanding = max(_cents(outstanding_balance), Decimal('0.00'))
+    gross = fee + outstanding
+    band = cancellation_discount_band(gross)
+    cash_pct, instalment_pct = CANCELLATION_DISCOUNT_BANDS[band]
+    return {
+        "policy_version": CANCELLATION_QUOTE_POLICY_VERSION,
+        "cancellation_fee": float(fee),
+        "outstanding_balance": float(outstanding),
+        "gross_total": float(gross),
+        "band": band,
+        "band_label": CANCELLATION_BAND_LABELS[band],
+        "cash": _quote_option(gross, cash_pct, 1),
+        "instalments": _quote_option(gross, instalment_pct, CANCELLATION_INSTALMENT_COUNT),
     }
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -143,6 +183,7 @@ QUERY_CATEGORIES = [
     ('cancellation',      'Cancellation'),
     ('freeze',            'Freeze'),
     ('refund',            'Refund'),
+    ('banking',           'Banking / DebiCheck request'),
     ('sales',             'Sales'),
     ('facility',          'Facility'),
     ('classes',           'Classes'),
@@ -157,6 +198,7 @@ QUERY_CATEGORIES = [
 # a promise to pay, a settlement discount, a payment plan — is a Collections /
 # PTP case, and the arrangement itself is created in the PTP module.
 QUERY_TYPES = {
+    'banking':           ['First-time banking details', 'Banking details change'],
     'membership':        ['Membership status', 'Access status', 'Contract term / end date',
                           'Membership package', 'Renewal', 'Upgrade/downgrade', 'Transfer',
                           'Dependent account', 'Guardian/payer update', 'Member details update',
@@ -335,7 +377,7 @@ def _is_manager():
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _next_reference(db):
-    today = date.today().strftime('%Y%m%d')
+    today = local_today().strftime('%Y%m%d')
     prefix = f'QRY-{today}-'
     last = db.execute(
         "SELECT reference FROM queries WHERE reference LIKE ? ORDER BY id DESC LIMIT 1",
@@ -417,7 +459,7 @@ def _contract_status(join_date, contract_duration):
     end_month_index = start.month - 1 + months
     end = date(start.year + end_month_index // 12, end_month_index % 12 + 1,
                min(start.day, 28))
-    today = date.today()
+    today = local_today()
     remaining = (end.year - today.year) * 12 + (end.month - today.month)
     if today.day > end.day:
         remaining -= 1
@@ -644,6 +686,7 @@ def _account_summary(db, member_id):
         "member": member,
         "package": member.get("package") or "",
         "contract_duration": member.get("contract_duration") or "",
+        "contract_start_date": str(member.get("join_date") or "")[:10] or None,
         "contract_months": contract["contract_months"] if contract else None,
         "contract_end_date": contract["contract_end_date"] if contract else None,
         "contract_remaining_months": contract["remaining_months"] if contract else None,
@@ -726,7 +769,7 @@ def followup_due_count(db):
     """
     if not session.get("user_id"):
         return 0, "mine"
-    today_str = date.today().isoformat()
+    today_str = local_today().isoformat()
     is_manager = _is_manager()
     sql = ("SELECT COUNT(*) FROM queries "
            "WHERE follow_up_date IS NOT NULL AND follow_up_date <= ? "
@@ -795,7 +838,7 @@ def sync_from_ptp(db, ptp_id, ptp_status, approval=None):
         params = [new_status]
         if ptp_status == 'broken' and approval is None:
             sets += ", priority='high', follow_up_date=?"
-            params.append(date.today().isoformat())
+            params.append(local_today().isoformat())
         db.execute(f"UPDATE queries SET {sets} WHERE id=?", (*params, row["id"]))
         db.execute(
             """INSERT INTO query_notes (query_id, created_by, note, action_type)
@@ -836,11 +879,31 @@ def member_summary(member_id):
     return jsonify(payload)
 
 
+@queries_bp.route('/cancellation-quote-preview')
+@permission_required(QUERY_PERMISSION)
+def cancellation_quote_preview():
+    """The server's cancellation quote for the Add Query form, so the preview
+    and the saved quote always come from the same calculation."""
+    method = _cancellation_payment_method(request.args)
+    inputs, error = _cancellation_inputs(request.args)
+    if not error:
+        first_payment, error = _first_payment_date(request.args, method)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    summary = _account_summary(get_db(), request.args.get('member_id', type=int) or 0)
+    if not summary:
+        return jsonify({"ok": False, "error": "Member not found"}), 404
+    quote = _build_cancellation_quote(*inputs, summary["total_outstanding"], method, first_payment)
+    return jsonify({"ok": True, **quote})
+
+
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 @queries_bp.route('/')
 @permission_required(QUERY_PERMISSION)
 def index():
     db = get_db()
+    from .query_funnel import refresh
+    refresh(db);db.commit()
     q         = request.args.get('q', '').strip()
     cat       = request.args.get('cat', '')
     status_f  = request.args.get('status', '')
@@ -881,7 +944,7 @@ def index():
         sql += " AND qr.priority = ?"
         params.append(priority_f)
     if approval_f == 'pending':
-        sql += " AND qr.approval_status = 'pending'"
+        sql += " AND (qr.approval_status = 'pending' OR EXISTS (SELECT 1 FROM query_workflows w WHERE w.query_id=qr.id AND w.stage IN ('pending_approval','management_review')))"
     if assigned_f == 'me':
         sql += " AND qr.assigned_to = ?"
         params.append(session.get('user_id'))
@@ -891,7 +954,7 @@ def index():
     if followup_f == 'due':
         sql += (" AND qr.follow_up_date IS NOT NULL AND qr.follow_up_date <= ?"
                 " AND qr.status NOT IN ('resolved','closed')")
-        params.append(date.today().isoformat())
+        params.append(local_today().isoformat())
         # Non-managers only see their own follow-ups (matches the badge scope).
         if not _is_manager():
             sql += " AND qr.assigned_to = ?"
@@ -910,10 +973,10 @@ def index():
         if mid and mid not in member_summaries and r['status'] not in CLOSED_STATUSES:
             member_summaries[mid] = _account_summary(db, mid)
 
-    today_str = date.today().isoformat()
+    today_str = local_today().isoformat()
     kpi_open      = db.execute("SELECT COUNT(*) FROM queries WHERE status NOT IN ('resolved','closed')").fetchone()[0]
     kpi_overdue   = db.execute(
-        "SELECT COUNT(*) FROM queries WHERE due_date < ? AND status NOT IN ('resolved','closed')",
+        "SELECT COUNT(*) FROM queries WHERE due_date <= ? AND status NOT IN ('resolved','closed')",
         (today_str,)).fetchone()[0]
     kpi_escalated = db.execute("SELECT COUNT(*) FROM queries WHERE status='escalated'").fetchone()[0]
     kpi_urgent    = db.execute(
@@ -923,7 +986,7 @@ def index():
         "SELECT COUNT(*) FROM queries WHERE status IN ('resolved','closed') AND DATE(updated_at)=?",
         (today_str,)).fetchone()[0]
     kpi_pending_approval = db.execute(
-        "SELECT COUNT(*) FROM queries WHERE approval_status='pending'"
+        "SELECT COUNT(*) FROM queries q WHERE q.status NOT IN ('closed','resolved') AND (q.approval_status='pending' OR EXISTS (SELECT 1 FROM query_workflows w WHERE w.query_id=q.id AND w.stage IN ('pending_approval','management_review')))"
     ).fetchone()[0]
 
     users = db.execute("SELECT id, full_name FROM users WHERE active=1 ORDER BY full_name").fetchall()
@@ -968,7 +1031,7 @@ def add():
         member=member, categories=QUERY_CATEGORIES,
         query_types=QUERY_TYPES, query_type_hints=QUERY_TYPE_HINTS,
         priorities=PRIORITIES, departments=DEPARTMENTS,
-        users=users, today=date.today().isoformat(),
+        users=users, today=local_today().isoformat(),
         cancellation_payment_methods=CANCELLATION_PAYMENT_METHODS,
         payment_workflow_categories=sorted(PAYMENT_WORKFLOW_CATEGORIES),
         staff_discount_ceiling=STAFF_DISCOUNT_CEILING,
@@ -989,7 +1052,7 @@ def _create_query(db, form):
     follow_up   = form.get('follow_up_date', '').strip() or None
     # Every new query gets a 5-working-day follow-up window by default.
     if not follow_up:
-        follow_up = _add_working_days(date.today(), FOLLOW_UP_WORKING_DAYS).isoformat()
+        follow_up = _add_working_days(local_today(), FOLLOW_UP_WORKING_DAYS).isoformat()
     assigned_to = form.get('assigned_to', '').strip() or None
     department  = form.get('department', '').strip() or None
     mem_id      = form.get('member_id', '').strip() or None
@@ -1008,34 +1071,17 @@ def _create_query(db, form):
         return None
 
     is_cancellation = category == 'cancellation'
-    cancel_contract_months = 0
-    cancel_months_completed = 0
-    cancel_monthly_fee = 0.0
-    cancel_payment_method = form.get('cancellation_payment_method', '').strip()
-    cancel_discount_pct = 0.0
-    cancel_member_requested = form.get('cancel_member') == '1'
+    cancel_inputs = None
+    cancel_payment_method = _cancellation_payment_method(form)
     if is_cancellation:
-        cancel_contract_months = _as_int(form.get('cancellation_contract_months'))
-        cancel_monthly_fee = _money(form.get('cancellation_monthly_fee'))
-        cancel_discount_pct = _money(form.get('cancellation_discount_pct'))
-        if cancel_payment_method and cancel_payment_method not in dict(CANCELLATION_PAYMENT_METHODS):
-            cancel_payment_method = ''
         if not mem_id:
             flash('Select the member before logging a cancellation.', 'error')
             return None
-        if cancel_contract_months not in CANCELLATION_CONTRACT_MONTHS:
-            flash('Select a valid cancellation contract type (12, 24, or 36 months).', 'error')
-            return None
-        if cancel_monthly_fee <= 0:
-            flash('Enter the monthly membership fee before saving the cancellation.', 'error')
-            return None
-        if str(form.get('cancellation_months_completed', '')).strip() == '':
-            # A blank used to count as 0 months — the maximum penalty.
-            flash('Enter how many months of the contract the member has completed.', 'error')
-            return None
-        cancel_months_completed = _as_int(form.get('cancellation_months_completed'))
-        if cancel_months_completed < 0 or cancel_months_completed > cancel_contract_months:
-            flash('Months completed must be between 0 and the contract length.', 'error')
+        cancel_inputs, error = _cancellation_inputs(form)
+        if not error:
+            cancel_first_payment, error = _first_payment_date(form, cancel_payment_method)
+        if error:
+            flash(error, 'error')
             return None
 
     # ── Decision support: snapshot + routing recommendations ────────────────
@@ -1088,35 +1134,20 @@ def _create_query(db, form):
                 approval_needed.append(
                     f'Proposed discount {proposed_pct:g}% is above the {STAFF_DISCOUNT_CEILING}% staff limit')
 
-    cancel_fee = cancel_penalty_months = 0
-    cancel_outstanding = cancel_settlement_amount = 0.0
-    cancel_settlement_rule = None
+    cancel_quote = None
     if is_cancellation:
-        cancel_fee, cancel_penalty_months = calculate_cancellation_fee(
-            cancel_contract_months, cancel_months_completed, cancel_monthly_fee,
+        # The published bands need no discretionary discount approval.
+        cancel_quote = _build_cancellation_quote(
+            *cancel_inputs, snapshot["total_outstanding"], cancel_payment_method,
+            cancel_first_payment,
         )
-        cancel_outstanding = snapshot["total_outstanding"] if snapshot else 0.0
-        settlement = calculate_cancellation_settlement(
-            cancel_fee, cancel_outstanding, cancel_payment_method, cancel_discount_pct,
-        )
-        cancel_discount_pct = settlement["discount_pct"]
-        cancel_settlement_amount = settlement["settlement_amount"]
-        cancel_settlement_rule = settlement["rule"]
-        if settlement["rule"] == "none" and cancel_discount_pct > STAFF_DISCOUNT_CEILING:
-            approval_needed.append(
-                f'Manual cancellation discount {cancel_discount_pct:g}% is above the '
-                f'{STAFF_DISCOUNT_CEILING}% staff limit')
-        if cancel_member_requested and not _is_manager():
-            approval_needed.append('Cancel the member account')
+        # The account is never cancelled at intake: a cash settlement must be
+        # paid against this saved quote first (see _cash_settlement).
 
-    # A manager logging the query is the approver; nobody else approves their own.
-    cancel_member_now = bool(is_cancellation and cancel_member_requested and _is_manager()
-                             and not approval_needed)
     approval_status = 'pending' if approval_needed else 'not_required'
     if approval_needed and _is_manager():
         # Managers still record why; the decision is theirs and is logged as such.
         approval_status = 'approved'
-        cancel_member_now = bool(is_cancellation and cancel_member_requested)
     snap_mgr = 1 if approval_needed else 0
     status = 'pending_approval' if approval_status == 'pending' else 'open'
 
@@ -1143,17 +1174,9 @@ def _create_query(db, form):
         approval_reason='; '.join(approval_needed) + (f' — {approval_reason}' if approval_reason and approval_needed else '') or None,
         approval_requested_by=session.get('user_id') if approval_needed else None,
         manager_approved_by=session.get('user_id') if approval_status == 'approved' else None,
-        cancellation_contract_months=cancel_contract_months if is_cancellation else None,
-        cancellation_months_completed=cancel_months_completed if is_cancellation else None,
-        cancellation_monthly_fee=cancel_monthly_fee if is_cancellation else 0,
-        cancellation_fee=cancel_fee, cancellation_penalty_months=cancel_penalty_months,
-        cancellation_payment_method=(cancel_payment_method or None) if is_cancellation else None,
-        cancellation_outstanding=cancel_outstanding,
-        cancellation_settlement_amount=cancel_settlement_amount,
-        cancellation_settlement_rule=cancel_settlement_rule,
-        cancellation_discount_pct=cancel_discount_pct if is_cancellation else 0,
-        cancel_member_requested=1 if (is_cancellation and cancel_member_requested) else 0,
-        member_cancelled=1 if cancel_member_now else 0,
+        **_cancellation_query_fields(cancel_quote),
+        cancel_member_requested=0,
+        member_cancelled=0,
     )
     cols = list(values)
     stamp_cols = []
@@ -1184,19 +1207,18 @@ def _create_query(db, form):
 
     _log_note(db, qid, f'Query logged under {_cat_label(category)}'
                        + (f' — {query_type}' if query_type else '') + '.', 'created')
+    if cancel_quote:
+        _record_cancellation_quote(db, qid, cancel_quote)
+        _log_note(db, qid, 'Cancellation quote v1 saved: ' + _quote_note(cancel_quote), 'quote')
     if approval_status == 'pending':
         _log_note(db, qid, 'Manager approval requested: ' + values['approval_reason'], 'approval')
     elif approval_status == 'approved':
         _log_note(db, qid, 'Logged and approved by manager: ' + values['approval_reason'], 'approval')
-    if cancel_member_now:
-        _cancel_member(db, qid, int(mem_id))
     db.commit()
     _notify_query_assignment(db, qid)
 
     if approval_status == 'pending':
         flash(f'Query {ref} logged and sent for manager approval.', 'success')
-    elif cancel_member_now:
-        flash(f'Query {ref} logged. Member account cancelled.', 'success')
     else:
         flash(f'Query {ref} created.', 'success')
     if mem_id:
@@ -1204,10 +1226,167 @@ def _create_query(db, form):
     return redirect(url_for('queries.detail', qid=qid))
 
 
+# ── Cancellation quotes ───────────────────────────────────────────────────────
+def _cancellation_payment_method(form):
+    method = (form.get('cancellation_payment_method') or '').strip()
+    return method if method in dict(CANCELLATION_PAYMENT_METHODS) else None
+
+
+def _cancellation_inputs(form):
+    """((contract_months, months_completed, monthly_fee), None) from a
+    cancellation form, or (None, the reason it cannot be quoted)."""
+    contract_months = _as_int(form.get('cancellation_contract_months'))
+    if contract_months not in CANCELLATION_CONTRACT_MONTHS:
+        return None, 'Select a valid cancellation contract type (12, 24, or 36 months).'
+    monthly_fee = _money(form.get('cancellation_monthly_fee'))
+    if monthly_fee <= 0:
+        return None, 'Enter the monthly membership fee before saving the cancellation.'
+    if str(form.get('cancellation_months_completed', '')).strip() == '':
+        # A blank used to count as 0 months — the maximum penalty.
+        return None, 'Enter how many months of the contract the member has completed.'
+    months_completed = _as_int(form.get('cancellation_months_completed'))
+    if months_completed < 0 or months_completed > contract_months:
+        return None, 'Months completed must be between 0 and the contract length.'
+    return (contract_months, months_completed, monthly_fee), None
+
+
+def _first_payment_date(form, payment_method):
+    """(the agreed first payment date or None, error). The member agrees the
+    date with the consultant; six instalments cannot be quoted without it."""
+    raw = (form.get('cancellation_first_payment_date') or '').strip()
+    if not raw:
+        if CANCELLATION_METHOD_OPTION.get(payment_method) == 'instalments':
+            return None, 'Enter the first payment date the member agreed to for the six instalments.'
+        return None, None
+    try:
+        agreed = datetime.strptime(raw, '%Y-%m-%d').date()
+    except ValueError:
+        return None, 'The first payment date is not a valid date.'
+    if agreed < local_today():
+        return None, 'The first payment date cannot be in the past.'
+    return agreed, None
+
+
+def _build_cancellation_quote(contract_months, months_completed, monthly_fee,
+                              outstanding, payment_method, first_payment=None):
+    fee, penalty_months = calculate_cancellation_fee(contract_months, months_completed, monthly_fee)
+    quote = calculate_cancellation_quote(fee, outstanding)
+    quote.update(
+        contract_months=contract_months,
+        months_completed=months_completed,
+        monthly_fee=float(_cents(monthly_fee)),
+        penalty_months=penalty_months,
+        payment_method=payment_method,
+        selected_option=CANCELLATION_METHOD_OPTION.get(payment_method),
+        first_payment_date=first_payment.isoformat() if first_payment else None,
+        instalment_dates=([d.isoformat() for d in cancellation_payment_dates(first_payment)]
+                          if first_payment else []),
+    )
+    return quote
+
+
+def _cancellation_query_fields(quote):
+    """The queries columns that mirror the current quote version (blank for
+    any other category)."""
+    if not quote:
+        return dict(
+            cancellation_contract_months=None, cancellation_months_completed=None,
+            cancellation_monthly_fee=0, cancellation_fee=0, cancellation_penalty_months=0,
+            cancellation_payment_method=None, cancellation_outstanding=0,
+            cancellation_settlement_amount=0, cancellation_settlement_rule=None,
+            cancellation_discount_pct=0, cancellation_first_payment_date=None,
+        )
+    option = quote['selected_option']
+    chosen = quote[option] if option else None
+    return dict(
+        cancellation_contract_months=quote['contract_months'],
+        cancellation_months_completed=quote['months_completed'],
+        cancellation_monthly_fee=quote['monthly_fee'],
+        cancellation_fee=quote['cancellation_fee'],
+        cancellation_penalty_months=quote['penalty_months'],
+        cancellation_payment_method=quote['payment_method'],
+        cancellation_outstanding=quote['outstanding_balance'],
+        cancellation_settlement_amount=chosen['net_total'] if chosen else 0,
+        cancellation_settlement_rule=f'bands_{option}' if option else 'bands_unselected',
+        cancellation_discount_pct=chosen['discount_pct'] if chosen else 0,
+        cancellation_first_payment_date=quote['first_payment_date'],
+    )
+
+
+def _record_cancellation_quote(db, qid, quote, correction_reason=None):
+    """Save *quote* as the next version for the query; returns the version."""
+    latest = db.execute("SELECT MAX(version) AS v FROM cancellation_quotes WHERE query_id=?",
+                        (qid,)).fetchone()
+    version = (latest['v'] or 0) + 1
+    cash, instalments = quote['cash'], quote['instalments']
+    db.execute(
+        """INSERT INTO cancellation_quotes (
+               query_id, version, policy_version, contract_months, months_completed,
+               monthly_fee, penalty_months, cancellation_fee, outstanding_balance,
+               gross_total, discount_band, cash_discount_pct, cash_discount_amount,
+               cash_total, instalment_discount_pct, instalment_discount_amount,
+               instalment_total, instalment_schedule, first_payment_date, instalment_dates,
+               selected_option, payment_method, correction_reason, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (qid, version, quote['policy_version'], quote['contract_months'],
+         quote['months_completed'], quote['monthly_fee'], quote['penalty_months'],
+         quote['cancellation_fee'], quote['outstanding_balance'], quote['gross_total'],
+         quote['band'], cash['discount_pct'], cash['discount_amount'], cash['net_total'],
+         instalments['discount_pct'], instalments['discount_amount'], instalments['net_total'],
+         json.dumps(instalments['payments']), quote['first_payment_date'],
+         json.dumps(quote['instalment_dates']), quote['selected_option'],
+         quote['payment_method'], correction_reason, session.get('user_id')),
+    )
+    return version
+
+
+def _quote_note(quote):
+    return (f"fee R{quote['cancellation_fee']:.2f} + outstanding R{quote['outstanding_balance']:.2f}"
+            f" = R{quote['gross_total']:.2f} ({quote['band_label']}); "
+            f"cash R{quote['cash']['net_total']:.2f} ({quote['cash']['discount_pct']:g}% off), "
+            f"six instalments R{quote['instalments']['net_total']:.2f} "
+            f"({quote['instalments']['discount_pct']:g}% off).")
+
+
+def _cancellation_quotes(db, qid):
+    """Every saved quote version for the query, newest first."""
+    rows = db.execute(
+        """SELECT cq.*, u.full_name AS created_by_name
+           FROM cancellation_quotes cq LEFT JOIN users u ON cq.created_by = u.id
+           WHERE cq.query_id=? ORDER BY cq.version DESC""", (qid,)).fetchall()
+    quotes = []
+    for row in rows:
+        quote = dict(row)
+        quote['instalment_payments'] = json.loads(quote['instalment_schedule'] or '[]')
+        quote['instalment_dates'] = json.loads(quote.get('instalment_dates') or '[]')
+        quote['band_label'] = CANCELLATION_BAND_LABELS.get(quote['discount_band'], quote['discount_band'])
+        quotes.append(quote)
+    return quotes
+
+
+# Money taken at reception — monthly DebiCheck collections are not a settlement.
+CASH_SETTLEMENT_METHODS = ('cash', 'card', 'eft', 'snapscan', 'other')
+
+
+def _cash_settlement(db, qry):
+    """Settlement evidence for the detail panel; execution belongs to the funnel.
+
+    The older discount-approval endpoint must not bypass signed acceptance,
+    Reception's second verification or the designated manager's final check.
+    """
+    from .query_funnel import settlement
+    report = settlement(db, qry) if qry['category']=='cancellation' and qry['member_id'] else {}
+    return dict(eligible=False,
+                reason='Use the signed request workflow for settlement verification and confirmed debit-order cancellation.',
+                cash_total=float(report.get('total',0)), paid_total=float(report.get('paid',0)),
+                payments=report.get('payments',[]))
+
+
 def _cancel_member(db, qid, member_id):
     """Cancel the member account for an approved cancellation query."""
     db.execute("UPDATE members SET member_status='Cancelled' WHERE id=?", (member_id,))
     db.execute("UPDATE queries SET member_cancelled=1 WHERE id=?", (qid,))
+    db.execute("UPDATE query_workflows SET stage='cancelled_awaiting_mandate_review',updated_at=? WHERE query_id=?",(datetime.now().isoformat(),qid))
     _log_note(db, qid, 'Member account cancelled (member status set to Cancelled). '
                        'Stop any active debit order / DebiCheck mandate separately.', 'cancelled')
     member_activity(db, member_id, f'Membership cancelled via query #{qid}.')
@@ -1219,6 +1398,8 @@ def _cancel_member(db, qid, member_id):
 @permission_required(QUERY_PERMISSION)
 def detail(qid):
     db  = get_db()
+    from .query_funnel import refresh
+    refresh(db);db.commit()
     qry = db.execute("""
         SELECT qr.*, m.first_name || ' ' || m.last_name AS member_full_name,
                m.contact AS member_contact, m.id AS member_pk,
@@ -1276,13 +1457,89 @@ def detail(qid):
         cat_label=_cat_label,
         summary=summary, requires_ack=requires_ack,
         linked_ptp=linked_ptp,
+        cancellation_quotes=_cancellation_quotes(db, qid) if qry['category'] == 'cancellation' else [],
+        cash_settlement=_cash_settlement(db, qry),
+        cancellation_payment_methods=CANCELLATION_PAYMENT_METHODS,
         closure_reasons=CLOSURE_REASONS,
         approval_statuses=APPROVAL_STATUSES,
         is_manager=_is_manager(),
         payment_workflow=qry['category'] in PAYMENT_WORKFLOW_CATEGORIES,
         staff_discount_ceiling=STAFF_DISCOUNT_CEILING,
-        today=date.today().isoformat(),
+        today=local_today().isoformat(),
     )
+
+
+# ── Revise a cancellation quote ───────────────────────────────────────────────
+@queries_bp.route('/<int:qid>/cancellation-quote', methods=['POST'])
+@permission_required(QUERY_PERMISSION)
+def revise_cancellation_quote(qid):
+    """Save corrected inputs as a new quote version; earlier versions stay."""
+    db = get_db()
+    qry = _load_open_query(db, qid)
+    if not qry:
+        return redirect(url_for('queries.index'))
+    back = redirect(url_for('queries.detail', qid=qid) + '#cancellation-quote')
+    if qry['category'] != 'cancellation' or not qry['member_id']:
+        flash('Only a member-linked cancellation query has a quote.', 'warning')
+        return back
+    if qry['member_cancelled']:
+        flash('The member is already cancelled — this quote can no longer be revised.', 'warning')
+        return back
+    reason = request.form.get('correction_reason', '').strip()
+    if not reason:
+        flash('Record why the quote is being revised.', 'error')
+        return back
+    method = _cancellation_payment_method(request.form)
+    inputs, error = _cancellation_inputs(request.form)
+    if not error:
+        first_payment, error = _first_payment_date(request.form, method)
+    if error:
+        flash(error, 'error')
+        return back
+    summary = _account_summary(db, qry['member_id'])
+    if not summary:
+        flash('That member could not be found.', 'error')
+        return back
+
+    quote = _build_cancellation_quote(*inputs, summary["total_outstanding"], method, first_payment)
+    fields = _cancellation_query_fields(quote)
+    labels = dict(CANCELLATION_PAYMENT_METHODS)
+    changes = [
+        f'{label} {before} → {after}'
+        for label, before, after in (
+            ('contract', qry['cancellation_contract_months'], quote['contract_months']),
+            ('months completed', qry['cancellation_months_completed'], quote['months_completed']),
+            ('monthly fee', f"R{qry['cancellation_monthly_fee'] or 0:.2f}", f"R{quote['monthly_fee']:.2f}"),
+            ('outstanding', f"R{qry['cancellation_outstanding'] or 0:.2f}",
+             f"R{quote['outstanding_balance']:.2f}"),
+            ('payment option', labels.get(qry['cancellation_payment_method'], 'none'),
+             labels.get(quote['payment_method'], 'none')),
+            ('first payment', qry['cancellation_first_payment_date'] or 'none',
+             quote['first_payment_date'] or 'none'),
+        )
+        if before != after
+    ]
+    version = _record_cancellation_quote(db, qid, quote, correction_reason=reason)
+    workflow=db.execute('SELECT * FROM query_workflows WHERE query_id=?',(qid,)).fetchone()
+    if workflow:
+        from .query_forms import save_case, event, reception_owner
+        from .encryption import decrypt
+        details=json.loads(decrypt(workflow['details']))
+        details.pop('decision',None)
+        details['information_request']='Review and sign the revised cancellation quote.'
+        save_case(db,qry,dict(workflow),'awaiting_information',details,reception_owner(qry,details))
+        db.execute('UPDATE query_form_links SET revoked=1 WHERE query_id=? AND submitted_id IS NULL',(qid,))
+        event(db,qid,'quote_requires_new_signature',{'version':version})
+    db.execute(f"UPDATE queries SET {', '.join(f'{col}=?' for col in fields)} WHERE id=?",
+               (*fields.values(), qid))
+    _log_note(db, qid, f'Cancellation quote revised to v{version} '
+                       f'({"; ".join(changes) or "no input changes"}). Reason: {reason}. '
+                       + _quote_note(quote), 'quote')
+    audit_log(db, 'cancellation_quote_revised', old_value=f'query:{qid}',
+              new_value=f'quote:v{version}')
+    db.commit()
+    flash(f'Cancellation quote v{version} saved.', 'success')
+    return back
 
 
 def _load_open_query(db, qid):
@@ -1313,6 +1570,24 @@ def add_note(qid):
 
 
 # ── Update status / assign / priority ─────────────────────────────────────────
+@queries_bp.post('/<int:qid>/link-member')
+@permission_required(QUERY_PERMISSION)
+def link_member(qid):
+    db=get_db();qry=_load_open_query(db,qid)
+    if not qry:return redirect(url_for('queries.index'))
+    if qry['member_id'] or db.execute('SELECT 1 FROM query_form_submissions WHERE query_id=?',(qid,)).fetchone():
+        abort(409,description='A signed or already-linked query cannot be moved to another member.')
+    member_id=request.form.get('member_id',type=int)
+    note=request.form.get('notes','').strip()
+    if not note or not member_id or not db.execute('SELECT 1 FROM members WHERE id=?',(member_id,)).fetchone():
+        abort(400,description='Select the verified member and record how the identity was checked.')
+    linked=db.execute('UPDATE queries SET member_id=? WHERE id=? AND member_id IS NULL',(member_id,qid))
+    if linked.rowcount!=1:abort(409,description='Another staff member already linked this query. Reload before continuing.')
+    _log_note(db,qid,f'Matched to member #{member_id}. Identity verification: {note}','assignment')
+    db.commit()
+    return redirect(url_for('queries.detail',qid=qid))
+
+
 @queries_bp.route('/<int:qid>/update', methods=['POST'])
 @permission_required(QUERY_PERMISSION)
 def update(qid):
@@ -1357,6 +1632,12 @@ def update(qid):
         new_assigned = str(routing['assigned_to']) if routing['assigned_to'] else None
         new_dept = routing['department']
 
+    # A routine priority/follow-up edit cannot undo a signed-workflow handoff.
+    workflow = db.execute('SELECT owner_id,stage FROM query_workflows WHERE query_id=?',(qid,)).fetchone()
+    if workflow:
+        new_assigned = str(workflow['owner_id']) if workflow['owner_id'] is not None else None
+        new_dept = qry['department']
+
     db.execute("""
         UPDATE queries SET status=?, priority=?, assigned_to=?, department=?,
                follow_up_date=?, due_date=?, action_taken=?,
@@ -1390,6 +1671,12 @@ def _notify_query_assignment(db, qid, escalated=False):
 
 def _closing_blocker(db, qry, owing_ack):
     """Why this query can't be resolved/closed yet, or None."""
+    workflow = db.execute('SELECT stage FROM query_workflows WHERE query_id=?',(qry['id'],)).fetchone()
+    from .query_forms import kind_for
+    if kind_for(qry) and not workflow:
+        return 'Complete the signed request workflow before closing this query. Link the member first if needed.'
+    if workflow and workflow['stage'] not in ('complete','rejected'):
+        return 'Complete the signed request workflow before closing this query.'
     if qry['approval_status'] == 'pending':
         return 'A manager has not decided the approval on this query yet.'
     if qry['member_id'] and qry['category'] in OWING_SENSITIVE_CATEGORIES:
@@ -1461,8 +1748,13 @@ def escalate(qid):
                priority='urgent', department='Management', follow_up_date=?,
                updated_at=datetime('now','localtime')
         WHERE id=?
-    """, (date.today().isoformat(), qid))
+    """, (local_today().isoformat(), qid))
     _log_note(db, qid, f"Escalated to management. Reason: {reason}", 'escalated')
+    from .query_forms import reviewer_id
+    owner=reviewer_id(db,qry['category'])
+    if owner:
+        db.execute('UPDATE queries SET assigned_to=? WHERE id=?',(owner,qid))
+        db.execute('UPDATE query_workflows SET owner_id=? WHERE query_id=?',(owner,qid))
     from .notifications import sync_notifications
     sync_notifications(db)
     db.commit()
@@ -1504,8 +1796,28 @@ def request_approval(qid):
     cancel_member = (qry['category'] == 'cancellation' and qry['member_id']
                      and not qry['member_cancelled'] and request.form.get('cancel_member') == '1')
     if cancel_member:
-        asks.append('Cancel the member account')
+        settlement = _cash_settlement(db, qry)
+        if not settlement['eligible']:
+            flash(settlement['reason'] or 'This account cannot be cancelled yet.', 'error')
+            return back
+        asks.append(f'Cancel the member account (cash settlement R{settlement["paid_total"]:,.2f} paid)')
     asks.append(reason)
+
+    if cancel_member and _is_manager():
+        # A manager asking is the approver, as when logging a query.
+        db.execute("""
+            UPDATE queries SET approval_status='approved', status='in_progress',
+                   approval_reason=?, cancel_member_requested=1, manager_approval_required=1,
+                   approval_requested_by=?, approval_requested_at=datetime('now','localtime'),
+                   manager_approved_by=?, manager_approved_at=datetime('now','localtime'),
+                   updated_at=datetime('now','localtime')
+            WHERE id=?
+        """, ('; '.join(asks), session.get('user_id'), session.get('user_id'), qid))
+        _log_note(db, qid, 'Approved by manager: ' + '; '.join(asks), 'approval')
+        _cancel_member(db, qid, qry['member_id'])
+        db.commit()
+        flash('Cash settlement paid — member account cancelled.', 'success')
+        return back
 
     db.execute("""
         UPDATE queries SET approval_status='pending', status='pending_approval',
@@ -1558,11 +1870,21 @@ def decide(qid):
     _log_note(db, qid, f"{label} by manager." + (f" Notes: {notes}" if notes else ''), 'approval')
     audit_log(db, f'query_approval_{decision}', old_value=f'query:{qid}',
               new_value=(qry['approval_reason'] or '')[:500])
+    not_cancelled = None
     if decision == 'approved' and qry['cancel_member_requested'] and qry['member_id'] \
             and not qry['member_cancelled']:
-        _cancel_member(db, qid, qry['member_id'])
+        # Re-checked at decision time: the payment may have been reversed.
+        settlement = _cash_settlement(db, qry)
+        if settlement['eligible']:
+            _cancel_member(db, qid, qry['member_id'])
+        else:
+            not_cancelled = settlement['reason']
+            _log_note(db, qid, f'Approved, but the account was not cancelled: {not_cancelled}', 'approval')
     db.commit()
-    flash(f'Request {label.lower()}.', 'success')
+    if not_cancelled:
+        flash(f'Request approved, but the account was not cancelled: {not_cancelled}', 'warning')
+    else:
+        flash(f'Request {label.lower()}.', 'success')
     return back
 
 

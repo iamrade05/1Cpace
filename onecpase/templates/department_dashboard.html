@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% from '_dashboard.html' import dashboard_header, dashboard_kpi %}
+{% block title %}{{ title }} | 1Cpace{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<p class="card-note">Monthly reporting cycle: 15th to 14th. Daily targets remain per day.</p>
+<div class="future-dashboard">
+{% call dashboard_header(title, '1Cpace department performance', 'Activity covers the selected period. Current-state cards show the latest local records.') %}
+  <div class="dashboard-period">{{ date_from }} to {{ date_to }}</div>
+{% endcall %}
+{% include '_dashboard_period.html' %}
+{% include '_daily_staff_kpis.html' %}
+{% if request.endpoint=='dashboard.reception_dashboard' and reception_admin_allowed %}<p><a class="btn btn-primary" href="{{ url_for('reception_admin.index') }}">Reception Admin · stock, cards & cash-up</a></p>{% endif %}
+<section class="fd-kpi-grid" aria-label="Department performance">
+  {% for c in cards %}
+  {% set value %}{% if c.value is none %}—{% elif c.kind=='money' %}R{{ '{:,.2f}'.format(c.value) }}{% elif c.kind=='percent' %}{{ c.value }}%{% else %}{{ '{:,}'.format(c.value) }}{% endif %}{% endset %}
+  {{ dashboard_kpi(c.label, value, c.note, loop.cycle('slate', 'sage', 'sand', 'gold')) }}
+  {% endfor %}
+</section>
+{% if breakdowns %}<div class="fd-grid-secondary">
+{% for b in breakdowns %}<section class="fd-panel"><div class="fd-panel-head"><h2 class="fd-panel-title">{{ b.title }}</h2></div><div class="table-wrap"><table class="table"><thead><tr><th>State / source</th><th class="mono-cell">Count</th></tr></thead><tbody>{% for r in b.rows %}<tr><td>{{ r.label }}</td><td class="mono-cell">{{ r.n }}</td></tr>{% else %}<tr><td colspan="2">No records in this period.</td></tr>{% endfor %}</tbody></table></div></section>{% endfor %}
+</div>{% endif %}
+{% if links %}<section class="fd-panel"><div class="fd-panel-head"><h2 class="fd-panel-title">Work queues</h2></div><div class="dashboard-actions">{% for label,endpoint in links %}{% if phase_open(endpoint.split('.')[0]) %}<a class="btn" href="{{ url_for(endpoint) }}">{{ label }}</a>{% endif %}{% endfor %}</div></section>{% endif %}
+</div>
+{% endblock %}

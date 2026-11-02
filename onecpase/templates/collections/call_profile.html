@@ -13,7 +13,7 @@
   <div style="display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:flex-start;">
     <div>
       <div style="font-size:.75rem;color:var(--t2);">{{ task.member_ref }}</div>
-      <h2 style="margin:4px 0;">{{ task.first_name }} {{ task.last_name }}</h2>
+      <h2 style="margin:4px 0;"><a href="{{ url_for('members.member_detail', mid=task.member_id, call_task=task.id) }}"><strong>{{ task.first_name }} {{ task.last_name }}</strong></a></h2>
       <div><strong>{{ task.contact or 'No contact number recorded' }}</strong>
         {% if task.contact %}<button type="button" class="btn btn-primary btn-sm" onclick="startCollectionPbxCall('{{ task.contact|e }}', {{ task.id }})">Call via PBX</button>{% endif %}
         · {{ task.email or 'No email' }}</div>

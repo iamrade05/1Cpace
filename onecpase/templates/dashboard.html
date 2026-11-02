@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+{% from '_dashboard.html' import dashboard_header %}
 
 {% block title %}Command Center | 1Cpace{% endblock %}
 {% block page_title %}Command Center{% endblock %}
 
 {% block content %}
+<p class="card-note">Monthly reporting cycle: 15th to 14th. Daily targets remain per day.</p>
 {% set active_pct = ((active_members / total_members * 100)|round(1)) if total_members else 0 %}
 {% set total_status = payment_status_values | sum %}
 {% set cleared_pct = ((payment_status_values[0] / total_status * 100)|round(1)) if total_status else 0 %}
@@ -12,27 +14,27 @@
 
 
 <div class="future-dashboard">
-  <header class="fd-topline page-header">
-    <div>
-      <div class="fd-eyebrow"><span class="fd-live-dot" aria-hidden="true"></span> 1Cpace intelligence layer</div>
-      <h1 class="fd-title">Performance <span>command center</span></h1>
-      <p class="fd-description">Live membership, collection and portfolio signals in one operational view.</p>
-    </div>
-    <div class="fd-controls">
+  {% call dashboard_header('Performance', '1Cpace intelligence layer', 'Live membership, collection and portfolio signals in one operational view.', accent='command center') %}
       <div class="fd-refresh">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg>
-        Synced {{ dashboard_updated_at }}
+        View refreshed {{ dashboard_updated_at }}
       </div>
-      <div class="fd-range-control" role="group" aria-label="Dashboard time range">
-        {% for key in ['24h', '7d', '30d', '6m', '1y'] %}
-        <button type="button" class="fd-range-btn {% if key == selected_range %}is-active{% endif %}"
-                data-range="{{ key }}" aria-pressed="{{ 'true' if key == selected_range else 'false' }}">
-          {{ trend_ranges[key].label }}
-        </button>
-        {% endfor %}
-      </div>
+      <div class="dashboard-period" data-range-period>{{ selected.date_from }} to {{ selected.date_to }}</div>
+      {% endcall %}
+  {% include '_dashboard_period.html' %}
+
+  <section class="fd-panel dashboard-sync" aria-label="Payment sync status">
+    <strong>Payment sync</strong>
+    <p>{% if payment_sync_enabled %}Daily at 05:30 SAST. Missed runs recover automatically; failed runs retry hourly.{% else %}Automatic payment sync is disabled on this instance.{% endif %}</p>
+    {% for sync in payment_sync_status %}
+    <div class="dashboard-sync-record">
+      <strong>{{ sync.label }}:</strong> {{ sync.status|replace('_',' ') }}{% if sync.stale %} · Payments may be out of date{% endif %}
+      <br><small>Last successful sync: {{ sync.last_success_at or 'Never' }}{% if sync.finished_at %} · Last attempt: {{ sync.finished_at }}{% endif %}</small>
+      {% if sync.counts %}<br><small>{% for key,value in sync.counts.items() %}{{ key|replace('_',' ') }}: {{ value }}{% if not loop.last %} · {% endif %}{% endfor %}</small>{% endif %}
+      {% if sync.error %}<p role="alert">{{ sync.error }}</p>{% endif %}
     </div>
-  </header>
+    {% endfor %}
+  </section>
 
   <section class="fd-kpi-grid" aria-label="Key performance indicators">
     <article class="fd-kpi" style="--card-color:var(--fd-green);--card-glow:rgba(85,230,173,.13);">
@@ -315,6 +317,7 @@
     });
     document.querySelectorAll('[data-range-title]').forEach(node => { node.textContent = range.title; });
     document.querySelectorAll('[data-range-grain]').forEach(node => { node.textContent = range.grain; });
+    document.querySelectorAll('[data-range-period]').forEach(node => { node.textContent = `${range.date_from} to ${range.date_to}`; });
     document.getElementById('range-revenue').textContent = money.format(range.revenue.total);
     document.getElementById('range-members').textContent = integer.format(range.members.total);
     renderDelta(document.getElementById('revenue-delta'), range.revenue.delta, range.revenue.total, range.revenue.previous_total);
@@ -327,9 +330,6 @@
     membersChart.data.datasets[0].data = range.members.values;
     membersChart.update();
 
-    const url = new URL(window.location.href);
-    url.searchParams.set('range', key);
-    window.history.replaceState({}, '', url);
     if (announce) document.getElementById('range-announcement').textContent = `Dashboard updated to ${range.title}`;
   }
 

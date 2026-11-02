@@ -344,6 +344,48 @@ def test_qr_image_404s_when_nothing_has_been_captured_yet(client, tmp_path):
     assert response.status_code == 404
 
 
+def test_saved_qr_from_previous_process_is_not_served(client,tmp_path):
+    _reset_module_state();_login_admin(client)
+    client.application.config['WHATSAPP_WEB_SESSION_DIR']=str(tmp_path)
+    (tmp_path/'qr.png').write_bytes(b'old-image')
+    whatsapp_web._set_state(enabled=True,started=True,last_qr_at=None)
+    assert client.get('/admin/whatsapp-web/qr.png').status_code==404
+
+
+def test_fresh_complete_qr_is_served_without_caching(client,tmp_path):
+    from datetime import datetime,timezone
+    _reset_module_state();_login_admin(client)
+    client.application.config['WHATSAPP_WEB_SESSION_DIR']=str(tmp_path)
+    (tmp_path/'qr.png').write_bytes(b'complete-png')
+    whatsapp_web._set_state(enabled=True,started=True,last_qr_at=datetime.now(timezone.utc).isoformat())
+    response=client.get('/admin/whatsapp-web/qr.png')
+    assert response.status_code==200 and response.data==b'complete-png'
+    assert 'no-store' in response.headers['Cache-Control']
+    whatsapp_web._set_state(started=False)
+    assert client.get('/admin/whatsapp-web/qr.png').status_code==404
+
+
+def test_qr_capture_publishes_complete_image_and_clears_browser_error(tmp_path):
+    _reset_module_state()
+    class Locator:
+        @property
+        def first(self):return self
+        def is_visible(self,**kwargs):return True
+        def screenshot(self,path):
+            from pathlib import Path
+            assert Path(path).name!='qr.png'
+            Path(path).write_bytes(b'new-complete-png')
+    class Hidden(Locator):
+        def is_visible(self,**kwargs):return False
+    class Page:
+        def locator(self,selector):return Locator() if selector==whatsapp_web.QR_SELECTOR else Hidden()
+        def evaluate(self,script):return False
+    whatsapp_web._set_state(last_error='Old browser error')
+    assert not whatsapp_web._poll_login_state(Page(),tmp_path)
+    assert (tmp_path/'qr.png').read_bytes()==b'new-complete-png'
+    assert whatsapp_web.get_status()['last_qr_at'] and not whatsapp_web.get_status()['last_error']
+
+
 def test_status_json_reports_the_real_status(client):
     _reset_module_state()
     _login_admin(client)

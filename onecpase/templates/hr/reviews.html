@@ -1,3 +1,20 @@
-{% extends 'base.html' %}{% block page_title %}HR reviews{% endblock %}
-{% block content %}{% include 'hr/_workforce_nav.html' %}<h1>HR review queue</h1><p><a class="btn btn-secondary" href="{{ url_for('workforce.calendar') }}">Check whole-team availability before approving leave</a></p><h2>Pending leave</h2><ul>{% for r in pending %}<li>{{ r.full_name }} · {{ r.start_date }}–{{ r.end_date }} · <a href="{{ url_for('hr.leave_index') }}">Review entitlement and coverage</a></li>{% else %}<li>No leave requests awaiting your decision.</li>{% endfor %}</ul>
-<h2>Weekly timesheet status</h2><form method="get"><label>Week containing <input type="date" name="week" value="{{ start.isoformat() }}"></label><button class="btn btn-secondary">View status</button></form><div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Department</th><th>Weekly status</th><th></th></tr></thead><tbody>{% for p in employees %}{% set w=weeks.get(p.id) %}<tr><td>{{ p.full_name }}</td><td>{{ p.department }}</td><td>{{ w.status if w else 'Not started / not submitted' }}</td><td><a href="{{ url_for('workforce.weeks',user_id=p.id,week=start.isoformat()) }}">Open week</a></td></tr>{% else %}<tr><td colspan="4">No assigned employees. HR must confirm reporting managers and approval permissions.</td></tr>{% endfor %}</tbody></table></div>{% endblock %}
+{% extends 'base.html' %}
+{% from '_ui.html' import page_header %}
+{% block page_title %}HR approvals{% endblock %}
+{% block title %}HR approvals | 1Cpace{% endblock %}
+{% block content %}
+{{ page_header('Approvals', subtitle='Review leave requests and weekly timesheets for your team.') }}
+<div class="hr-review-grid">
+  <section class="card"><div class="card-body"><div class="hr-section-heading"><h2>Leave awaiting review</h2><span class="hr-status hr-status--submitted">{{ pending|length }} pending</span></div>
+    <ul class="hr-record-list">{% for r in pending %}<li><div><strong>{{ r.full_name }}</strong><span>{{ r.start_date }} – {{ r.end_date }}</span></div><a href="{{ url_for('hr.leave_index') }}#request-{{ r.id }}">Review →</a></li>{% else %}<li class="hr-empty">No leave requests awaiting your decision.</li>{% endfor %}</ul>
+  </div></section>
+  <section class="card"><div class="card-body"><h2>Check team coverage</h2><p class="hr-muted">Check published shifts and overlapping absences before approving leave.</p><a class="btn btn-secondary" href="{{ url_for('workforce.calendar') }}">View team availability</a></div></section>
+</div>
+<section class="card"><div class="card-body"><div class="hr-section-heading"><h2>Weekly timesheets</h2><span class="hr-muted">Week of {{ start.isoformat() }}</span></div>
+  <form method="get" class="hr-filter"><label>Week containing<input type="date" name="week" value="{{ start.isoformat() }}"></label><button class="btn btn-secondary">View week</button></form>
+  <div class="table-wrap"><table class="table"><thead><tr><th>Employee</th><th>Department</th><th>Status</th><th></th></tr></thead><tbody>
+    {% for p in employees %}{% set w=weeks.get(p.id) %}<tr><th scope="row">{{ p.full_name }}</th><td>{{ p.department }}</td><td><span class="hr-status hr-status--{{ w.status if w else 'draft' }}">{{ w.status|capitalize if w else 'Not started' }}</span></td><td><a href="{{ url_for('workforce.weeks',user_id=p.id,week=start.isoformat()) }}">Open week →</a></td></tr>
+    {% else %}<tr><td colspan="4">No assigned employees. HR must confirm reporting managers and approval permissions.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div></section>
+{% endblock %}

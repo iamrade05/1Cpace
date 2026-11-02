@@ -168,33 +168,61 @@
           <input type="number" step="0.01" name="cancellation_monthly_fee" id="cancelMonthlyFee" class="form-control">
         </div>
       </div>
-      <div class="qform-grid">
+      <div class="qform-grid three">
         <div class="form-group">
-          <label class="form-label">Payment Method</label>
-          <select name="cancellation_payment_method" class="form-control">
-            <option value="">— Select —</option>
+          <label class="form-label">Payment Option</label>
+          <select name="cancellation_payment_method" id="cancelPaymentMethod" class="form-control">
+            <option value="">— Not chosen yet —</option>
             {% for k,v in cancellation_payment_methods %}
             <option value="{{ k }}">{{ v }}</option>
             {% endfor %}
           </select>
+          <small class="cq-option-detail">Explain both options, then select the one the member agrees to. It must be selected before the form is sent; the member does not choose again.</small>
         </div>
         <div class="form-group">
-          <label class="form-label">Manual Discount % <span style="color:#9ca3af;font-size:.72rem;">(ignored when the auto-settlement rule applies)</span></label>
-          <input type="number" step="1" min="0" max="100" value="0" name="cancellation_discount_pct" class="form-control">
+          <label class="form-label">Agreed First Payment Date</label>
+          <input type="date" name="cancellation_first_payment_date" id="cancelFirstPayment" class="form-control" min="{{ today }}">
+          <small class="cq-option-detail">The date the member agreed to. Required for six instalments.</small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contract Start</label>
+          <div id="cancelStartDate" class="form-control cq-readonly">—</div>
         </div>
       </div>
-      <label style="display:flex;gap:8px;align-items:flex-start;font-size:.85rem;color:#374151;margin-top:4px;">
-        <input type="checkbox" name="cancel_member" value="1" style="margin-top:3px;">
-        {% if is_manager %}
-        <span>Cancel this member's account now (sets status to Cancelled)</span>
-        {% else %}
-        <span>Request cancellation of this member's account — a manager approves it before the account is cancelled</span>
-        {% endif %}
-      </label>
+      <div id="cancelQuotePreview" hidden>
+        <div class="cq-summary">
+          Cancellation fee <strong id="cqFee">—</strong> (<span id="cqPenalty">—</span>)
+          + outstanding balance <strong id="cqOutstanding">—</strong>
+          = <strong id="cqGross">—</strong> before discount · band <strong id="cqBand">—</strong>
+        </div>
+        <div class="decision-grid cq-options">
+          <div class="dcell cq-option" id="cqCashCell">
+            <small>Cash — full payment upfront</small>
+            <strong id="cqCashNet">—</strong>
+            <span class="cq-option-detail" id="cqCashDetail"></span>
+          </div>
+          <div class="dcell cq-option" id="cqInstalmentCell">
+            <small>Six monthly instalments</small>
+            <strong id="cqInstalmentNet">—</strong>
+            <span class="cq-option-detail" id="cqInstalmentDetail"></span>
+            <span class="cq-option-detail" id="cqInstalmentDates"></span>
+          </div>
+        </div>
+        <div class="cq-note">
+          Instalments need a DebiCheck mandate, a bank statement and confirmed income — these are checked during review.
+        </div>
+      </div>
+      <div id="cancelQuoteError" class="cq-error" hidden></div>
+      <div class="cq-note">
+        The account is not cancelled when this query is saved. For a cash settlement it can be
+        cancelled from the query page once the payment is recorded; a six-instalment settlement
+        completes after the settlement payments are confirmed.
+      </div>
       <div style="margin-top:10px;padding:10px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:.78rem;color:#7f1d1d;">
-        The cancellation fee and settlement amount are calculated automatically per the
-        membership agreement §11.3 penalty schedule once you save this query — the
-        breakdown appears on the query page.
+        The cancellation fee follows the membership agreement §11.3 penalty schedule. The
+        settlement discount is set by the fee plus outstanding balance: below R2,000 none;
+        R2,000–R3,000 20% cash / 10% instalments; above R3,000 35% cash / 20% instalments.
+        Saving stores this quote as version 1 on the query.
       </div>
     </div>
   </div>
@@ -417,12 +445,15 @@ async function refreshCancellationPanel() {
   }
   panel.style.display = 'block';
   cancelRequired.forEach(id => document.getElementById(id).required = true);
-  if (cancelFieldsPrefilled) return;
+  if (cancelFieldsPrefilled) { refreshCancellationQuote(); return; }
 
   try {
     const res = await fetch(`{{ url_for('queries.member_summary', member_id=0) }}`.replace('/0', '/' + memberId));
     const data = await res.json();
     if (!data.ok) return;
+
+    document.getElementById('cancelStartDate').textContent =
+      data.contract_start_date || 'Not on file — confirm from the contract';
 
     const months = parseInt((data.contract_duration || '').match(/\d+/), 10);
     const monthsField = document.getElementById('cancelContractMonths');
@@ -437,6 +468,61 @@ async function refreshCancellationPanel() {
     }
     cancelFieldsPrefilled = true;
   } catch (e) { /* leave the fields for manual entry */ }
+  refreshCancellationQuote();
+}
+
+// The quote preview comes from the server so it always matches what is saved.
+let cancelQuoteTimer = null;
+let cancelQuoteRequest = 0;
+function refreshCancellationQuote() {
+  clearTimeout(cancelQuoteTimer);
+  cancelQuoteTimer = setTimeout(async function () {
+    const memberInput = document.querySelector('[name="member_id"]');
+    const preview = document.getElementById('cancelQuotePreview');
+    const errorBox = document.getElementById('cancelQuoteError');
+    const params = new URLSearchParams({
+      member_id: memberInput ? memberInput.value : '',
+      cancellation_contract_months: document.getElementById('cancelContractMonths').value,
+      cancellation_months_completed: document.getElementById('cancelMonthsCompleted').value,
+      cancellation_monthly_fee: document.getElementById('cancelMonthlyFee').value,
+      cancellation_payment_method: document.getElementById('cancelPaymentMethod').value,
+      cancellation_first_payment_date: document.getElementById('cancelFirstPayment').value,
+    });
+    const requestId = ++cancelQuoteRequest;
+    try {
+      const res = await fetch(`{{ url_for('queries.cancellation_quote_preview') }}?` + params);
+      const quote = await res.json();
+      if (requestId !== cancelQuoteRequest) return;  // a newer edit is in flight
+      if (!quote.ok) {
+        preview.hidden = true;
+        errorBox.textContent = quote.error || 'The quote could not be calculated.';
+        errorBox.hidden = false;
+        return;
+      }
+      errorBox.hidden = true;
+      document.getElementById('cqFee').textContent = money(quote.cancellation_fee);
+      document.getElementById('cqPenalty').textContent = quote.penalty_months + ' × ' + money(quote.monthly_fee);
+      document.getElementById('cqOutstanding').textContent = money(quote.outstanding_balance);
+      document.getElementById('cqGross').textContent = money(quote.gross_total);
+      document.getElementById('cqBand').textContent = quote.band_label;
+      const cash = quote.cash, inst = quote.instalments;
+      document.getElementById('cqCashNet').textContent = money(cash.net_total);
+      document.getElementById('cqCashDetail').textContent =
+        `${cash.discount_pct}% off (${money(cash.discount_amount)}) · one payment`;
+      document.getElementById('cqInstalmentNet').textContent = money(inst.net_total);
+      document.getElementById('cqInstalmentDetail').textContent =
+        `${inst.discount_pct}% off (${money(inst.discount_amount)}) · 6 × ${money(inst.payments[0])}`
+        + (inst.final_adjustment ? `, final payment ${money(inst.payments[5])}` : '');
+      document.getElementById('cqInstalmentDates').textContent = quote.instalment_dates.length
+        ? 'Payment dates: ' + quote.instalment_dates.join(', ')
+        : 'Payment dates follow from the agreed first payment date.';
+      document.getElementById('cqCashCell').classList.toggle('is-selected', quote.selected_option === 'cash');
+      document.getElementById('cqInstalmentCell').classList.toggle('is-selected', quote.selected_option === 'instalments');
+      preview.hidden = false;
+    } catch (e) {
+      preview.hidden = true;
+    }
+  }, 250);
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -448,6 +534,11 @@ document.addEventListener('DOMContentLoaded', function () {
   if (typeInput) typeInput.addEventListener('change', updateTypeHint);
   const proposedInput = document.getElementById('proposedDiscount');
   if (proposedInput) proposedInput.addEventListener('input', refreshApprovalWarning);
+  ['cancelContractMonths', 'cancelMonthsCompleted', 'cancelMonthlyFee', 'cancelPaymentMethod', 'cancelFirstPayment'].forEach(id => {
+    const field = document.getElementById(id);
+    if (field) field.addEventListener('input', refreshCancellationQuote);
+    if (field) field.addEventListener('change', refreshCancellationQuote);
+  });
   refreshDecisionPanel();
   refreshMembershipPanel();
   refreshCancellationPanel();

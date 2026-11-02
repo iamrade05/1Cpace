@@ -2,17 +2,35 @@
 {% block title %}My HR | 1Cpace{% endblock %}
 {% block page_title %}My HR{% endblock %}
 {% block content %}
-{% include 'hr/_workforce_nav.html' %}
-<header class="page-header"><div><h1>My HR</h1><p>Your leave, upcoming shifts and weekly sign-off.</p></div></header>
-{% if admin %}<p><a class="btn btn-primary" href="{{ url_for('workforce.setup') }}">Employee setup & balance verification</a> <a class="btn btn-secondary" href="{{ url_for('workforce.calendar') }}">Team availability calendar</a></p>{% endif %}
-{% if not profile.start_date or not profile.weekdays or profile.employment_type=='unconfirmed' %}<p class="alert alert-warning">Employment details await HR confirmation. Your employment arrangement, working days and start date are needed before leave can be calculated.</p>{% endif %}
-<div class="card"><div class="card-body"><h2>Leave balances</h2><p><strong>Annual entitlement: {% if annual_days %}{{ annual_days }} working days per year · {{ '%.2f'|format(annual_days/12) }} days earned per complete employment month.{% else %}Awaiting working-pattern confirmation.{% endif %}</strong></p><p>Sick leave: normally 30 or 36 days per three-year cycle, with a different first-six-month rule. Family responsibility: 3 days for eligible staff.</p>
-<p>Opening balances awaiting confirmation are not zero balances. Contractual benefits and leave already taken must be verified.</p>
-<div class="table-wrap"><table class="table"><thead><tr><th>Type / cycle</th><th>Opening credits</th><th>Earned since opening</th><th>Taken</th><th>Current</th><th>Approved future</th><th>Available to request</th></tr></thead><tbody>
-{% for a in accounts %}<tr><td>{{ a.leave_type|capitalize }}<br>{{ a.cycle_start }} – {{ a.cycle_end }}<br>Verified as of {{ a.as_of }}</td>{% for key in ['credits','earned','taken','current','reserved','available'] %}<td>{{ '%.2f'|format(a[key]/100) }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="7">Opening balances awaiting confirmation by HR.</td></tr>{% endfor %}
-</tbody></table></div><p>Annual leave earns monthly after each complete employment month. Entitlement is not the same as an available balance: opening credits and leave already taken require verification. Future earnings are not spendable in advance. Pending requests are shown below and do not reserve leave.</p>
-<a class="btn btn-primary" href="{{ url_for('hr.leave_request') }}">Request & sign leave</a> <a class="btn btn-secondary" href="{{ url_for('workforce.balances') }}">Balance history</a></div></div>
-<div class="card"><div class="card-body"><h2>My requests</h2><ul>{% for r in requests %}<li>{{ r.leave_type|capitalize }}: {{ r.start_date }} – {{ r.end_date }} · {{ '%.2f'|format(r.units/100) }} days · {{ r.status }}</li>{% else %}<li>No requests in this workflow.</li>{% endfor %}</ul></div></div>
-<div class="card"><div class="card-body"><h2>My upcoming shifts</h2><ul>{% for s in shifts %}<li>{{ s.work_date }}: {{ s.time_in }}–{{ s.time_out }} · Lunch {{ s.lunch_out }}–{{ s.lunch_in }}</li>{% else %}<li>No published shifts. Ask your manager to confirm your roster.</li>{% endfor %}</ul></div></div>
-<div class="card"><div class="card-body"><h2>Weekly timesheets</h2><ul>{% for w in weeks %}<li><a href="{{ url_for('workforce.weeks',week=w.week_start) }}">Week {{ w.week_start }}</a> · {{ w.status }} · Version {{ w.version }}</li>{% else %}<li>No weeks saved yet.</li>{% endfor %}</ul><a class="btn btn-primary" href="{{ url_for('workforce.weeks') }}">Enter this week's timesheet</a></div></div>
+<header class="page-header hr-page-header"><div><p class="hr-eyebrow">Employee workspace</p><h1>My HR</h1><p>Your leave, shifts and timesheets in one place.</p></div><a class="btn btn-primary" href="{{ url_for('hr.leave_request') }}">Request leave</a></header>
+{% if not profile.start_date or not profile.weekdays or profile.employment_type=='unconfirmed' %}
+<div class="hr-notice" role="status"><strong>Your HR profile needs confirmation.</strong><span>HR must confirm your start date, employment arrangement and working days before leave can be calculated.</span>{% if admin %}<a href="{{ url_for('workforce.setup') }}">Complete employment details →</a>{% endif %}</div>
+{% endif %}
+<section aria-labelledby="hr-balances-title">
+  <div class="hr-section-heading"><h2 id="hr-balances-title">Your leave balances</h2><a href="{{ url_for('workforce.balances') }}">Balance history →</a></div>
+  <div class="hr-balance-grid">
+    {% for kind,label in [('annual','Annual leave'),('sick','Sick leave'),('family','Family responsibility')] %}
+    {% set account=accounts|selectattr('leave_type','equalto',kind)|list %}
+    <article class="hr-balance-card"><h3>{{ label }}</h3>{% if account %}{% set a=account[0] %}<p class="hr-balance-value">{{ '%.2f'|format(a.available/100) }} <span>days available</span></p><p class="hr-muted">{{ '%.2f'|format(a.reserved/100) }} days reserved for approved leave</p>{% else %}<p class="hr-balance-pending">Awaiting verification</p><p class="hr-muted">HR needs to confirm your opening balance.</p>{% endif %}</article>
+    {% endfor %}
+  </div>
+  <details class="hr-disclosure"><summary>Balance breakdown & leave policy</summary>
+    <p>{% if annual_days %}Annual entitlement: <strong>{{ annual_days }} working days per year</strong> · {{ '%.2f'|format(annual_days/12) }} days earned per complete employment month.{% else %}Annual entitlement awaits confirmation of your working pattern.{% endif %} Future earnings are not available in advance.</p>
+    <p>Sick leave normally allows 30 or 36 days per three-year cycle, with a different first-six-month rule. Family responsibility allows 3 days for eligible staff. Contractual benefits and historical leave must be verified; an unconfirmed balance is not zero.</p>
+    <div class="table-wrap"><table class="table"><thead><tr><th>Leave / cycle</th><th>Opening credits</th><th>Earned</th><th>Taken</th><th>Current</th><th>Reserved</th><th>Available</th></tr></thead><tbody>
+    {% for a in accounts %}<tr><th scope="row">{{ a.leave_type|capitalize }}<small>{{ a.cycle_start }} – {{ a.cycle_end }} · Verified {{ a.as_of }}</small></th>{% for key in ['credits','earned','taken','current','reserved','available'] %}<td>{{ '%.2f'|format(a[key]/100) }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="7">Opening balances awaiting confirmation by HR.</td></tr>{% endfor %}</tbody></table></div><p class="hr-muted">Approved future leave reserves days. Pending requests do not reserve leave.</p>
+  </details>
+</section>
+<div class="hr-overview-grid">
+  <section class="card"><div class="card-body"><div class="hr-section-heading"><h2>My requests</h2><a href="{{ url_for('hr.leave_index') }}">View all →</a></div>
+    <ul class="hr-record-list">{% for r in requests[:5] %}<li><div><strong>{{ 'Family responsibility' if r.leave_type=='family' else r.leave_type|capitalize }}</strong><span>{{ r.start_date }} – {{ r.end_date }} · {{ '%.2f'|format(r.units/100) }} days</span></div><span class="hr-status hr-status--{{ r.status }}">{{ r.status|capitalize }}</span></li>{% else %}<li class="hr-empty">You have no leave requests.</li>{% endfor %}</ul>
+  </div></section>
+  <section class="card"><div class="card-body"><div class="hr-section-heading"><h2>Upcoming shifts</h2><a href="{{ url_for('workforce.roster') }}">Full roster →</a></div>
+    <ul class="hr-record-list">{% for s in shifts[:5] %}<li><div><strong>{{ s.work_date }}</strong><span>{{ s.time_in }}–{{ s.time_out }} · Lunch {{ s.lunch_out }}–{{ s.lunch_in }}</span></div><span class="hr-status hr-status--approved">Published</span></li>{% else %}<li class="hr-empty">No shifts published. Ask your manager to confirm your roster.</li>{% endfor %}</ul>
+  </div></section>
+</div>
+<section class="card"><div class="card-body"><div class="hr-section-heading"><div><h2>Weekly timesheets</h2><p class="hr-muted">Record your actual hours, then sign and submit your week.</p></div><a class="btn btn-secondary" href="{{ url_for('workforce.weeks') }}">Open timesheet</a></div>
+  <ul class="hr-record-list">{% for w in weeks[:3] %}<li><div><a href="{{ url_for('workforce.weeks',week=w.week_start) }}">Week of {{ w.week_start }}</a><span>Version {{ w.version }}</span></div><span class="hr-status hr-status--{{ w.status }}">{{ w.status|capitalize }}</span></li>{% else %}<li class="hr-empty">No timesheets saved yet.</li>{% endfor %}</ul>
+</div></section>
+<details class="hr-disclosure hr-activity"{% if request.args.get('period') or request.args.get('from') or request.args.get('to') %} open{% endif %}><summary>Activity comparisons <span>Daily, weekly & reporting cycles</span></summary><div class="future-dashboard">{% include '_dashboard_period.html' %}</div></details>
 {% endblock %}

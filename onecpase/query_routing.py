@@ -39,6 +39,9 @@ def staff(db, name):
 def route(db, category, query_type=None):
     if not enabled():
         return None
+    if category=='complaint':
+        from .query_forms import staff_id
+        return {'department':'Management','assigned_to':staff_id(db,'QUERY_APPROVER_USER_ID',True)}
     if category == "refund":
         owner = staff(db, "ayrton")
         return {"department": "Management", "assigned_to": owner["id"] if owner else None}

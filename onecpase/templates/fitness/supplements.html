@@ -4,8 +4,8 @@
 
 {% block content %}
 <header class="page-header"><div><h1>Supplements Guide</h1></div></header>
-<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
-  <form method="get" style="display:flex; gap:8px;">
+<div class="list-toolbar">
+  <form method="get" class="list-filters">
     <select name="type" onchange="this.form.submit()">
       <option value="all" {% if supp_type == 'all' %}selected{% endif %}>All Types</option>
       {% for t in ['herbal','mainstream','steroid','peptide'] %}

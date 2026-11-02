@@ -4,6 +4,10 @@
 
 {% block content %}
 <header class="page-header"><div><h1>Query {{ qry.reference }}</h1></div></header>
+{% if qry.member_id and (qry.category in ['refund','freeze','complaint','cancellation','banking'] or (qry.category == 'payments' and qry.query_type == 'Proof of payment')) %}
+<p><a class="btn btn-primary" href="{{ url_for('queries.signed_workflow',qid=qry.id) }}">Signed request and workflow</a></p>
+{% endif %}
+{% if not qry.member_id and qry.status not in ['closed','resolved'] %}<details class="panel"><summary>Match this query to the client's member record</summary><p>Verify the client's identity against Members before linking. Existing evidence stays on this query.</p><form method="post" action="{{ url_for('queries.link_member',qid=qry.id) }}"><label>Verified member record ID<input type="number" name="member_id" min="1" required></label><label>Identity matching evidence<textarea name="notes" required></textarea></label><button class="btn">Link verified member</button></form></details>{% endif %}
 {% set pc = priority_colours.get(qry.priority, '#9ca3af') %}
 {% set sc = status_colours.get(qry.status, '#9ca3af') %}
 <style>
@@ -196,9 +200,70 @@
 
     <!-- Cancellation fee / settlement breakdown -->
     {% if qry.category == 'cancellation' %}
-    <div class="card" style="margin-bottom:16px;border-left:4px solid #e11d48;">
-      <div class="card-header"><h2>Cancellation Fee &amp; Settlement</h2></div>
+    <div class="card" id="cancellation-quote" style="margin-bottom:16px;border-left:4px solid #e11d48;">
+      <div class="card-header"><h2>Cancellation Fee &amp; Settlement</h2>
+        {% if cancellation_quotes %}<span class="cq-version">Quote v{{ cancellation_quotes[0].version }}</span>{% endif %}
+      </div>
       <div class="card-body" style="padding:16px;">
+        {% set cq = cancellation_quotes[0] if cancellation_quotes else none %}
+        {% set method_labels = dict(cancellation_payment_methods) %}
+        {% if cq %}
+        <div class="decision-grid">
+          <div class="dcell"><small>Contract</small><strong>{{ cq.contract_months }} months</strong></div>
+          <div class="dcell"><small>Months Completed</small><strong>{{ cq.months_completed }}</strong></div>
+          <div class="dcell"><small>Monthly Fee</small><strong>R{{ '%.2f'|format(cq.monthly_fee) }}</strong></div>
+          <div class="dcell"><small>Penalty (§11.3)</small><strong>{{ cq.penalty_months }} month(s)</strong></div>
+          <div class="dcell"><small>Cancellation Fee</small><strong>R{{ '%.2f'|format(cq.cancellation_fee) }}</strong></div>
+          <div class="dcell"><small>Outstanding at quote</small><strong>R{{ '%.2f'|format(cq.outstanding_balance) }}</strong></div>
+          <div class="dcell"><small>Total before discount</small><strong>R{{ '%.2f'|format(cq.gross_total) }}</strong></div>
+          <div class="dcell"><small>Discount band</small><strong>{{ cq.band_label }}</strong></div>
+        </div>
+        <div class="decision-grid cq-options">
+          {% set cash_on = cq.selected_option == 'cash' %}
+          <div class="dcell cq-option{% if cash_on %} is-selected{% endif %}">
+            <small>Cash — full payment upfront{% if cash_on %} · selected{% endif %}</small>
+            <strong>R{{ '%.2f'|format(cq.cash_total) }}</strong>
+            <span class="cq-option-detail">{{ '%g'|format(cq.cash_discount_pct) }}% off (R{{ '%.2f'|format(cq.cash_discount_amount) }}) · one payment</span>
+          </div>
+          {% set inst_on = cq.selected_option == 'instalments' %}
+          {% set pays = cq.instalment_payments %}
+          <div class="dcell cq-option{% if inst_on %} is-selected{% endif %}">
+            <small>Six monthly instalments{% if inst_on %} · selected{% endif %}</small>
+            <strong>R{{ '%.2f'|format(cq.instalment_total) }}</strong>
+            <span class="cq-option-detail">{{ '%g'|format(cq.instalment_discount_pct) }}% off (R{{ '%.2f'|format(cq.instalment_discount_amount) }}) ·
+              {% if pays and pays[0] != pays[-1] %}5 × R{{ '%.2f'|format(pays[0]) }} then R{{ '%.2f'|format(pays[-1]) }} (rounding adjustment){% elif pays %}6 × R{{ '%.2f'|format(pays[0]) }}{% endif %}</span>
+            <span class="cq-option-detail">{% if cq.instalment_dates %}Payment dates: {{ cq.instalment_dates|join(', ') }}{% else %}No agreed first payment date yet.{% endif %}</span>
+          </div>
+        </div>
+        <div class="cq-meta">
+          Payment option: <strong>{{ method_labels.get(cq.payment_method, 'Not chosen yet') }}</strong>
+          · agreed first payment <strong>{{ cq.first_payment_date or 'not set' }}</strong>
+          · saved by {{ cq.created_by_name or 'system' }} {{ (cq.created_at|string)[:16] }} · policy {{ cq.policy_version }}
+        </div>
+        {% if cancellation_quotes|length > 1 %}
+        <details class="cq-history">
+          <summary>Earlier quote versions ({{ cancellation_quotes|length - 1 }})</summary>
+          <table class="table">
+            <thead><tr><th>Version</th><th>Saved</th><th>Total</th><th>Cash</th><th>Instalments</th><th>Reason</th></tr></thead>
+            <tbody>
+              {% for old in cancellation_quotes[1:] %}
+              <tr>
+                <td>v{{ old.version }}</td>
+                <td>{{ (old.created_at|string)[:16] }} · {{ old.created_by_name or 'system' }}</td>
+                <td>R{{ '%.2f'|format(old.gross_total) }}</td>
+                <td>R{{ '%.2f'|format(old.cash_total) }}</td>
+                <td>R{{ '%.2f'|format(old.instalment_total) }}</td>
+                <td>{{ old.correction_reason or 'Original quote' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+        {% endif %}
+        {% if cq.correction_reason %}
+        <div class="cq-meta">Revision reason: {{ cq.correction_reason }}</div>
+        {% endif %}
+        {% else %}
         <div class="decision-grid">
           <div class="dcell"><small>Contract</small><strong>{{ qry.cancellation_contract_months }} months</strong></div>
           <div class="dcell"><small>Months Completed</small><strong>{{ qry.cancellation_months_completed }}</strong></div>
@@ -219,6 +284,58 @@
             <strong style="color:#991b1b;">R{{ '%.2f'|format(qry.cancellation_settlement_amount) }}</strong>
           </div>
         </div>
+        <div class="cq-meta">
+          Quoted under the earlier settlement rule. Revising the quote recalculates it under the current discount bands.
+        </div>
+        {% endif %}
+        {% if qry.status != 'closed' and qry.member_id and not qry.member_cancelled %}
+        <details class="cq-revise">
+          <summary>Revise quote</summary>
+          <form method="POST" action="{{ url_for('queries.revise_cancellation_quote', qid=qry.id) }}">
+            <div class="qform-grid three">
+              <div class="form-group">
+                <label class="form-label">Contract Type *</label>
+                <select name="cancellation_contract_months" class="form-control" required>
+                  {% for months in (12, 24, 36) %}
+                  <option value="{{ months }}" {% if qry.cancellation_contract_months == months %}selected{% endif %}>{{ months }} months</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Months Completed *</label>
+                <input type="number" name="cancellation_months_completed" class="form-control" min="0" max="36" required value="{{ qry.cancellation_months_completed if qry.cancellation_months_completed is not none else '' }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Monthly Fee (R) *</label>
+                <input type="number" step="0.01" name="cancellation_monthly_fee" class="form-control" required value="{{ '%.2f'|format(qry.cancellation_monthly_fee or 0) }}">
+              </div>
+            </div>
+            <div class="qform-grid">
+              <div class="form-group">
+                <label class="form-label">Payment Option</label>
+                <select name="cancellation_payment_method" class="form-control">
+                  <option value="">— Not chosen yet —</option>
+                  {% for k,v in cancellation_payment_methods %}
+                  <option value="{{ k }}" {% if qry.cancellation_payment_method == k %}selected{% endif %}>{{ v }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Agreed First Payment Date</label>
+                <input type="date" name="cancellation_first_payment_date" class="form-control" min="{{ today }}" value="{{ qry.cancellation_first_payment_date or '' }}">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Reason for revision *</label>
+                <input type="text" name="correction_reason" class="form-control" required placeholder="e.g. contract shows 24 months, not 36">
+              </div>
+            </div>
+            <div class="cq-note">
+              The revised quote uses the member's current outstanding balance and is saved as a new version; earlier versions are kept.
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">Save revised quote</button>
+          </form>
+        </details>
+        {% endif %}
         {% if qry.member_cancelled %}
         <div style="margin-top:12px;padding:8px 12px;background:#fee2e2;border:1px solid #fecaca;border-radius:6px;font-size:.8rem;font-weight:700;color:#991b1b;">
            Member account cancelled{% if qry.manager_approved_by_name %} — approved by {{ qry.manager_approved_by_name }}{% endif %}.
@@ -299,11 +416,13 @@
                    value="{{ qry.proposed_discount_pct or summary.discount_percent }}">
           </div>
           {% endif %}
-          {% if qry.category == 'cancellation' %}
+          {% if qry.category == 'cancellation' and cash_settlement.eligible %}
           <label style="display:flex;gap:8px;align-items:flex-start;font-size:.85rem;color:#374151;margin-bottom:10px;">
             <input type="checkbox" name="cancel_member" value="1" style="margin-top:3px;" {% if qry.cancel_member_requested %}checked{% endif %}>
-            <span>Cancel this member's account once approved</span>
+            <span>Cancel this member's account {% if is_manager %}now{% else %}once approved{% endif %} — cash settlement of R{{ '{:,.2f}'.format(cash_settlement.cash_total) }} paid (R{{ '{:,.2f}'.format(cash_settlement.paid_total) }} recorded)</span>
           </label>
+          {% elif qry.category == 'cancellation' and cash_settlement.reason %}
+          <div class="cq-note">Account cancellation: {{ cash_settlement.reason }}</div>
           {% endif %}
           <div class="form-group">
             <label class="form-label">What should the manager approve, and why? *</label>

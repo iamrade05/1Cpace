@@ -1,26 +1,10 @@
 """Member joining cohorts in complete 15th–14th business cycles."""
 from datetime import date, timedelta
-from zoneinfo import ZoneInfo
-from datetime import datetime
 
 from .encryption import decrypt_member
 
 
-def today():
-    return datetime.now(ZoneInfo('Africa/Johannesburg')).date()
-
-
-def cycle_key(day):
-    end_month = day.replace(day=1)
-    if day.day >= 15:
-        end_month = (end_month.replace(day=28) + timedelta(days=4)).replace(day=1)
-    return end_month.strftime('%Y-%m')
-
-
-def cycle_bounds(key):
-    end_month = date.fromisoformat(str(key) + '-01')
-    previous_month = end_month - timedelta(days=1)
-    return previous_month.replace(day=15), end_month.replace(day=14)
+from .reporting_cycle import today, cycle_key, cycle_bounds
 
 
 def joining_window(args, day=None):

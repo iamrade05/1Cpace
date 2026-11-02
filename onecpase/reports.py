@@ -4,15 +4,17 @@ from flask import Blueprint, render_template, request
 from datetime import date, timedelta
 from werkzeug.datastructures import MultiDict
 from .auth import permission_required
+from .dashboard_access import dashboard_only
 from .database import get_db
 from .encryption import decrypt
 from .member_counts import get_member_counts
+from .reporting_cycle import today as business_today, current_cycle, cycle_key, cycle_bounds, shift_month, history_start
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/reports")
 
 PERIODS = [
-    ('this_month',     'This Month'),
-    ('last_month',     'Last Month'),
+    ('this_month',     'This Cycle (15th to 14th)'),
+    ('last_month',     'Previous Cycle (15th to 14th)'),
     ('this_quarter',   'This Quarter'),
     ('this_year',      'This Year'),
     ('last_12_months', 'Last 12 Months'),
@@ -129,16 +131,16 @@ def _load_register(db, status='', search='', segment=''):
         "has_visit_data": bool(visits) or any(d["local_last_visit"] for d in out),
     }
 
-    joins = db.execute("""
-        SELECT strftime('%Y-%m', join_date) AS month, COUNT(*) AS joined,
+    joins = db.execute(f"""
+        SELECT strftime('%Y-%m', date(join_date,'-14 days','start of month','+1 month')) AS month, COUNT(*) AS joined,
                COALESCE(SUM(monthly_installment),0) AS premium,
                SUM(CASE WHEN member_status='Active' THEN 1 ELSE 0 END) AS still_active
-        FROM members WHERE join_date IS NOT NULL AND join_date >= date('now','-12 months','start of month')
+        FROM members WHERE join_date IS NOT NULL AND substr(join_date,1,10) BETWEEN '{history_start(12)}' AND '{current_cycle()[1].isoformat()}'
         GROUP BY month ORDER BY month DESC
     """).fetchall()
     collected = {r["month"]: r["total"] for r in db.execute(
-        "SELECT strftime('%Y-%m', collection_date) AS month, SUM(amount_paid) AS total "
-        "FROM collections WHERE collection_date >= date('now','-12 months','start of month') GROUP BY month")}
+        "SELECT strftime('%Y-%m', date(collection_date,'-14 days','start of month','+1 month')) AS month, SUM(amount_paid) AS total "
+        f"FROM collections WHERE substr(collection_date,1,10) BETWEEN '{history_start(12)}' AND '{current_cycle()[1].isoformat()}' GROUP BY month")}
     joins_by_month = [{**dict(j), "collected": collected.get(j["month"], 0)} for j in joins]
 
     if status:
@@ -312,21 +314,25 @@ def _build_custom_sql(form):
 
 
 def _date_range(period):
-    today = date.today()
+    today = business_today()
+    first, last = current_cycle(today)
+    closing = date.fromisoformat(cycle_key(today) + '-01')
     if period == 'this_month':
-        return today.replace(day=1).isoformat(), today.isoformat()
+        start, end = first, last
     elif period == 'last_month':
-        last = today.replace(day=1) - timedelta(days=1)
-        return last.replace(day=1).isoformat(), last.isoformat()
+        start, end = cycle_bounds(shift_month(closing, -1).strftime('%Y-%m'))
     elif period == 'this_quarter':
-        q = ((today.month - 1) // 3) * 3 + 1
-        return today.replace(month=q, day=1).isoformat(), today.isoformat()
+        q = ((closing.month - 1) // 3) * 3 + 1
+        start = cycle_bounds(closing.replace(month=q).strftime('%Y-%m'))[0]
+        end = cycle_bounds(closing.replace(month=q+2).strftime('%Y-%m'))[1]
     elif period == 'this_year':
-        return today.replace(month=1, day=1).isoformat(), today.isoformat()
+        start = cycle_bounds(closing.replace(month=1).strftime('%Y-%m'))[0]
+        end = cycle_bounds(closing.replace(month=12).strftime('%Y-%m'))[1]
     elif period == 'all_time':
-        return '2000-01-01', today.isoformat()
+        start, end = date(2000, 1, 1), last
     else:
-        return (today - timedelta(days=365)).isoformat(), today.isoformat()
+        start, end = cycle_bounds(shift_month(closing, -11).strftime('%Y-%m'))[0], last
+    return start.isoformat(), end.isoformat()
 
 
 def _period_label(period):
@@ -350,30 +356,31 @@ def _saved_report_form_data(report):
 
 def _load_overview(db):
     today_str = date.today().isoformat()
-    month_start = date.today().replace(day=1).isoformat()
+    first, last = current_cycle()
+    month_start, month_end = first.isoformat(), last.isoformat()
     s = {}
     member_counts = get_member_counts(db)
     s['active_members']      = member_counts['active']
     s['frozen_members']      = member_counts['by_status'].get('Frozen', 0)
     s['cancelled_members']   = member_counts['by_status'].get('Cancelled', 0)
     s['total_members']       = member_counts['total']
-    s['new_this_month']      = db.execute("SELECT COUNT(*) FROM members WHERE join_date >= ?", (month_start,)).fetchone()[0]
-    s['collected_this_month']= db.execute("SELECT COALESCE(SUM(amount_paid),0) FROM collections WHERE collection_date >= ?", (month_start,)).fetchone()[0]
+    s['new_this_month']      = db.execute("SELECT COUNT(*) FROM members WHERE substr(join_date,1,10) BETWEEN ? AND ?", (month_start, month_end,)).fetchone()[0]
+    s['collected_this_month']= db.execute("SELECT COALESCE(SUM(amount_paid),0) FROM collections WHERE substr(collection_date,1,10) BETWEEN ? AND ?", (month_start, month_end,)).fetchone()[0]
     from .ptp import bulk_member_arrears
     s['total_outstanding']   = sum(v["total_arrears"] for v in bulk_member_arrears(db).values())
     s['open_queries']        = db.execute("SELECT COUNT(*) FROM queries WHERE status NOT IN ('resolved','closed')").fetchone()[0]
     s['active_ptps']         = db.execute("SELECT COUNT(*) FROM ptp_agreements WHERE ptp_status IN ('pending','partially_paid')").fetchone()[0]
     s['broken_ptps']         = db.execute("SELECT COUNT(*) FROM ptp_agreements WHERE ptp_status='broken'").fetchone()[0]
 
-    monthly = db.execute("""
-        SELECT strftime('%Y-%m', collection_date) AS month,
+    monthly = db.execute(f"""
+        SELECT strftime('%Y-%m', date(collection_date,'-14 days','start of month','+1 month')) AS month,
                SUM(amount_paid) AS collected, SUM(outstanding_balance) AS outstanding, COUNT(*) AS cnt
-        FROM collections WHERE collection_date >= date('now','-6 months')
+        FROM collections WHERE substr(collection_date,1,10) BETWEEN '{history_start(6)}' AND '{current_cycle()[1].isoformat()}'
         GROUP BY month ORDER BY month DESC
     """).fetchall()
-    joins_monthly = db.execute("""
-        SELECT strftime('%Y-%m', join_date) AS month, COUNT(*) AS cnt
-        FROM members WHERE join_date >= date('now','-6 months')
+    joins_monthly = db.execute(f"""
+        SELECT strftime('%Y-%m', date(join_date,'-14 days','start of month','+1 month')) AS month, COUNT(*) AS cnt
+        FROM members WHERE substr(join_date,1,10) BETWEEN '{history_start(6)}' AND '{current_cycle()[1].isoformat()}'
         GROUP BY month ORDER BY month DESC
     """).fetchall()
     top_packages = db.execute("""
@@ -383,8 +390,8 @@ def _load_overview(db):
     """).fetchall()
     query_cats = db.execute("""
         SELECT category, COUNT(*) AS cnt FROM queries
-        WHERE DATE(created_at) >= ? GROUP BY category ORDER BY cnt DESC LIMIT 6
-    """, (month_start,)).fetchall()
+        WHERE DATE(created_at) BETWEEN ? AND ? GROUP BY category ORDER BY cnt DESC LIMIT 6
+    """, (month_start, month_end)).fetchall()
 
     return dict(stats=s, monthly=monthly, joins_monthly=joins_monthly,
                 top_packages=top_packages, query_cats=query_cats)
@@ -393,7 +400,7 @@ def _load_overview(db):
 def _load_membership(db, period):
     from_date, to_date = _date_range(period)
     status_breakdown = db.execute("SELECT member_status, COUNT(*) AS cnt FROM members GROUP BY member_status ORDER BY cnt DESC").fetchall()
-    new_by_month = db.execute("SELECT strftime('%Y-%m', join_date) AS month, COUNT(*) AS cnt FROM members WHERE join_date BETWEEN ? AND ? GROUP BY month ORDER BY month DESC", (from_date, to_date)).fetchall()
+    new_by_month = db.execute("SELECT strftime('%Y-%m', date(join_date,'-14 days','start of month','+1 month')) AS month, COUNT(*) AS cnt FROM members WHERE DATE(join_date) BETWEEN ? AND ? GROUP BY month ORDER BY month DESC", (from_date, to_date)).fetchall()
     package_breakdown = db.execute("SELECT package, member_status, COUNT(*) AS cnt FROM members WHERE package IS NOT NULL AND package!='' GROUP BY package, member_status ORDER BY cnt DESC").fetchall()
     payment_type_breakdown = db.execute("SELECT payment_type, COUNT(*) AS cnt FROM members WHERE payment_type IS NOT NULL AND payment_type!='' GROUP BY payment_type ORDER BY cnt DESC").fetchall()
     gender_breakdown = db.execute("SELECT gender, COUNT(*) AS cnt FROM members WHERE gender IS NOT NULL AND gender!='' GROUP BY gender ORDER BY cnt DESC").fetchall()
@@ -409,7 +416,7 @@ def _load_membership(db, period):
         SELECT m.id, m.first_name, m.last_name, m.member_status, m.package,
                m.join_date, m.contact, u.full_name AS consultant
         FROM members m LEFT JOIN users u ON m.uploaded_by_id = u.id
-        WHERE m.join_date BETWEEN ? AND ? ORDER BY m.join_date DESC LIMIT 50
+        WHERE DATE(m.join_date) BETWEEN ? AND ? ORDER BY m.join_date DESC LIMIT 50
     """, (from_date, to_date)).fetchall()
     total_members = get_member_counts(db)['total']
     return dict(from_date=from_date, to_date=to_date,
@@ -423,16 +430,16 @@ def _load_membership(db, period):
 def _load_finance(db, period):
     from_date, to_date = _date_range(period)
     monthly_collections = db.execute("""
-        SELECT strftime('%Y-%m', collection_date) AS month, COUNT(*) AS cnt,
+        SELECT strftime('%Y-%m', date(collection_date,'-14 days','start of month','+1 month')) AS month, COUNT(*) AS cnt,
                SUM(amount_paid) AS collected, SUM(outstanding_balance) AS outstanding,
                SUM(CASE WHEN status='paid' THEN 1 ELSE 0 END) AS paid_cnt,
                SUM(CASE WHEN status='partial' THEN 1 ELSE 0 END) AS partial_cnt,
                SUM(CASE WHEN status IN ('pending','failed') THEN 1 ELSE 0 END) AS failed_cnt
-        FROM collections WHERE collection_date BETWEEN ? AND ?
+        FROM collections WHERE DATE(collection_date) BETWEEN ? AND ?
         GROUP BY month ORDER BY month DESC
     """, (from_date, to_date)).fetchall()
-    payment_methods = db.execute("SELECT method, COUNT(*) AS cnt, SUM(amount_paid) AS total FROM collections WHERE collection_date BETWEEN ? AND ? GROUP BY method ORDER BY total DESC", (from_date, to_date)).fetchall()
-    status_breakdown = db.execute("SELECT status, COUNT(*) AS cnt, SUM(amount_paid) AS total FROM collections WHERE collection_date BETWEEN ? AND ? GROUP BY status ORDER BY cnt DESC", (from_date, to_date)).fetchall()
+    payment_methods = db.execute("SELECT method, COUNT(*) AS cnt, SUM(amount_paid) AS total FROM collections WHERE DATE(collection_date) BETWEEN ? AND ? GROUP BY method ORDER BY total DESC", (from_date, to_date)).fetchall()
+    status_breakdown = db.execute("SELECT status, COUNT(*) AS cnt, SUM(amount_paid) AS total FROM collections WHERE DATE(collection_date) BETWEEN ? AND ? GROUP BY status ORDER BY cnt DESC", (from_date, to_date)).fetchall()
 
     from .ptp import bulk_member_arrears, ARREARS_RESTRICTION_MONTHS
     member_rows = {
@@ -453,11 +460,11 @@ def _load_finance(db, period):
         })
     top_outstanding.sort(key=lambda r: r["net_owed"], reverse=True)
     top_outstanding = top_outstanding[:25]
-    totals = db.execute("SELECT COALESCE(SUM(amount_paid),0) AS total_collected, COALESCE(SUM(outstanding_balance),0) AS total_billed, COUNT(*) AS total_records FROM collections WHERE collection_date BETWEEN ? AND ?", (from_date, to_date)).fetchone()
+    totals = db.execute("SELECT COALESCE(SUM(amount_paid),0) AS total_collected, COALESCE(SUM(outstanding_balance),0) AS total_billed, COUNT(*) AS total_records FROM collections WHERE DATE(collection_date) BETWEEN ? AND ?", (from_date, to_date)).fetchone()
     revenue_by_package = db.execute("""
         SELECT m.package, SUM(c.amount_paid) AS collected, COUNT(DISTINCT c.member_id) AS members
         FROM collections c JOIN members m ON c.member_id = m.id
-        WHERE c.collection_date BETWEEN ? AND ? AND m.package IS NOT NULL AND m.package!=''
+        WHERE DATE(c.collection_date) BETWEEN ? AND ? AND m.package IS NOT NULL AND m.package!=''
         GROUP BY m.package ORDER BY collected DESC
     """, (from_date, to_date)).fetchall()
     return dict(from_date=from_date, to_date=to_date,
@@ -499,12 +506,12 @@ def _load_arrears(db):
                COALESCE(SUM(arrears_amount),0) AS total_arrears
         FROM ptp_agreements
     """).fetchone()
-    contact_log_summary = db.execute("SELECT call_code, COUNT(*) AS cnt FROM contact_logs WHERE created_at >= date('now','-30 days') GROUP BY call_code ORDER BY cnt DESC").fetchall()
-    ptp_monthly = db.execute("""
-        SELECT strftime('%Y-%m', created_at) AS month, COUNT(*) AS created,
+    contact_log_summary = db.execute(f"SELECT call_code, COUNT(*) AS cnt FROM contact_logs WHERE substr(created_at,1,10) BETWEEN '{current_cycle()[0].isoformat()}' AND '{current_cycle()[1].isoformat()}' GROUP BY call_code ORDER BY cnt DESC").fetchall()
+    ptp_monthly = db.execute(f"""
+        SELECT strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month')) AS month, COUNT(*) AS created,
                SUM(CASE WHEN ptp_status='paid' THEN 1 ELSE 0 END) AS paid,
                SUM(CASE WHEN ptp_status='broken' THEN 1 ELSE 0 END) AS broken
-        FROM ptp_agreements WHERE created_at >= date('now','-6 months')
+        FROM ptp_agreements WHERE substr(created_at,1,10) BETWEEN '{history_start(6)}' AND '{current_cycle()[1].isoformat()}'
         GROUP BY month ORDER BY month DESC
     """).fetchall()
     return dict(ptp_status_breakdown=ptp_status_breakdown, ptp_by_arrangement=ptp_by_arrangement,
@@ -544,10 +551,10 @@ def _load_queries(db, period):
         WHERE DATE(q.created_at) BETWEEN ? AND ?
         ORDER BY q.created_at DESC LIMIT 50
     """, (from_date, to_date)).fetchall()
-    monthly_trend = db.execute("""
-        SELECT strftime('%Y-%m', created_at) AS month, COUNT(*) AS cnt,
+    monthly_trend = db.execute(f"""
+        SELECT strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month')) AS month, COUNT(*) AS cnt,
                SUM(CASE WHEN status IN ('resolved','closed') THEN 1 ELSE 0 END) AS resolved
-        FROM queries WHERE created_at >= date('now','-6 months')
+        FROM queries WHERE substr(created_at,1,10) BETWEEN '{history_start(6)}' AND '{current_cycle()[1].isoformat()}'
         GROUP BY month ORDER BY month DESC
     """).fetchall()
     totals = db.execute("""
@@ -567,15 +574,17 @@ def _load_queries(db, period):
 @reports_bp.route('/')
 @reports_bp.route('/overview')
 @permission_required("reports_module")
+@dashboard_only('admin')
 def index():
     db = get_db()
     tab = request.args.get('tab', 'overview')
     if tab not in VALID_TABS:
         tab = 'overview'
-    period = request.args.get('period', 'last_12_months')
+    period = request.args.get('period', 'this_month')
 
     ctx = dict(tab=tab, period=period,
                period_label=_period_label(period), periods=PERIODS,
+               reporting_from=_date_range(period)[0], reporting_to=_date_range(period)[1],
                today=date.today().isoformat())
 
     if tab == 'overview':
@@ -636,6 +645,7 @@ def membership_report():
 
 @reports_bp.route('/run-custom', methods=['POST'])
 @permission_required("reports_module")
+@dashboard_only('admin')
 def run_custom():
     db  = get_db()
     frm = request.form

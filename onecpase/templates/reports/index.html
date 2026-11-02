@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Reports – {{ tab | title }}{% endblock %}
 {% block content %}
+<p class="card-note">Monthly reporting cycle: 15th to 14th. Cycle names use the closing month; November means 15 October to 14 November.</p>
+{% if reporting_from is defined %}<p class="card-note">Selected period: {{ reporting_from }} to {{ reporting_to }}.</p>{% endif %}
 
 <style>
 .section-chip {
@@ -43,8 +45,8 @@
   <div class="kpi-card" style="border-left-color:#17a2b8;"><div class="kpi-label">Frozen</div><div class="kpi-value" style="color:#17a2b8;">{{ stats.frozen_members }}</div></div>
   <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Cancelled</div><div class="kpi-value" style="color:#dc3545;">{{ stats.cancelled_members }}</div></div>
   <div class="kpi-card" style="border-left-color:#007bff;"><div class="kpi-label">Total Members</div><div class="kpi-value">{{ stats.total_members }}</div></div>
-  <div class="kpi-card" style="border-left-color:#17a2b8;"><div class="kpi-label">New This Month</div><div class="kpi-value" style="color:#17a2b8;">{{ stats.new_this_month }}</div></div>
-  <div class="kpi-card" style="border-left-color:#28a745;"><div class="kpi-label">Collected (Month)</div><div class="kpi-value" style="color:#28a745;">R {{ '{:,.2f}'.format(stats.collected_this_month|float) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#17a2b8;"><div class="kpi-label">New This Cycle</div><div class="kpi-value" style="color:#17a2b8;">{{ stats.new_this_month }}</div></div>
+  <div class="kpi-card" style="border-left-color:#28a745;"><div class="kpi-label">Collected (Cycle)</div><div class="kpi-value" style="color:#28a745;">R {{ '{:,.2f}'.format(stats.collected_this_month|float) }}</div></div>
   <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Outstanding</div><div class="kpi-value" style="color:#dc3545;">R {{ '{:,.2f}'.format(stats.total_outstanding|float) }}</div></div>
   <div class="kpi-card" style="border-left-color:#ffc107;"><div class="kpi-label">Open Queries</div><div class="kpi-value" style="color:#ffc107;">{{ stats.open_queries }}</div></div>
   <div class="kpi-card" style="border-left-color:#007bff;"><div class="kpi-label">Active PTPs</div><div class="kpi-value" style="color:#007bff;">{{ stats.active_ptps }}</div></div>
@@ -55,7 +57,7 @@
   ('ov-collections', 'Collections — Last 6 Months'),
   ('ov-joins',       'New Joins — Last 6 Months'),
   ('ov-packages',    'Top Packages (Active Members)'),
-  ('ov-queries',     'Queries This Month by Category'),
+  ('ov-queries',     'Queries This Cycle by Category'),
 ]) }}
 
 <div id="ov-collections" class="report-section active">
@@ -83,7 +85,7 @@
 </div>
 
 <div id="ov-queries" class="report-section">
-  <div class="card"><div class="card-header"><h3 class="card-title">Queries This Month by Category</h3></div>
+  <div class="card"><div class="card-header"><h3 class="card-title">Queries This Cycle by Category</h3></div>
   <div class="card-body" style="padding:0;"><div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
     <thead><tr><th>Category</th><th class="text-right">Count</th></tr></thead>
     <tbody>{% for r in query_cats %}<tr><td>{{ r['category']|replace('_',' ')|title }}</td><td class="text-right"><strong>{{ r['cnt'] }}</strong></td></tr>{% else %}<tr><td colspan="2" class="text-center text-muted">No queries this month</td></tr>{% endfor %}</tbody>

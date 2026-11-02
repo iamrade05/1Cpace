@@ -1,0 +1,6 @@
+{% extends 'base.html' %}
+{% block title %}Member request link created | 1Cpace{% endblock %}
+{% block content %}{% from '_ui.html' import page_header %}{{ page_header('Member request link created') }}
+<p>This link expires after seven days. Email and WhatsApp messages have been added to the delivery queue. Check delivery status in the query workflow.</p>
+<label for="link">Secure member link</label><input id="link" class="form-control" readonly value="{{ link }}">
+<p><a href="{{ url_for('queries.signed_workflow',qid=qid) }}">Return to query workflow</a></p>{% endblock %}

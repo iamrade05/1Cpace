@@ -4,20 +4,13 @@
 
 {% block content %}
 <header class="page-header"><div><h1>Incident Log</h1></div></header>
-<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; margin-bottom:20px;">
-  <div class="card"><div class="card-body" style="text-align:center;">
-    <div style="font-size:1.6rem; font-weight:700; color:#f59e0b;">{{ open_count }}</div>
-    <div style="font-size:0.75rem; color:#6b7280;">Open Incidents</div>
-  </div></div>
-  <div class="card"><div class="card-body" style="text-align:center;">
-    <div style="font-size:1.6rem; font-weight:700; color:#ef4444;">{{ high_count }}</div>
-    <div style="font-size:0.75rem; color:#6b7280;">High Severity</div>
-  </div></div>
-</div>
-
-<div style="display:grid; grid-template-columns:1fr 340px; gap:20px;">
+<section class="fd-kpi-grid fitness-summary-grid" aria-label="Incident overview">
+  <article class="fd-kpi is-gold"><div class="fd-kpi-label">Open incidents</div><div class="fd-kpi-value">{{ open_count }}</div></article>
+  <article class="fd-kpi is-slate"><div class="fd-kpi-label">High severity</div><div class="fd-kpi-value">{{ high_count }}</div></article>
+</section>
+<div class="fitness-split">
   <div>
-    <form method="get" style="display:flex; gap:10px; margin-bottom:14px;">
+    <form method="get" class="reg-filters">
       <select name="status" onchange="this.form.submit()">
         <option value="all" {% if status == 'all' %}selected{% endif %}>All Statuses</option>
         <option value="open" {% if status == 'open' %}selected{% endif %}>Open</option>
@@ -100,7 +93,7 @@
     {% endif %}
   </div>
 
-  <div class="card" style="align-self:start;">
+  <div class="card fitness-side-panel">
     <div class="card-header"><h2>Log Incident</h2></div>
     <div class="card-body">
       <form method="post" action="{{ url_for('fitness.incident_add') }}">

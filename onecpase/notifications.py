@@ -74,6 +74,19 @@ def sync_notifications(db, now=None, enabled_kinds=None, query_routing_enabled=N
             due = r["follow_up_date"] or str(r["approval_requested_at"] or r["created_at"])[:10]
             sources.append(("query", r["id"], event, r["assigned_to"] or r["logged_by"],
                             f"Query {r['reference'] or '#' + str(r['id'])}: {'escalated' if event.startswith('escalated') else 'approval required' if event.startswith('approval') else 'follow-up due'}", due))
+        # Signed-form handoffs are actionable immediately, even when the
+        # query's ordinary follow-up date is still in the future.
+        for r in db.execute("""SELECT q.id,q.reference,q.due_date,w.stage,w.owner_id,w.updated_at
+                FROM query_workflows w JOIN queries q ON q.id=w.query_id
+                WHERE q.status NOT IN ('resolved','closed')
+                  AND w.stage NOT IN ('intake','awaiting_member','awaiting_information','awaiting_settlement','complete','rejected')""").fetchall():
+            sources.append(('query',r['id'],f"workflow:{r['stage']}:{r['updated_at']}",r['owner_id'],
+                            f"Query {r['reference'] or '#' + str(r['id'])}: {r['stage'].replace('_',' ')}",
+                            r['due_date'] if r['stage'] in ('manager_cancel_debit','cancelled_awaiting_mandate_review') else str(r['updated_at'])[:10]))
+        for r in db.execute("""SELECT q.id,q.reference,COALESCE(q.assigned_to,q.logged_by) AS reception_owner_id,w.stage,w.updated_at FROM query_workflows w
+            JOIN queries q ON q.id=w.query_id WHERE w.stage IN ('complete','rejected') AND q.status='closed'""").fetchall():
+            sources.append(('query',r['id'],f"outcome:{r['stage']}:{r['updated_at']}",r['reception_owner_id'],
+                            f"Query {r['reference'] or '#' + str(r['id'])}: completed — confirm outcome with client",str(r['updated_at'])[:10]))
     if "sale" in kinds:
         rows = db.execute("""SELECT a.*, l.assigned_to FROM lead_activities a JOIN leads l ON l.id=a.lead_id
             WHERE a.manager_approval_status='pending' OR
@@ -131,7 +144,7 @@ def sync_notifications(db, now=None, enabled_kinds=None, query_routing_enabled=N
                 AND event_key=? AND recipient_id=? AND resolved_at IS NOT NULL""",
                 (kind, sid, event, recipient))
     for row in db.execute("SELECT * FROM staff_notifications WHERE resolved_at IS NULL").fetchall():
-        if row['source_kind'] in {'hr_leave', 'hr_week'}:
+        if row['source_kind'] in {'hr_leave', 'hr_week', 'fitness_offer'}:
             continue  # HR workflow transactions own these event lifecycles.
         key = (row["source_kind"], row["source_id"], row["event_key"], row["recipient_id"])
         if key not in active_keys:
@@ -164,6 +177,8 @@ def index():
     def can_view(permission):
         return session.get("role") == "admin" or permission in session.get("permissions", [])
     for r in rows:
+        if r['source_kind']=='fitness_offer' and can_view('fitness_module'):
+            links[r['id']]=url_for('fitness_journey.allocations')
         if r['source_kind'] == 'hr_leave':
             links[r['id']] = url_for('hr.leave_index')
         elif r['source_kind'] == 'hr_week':

@@ -623,7 +623,7 @@ def complete_call(outcome):
     }
 
 
-def calculate_daily_call_kpi(calls_completed, target=100, contacts=0, calls_attempted=None):
+def calculate_daily_call_kpi(calls_completed, target=80, contacts=0, calls_attempted=None):
     target = int(target)
     completed = max(int(calls_completed), 0)
     attempted = completed if calls_attempted is None else max(int(calls_attempted), 0)
@@ -995,7 +995,7 @@ def ensure_collections_engine_schema(db, backend="sqlite"):
         db.execute(insert, (key, value, value_type))
     # Upgrade the previous daily quota for existing tenant databases.
     db.execute("UPDATE collection_rules SET rule_value='100' "
-               "WHERE rule_key='daily_call_target' AND rule_value='40'")
+               "WHERE rule_key='daily_call_target' AND rule_value IN ('40','80')")
     db.commit()
 
 

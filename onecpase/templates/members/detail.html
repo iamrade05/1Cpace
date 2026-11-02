@@ -6,6 +6,8 @@
 {% block content %}
 {% from '_ui.html' import page_header, callout, badge with context %}
 {% set profile_actions %}
+{% set call_task = request.args.get('call_task', 0)|int %}
+{% if call_task > 0 %}<a href="{{ url_for('collections.call_profile', task_id=call_task) }}" class="btn btn-ghost">&larr; Back to Call Queue Profile</a>{% endif %}
 {% if has_perm('add_member') %}<a href="{{ url_for('members.member_edit', mid=member.id) }}" class="btn btn-primary">Edit</a>{% endif %}
 {% if has_perm('new_collection') %}<a href="{{ url_for('collections.collections_add', member_id=member.id) }}" class="btn btn-secondary">Record Payment</a>{% endif %}
 {% endset %}
@@ -663,6 +665,15 @@ document.addEventListener("DOMContentLoaded", function () {
       {% endif %}
       <input type="hidden" name="arrears_amount" value="{{ '%.2f'|format(arrears_info.total_arrears) }}">
       <div class="u-49a3bebb">
+        <div class="form-group">
+          <label class="form-label" for="ptp-contact-channel">PTP agreed by <span class="req">*</span></label>
+          <select class="form-control" id="ptp-contact-channel" name="contact_channel" required>
+            <option value="">Select…</option>
+            <option value="call">Phone call</option>
+            <option value="walk_in">Walk-in</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
         <div class="form-group">
           <label class="form-label">Amount Owing (read-only)</label>
           <input class="form-control" value="R{{ '%.2f'|format(arrears_info.total_arrears) }}" readonly>

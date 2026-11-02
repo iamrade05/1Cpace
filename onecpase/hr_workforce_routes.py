@@ -73,8 +73,10 @@ def dashboard():
     if rules.service_account(rules.actor(db)):
         return redirect(url_for('workforce.setup'))
     p=profile()
+    from .dashboard_reporting import dashboard_context
+    reporting=dashboard_context(db,'hr',session['user_id'])
     accounts=[dict(a,**rules.account_balance(db,a)) for a in rules.current_accounts(db,session['user_id'])]
-    return render_template('hr/me.html',profile=p,accounts=accounts,admin=rules.is_admin(db),annual_days=rules.annual_entitlement(db,p),
+    return render_template('hr/me.html',**reporting,profile=p,accounts=accounts,admin=rules.is_admin(db),annual_days=rules.annual_entitlement(db,p),
         requests=db.execute('SELECT * FROM hr_requests WHERE user_id=? ORDER BY id DESC LIMIT 30',(session['user_id'],)).fetchall(),
         weeks=db.execute('SELECT * FROM hr_weeks WHERE user_id=? ORDER BY week_start DESC LIMIT 12',(session['user_id'],)).fetchall(),
         shifts=db.execute("SELECT * FROM hr_shifts WHERE user_id=? AND work_date>=? AND status='published' ORDER BY work_date LIMIT 14",(session['user_id'],rules.today().isoformat())).fetchall())
@@ -306,7 +308,7 @@ def request_leave():
     db=get_db()
     if rules.service_account(rules.actor(db)):
         return redirect(url_for('workforce.setup'))
-    profile()
+    employee_profile=profile()
     if request.method=='POST':
         try:
             with rules.transaction(db):
@@ -316,7 +318,20 @@ def request_leave():
         else:
             flash('Leave request signed and submitted.','success')
             return redirect(url_for('hr.leave_index'))
-    return render_template('hr/leave_request.html',leave_types=rules.LEAVE_TYPES,token=secrets.token_urlsafe(24))
+    missing=[]
+    if employee_profile['employment_type'] not in ('employee','contractor'):
+        missing.append('Confirmed employment type')
+    if not employee_profile['start_date']:
+        missing.append('Employment start date')
+    try:
+        working_days=json.loads(employee_profile['weekdays'] or '[]')
+    except (ValueError,TypeError):
+        working_days=[]
+    if not isinstance(working_days,list) or not working_days or any(type(day) is not int or day not in range(6) for day in working_days):
+        missing.append('Normal working days')
+    leave_types=('unpaid',) if employee_profile['employment_type']=='contractor' else rules.LEAVE_TYPES
+    return render_template('hr/leave_request.html',leave_types=leave_types,token=secrets.token_urlsafe(24),
+        setup_missing=missing,can_manage_setup=rules.is_admin(db),employee_profile=employee_profile)
 
 
 @login_required

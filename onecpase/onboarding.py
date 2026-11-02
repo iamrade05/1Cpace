@@ -81,7 +81,7 @@ def ensure_onboarding_rows(db):
     from .fitness_cycle import today
     cutoff=(today()-timedelta(days=10)).isoformat()
     db.execute("""UPDATE member_onboarding SET status='complete',close_reason='window_expired',closed_at=?,updated_at=?
-        WHERE status IN ('eligible','active') AND member_id IN (SELECT member_id FROM fitness_intake WHERE started_on IS NOT NULL AND substr(started_on,1,10)<=?)""",
+        WHERE status IN ('eligible','active') AND member_id IN (SELECT member_id FROM fitness_intake WHERE program_start_on IS NOT NULL AND substr(program_start_on,1,10)<=?)""",
         (today().isoformat(),today().isoformat(),cutoff))
     db.commit()
 
@@ -101,7 +101,7 @@ def register_arrival(db, member_id, source="turnstile", at=None):
     existing = db.execute("SELECT id FROM onboarding_visits WHERE member_id=? AND visit_date=?", (member_id, day)).fetchone()
     if existing:
         return existing["id"]
-    started=db.execute('SELECT started_on FROM fitness_intake WHERE member_id=?',(member_id,)).fetchone()
+    started=db.execute('SELECT program_start_on AS started_on FROM fitness_intake WHERE member_id=?',(member_id,)).fetchone()
     first = row["first_visit_date"] or day
     if started and started['started_on'] and (at.date() - date.fromisoformat(str(started['started_on'])[:10])).days >= ONBOARDING_MAX_DAYS:
         _close(db, row, "window_expired"); db.commit(); return None
@@ -172,6 +172,27 @@ def today_list():
         window_visits=ONBOARDING_VISITS,intake_map=intake_map, **cohort)
 
 
+@onboarding_bp.get("/boarded")
+@login_required
+@permission_required("fitness_module")
+def boarded_members():
+    """Members with a completed programme and a recorded completion review."""
+    db = get_db()
+    page = max(1, request.args.get("page", 1, type=int))
+    where = "o.status='complete' AND o.review_done=1"
+    total = db.execute(f"SELECT count(*) FROM member_onboarding o WHERE {where}").fetchone()[0]
+    pages = max(1, (total + 49) // 50)
+    page = min(page, pages)
+    rows = db.execute(f"""SELECT o.id, o.member_id, o.review_date, o.review_outcome,
+        m.first_name, m.last_name, m.package
+        FROM member_onboarding o JOIN members m ON m.id=o.member_id
+        WHERE {where} ORDER BY o.review_date DESC, o.id DESC LIMIT 50 OFFSET ?""",
+        ((page - 1) * 50,)).fetchall()
+    return render_template("fitness/boarded_members.html",
+        members=[decrypt_member(row) for row in rows], total=total,
+        page=page, pages=pages, review_labels=dict(REVIEW_OUTCOMES))
+
+
 @onboarding_bp.post("/arrive")
 @login_required
 @permission_required("fitness_module")
@@ -204,7 +225,7 @@ def record_visit(vid):
         if request.form.get('outcome') not in dict(VISIT_OUTCOMES):
             return 'Choose a session outcome',400
         if request.form.get('outcome')!='not_assisted':
-            started=db.execute('SELECT started_on FROM fitness_intake WHERE member_id=?',(visit['member_id'],)).fetchone()
+            started=db.execute('SELECT program_start_on AS started_on FROM fitness_intake WHERE member_id=?',(visit['member_id'],)).fetchone()
             if started and started['started_on'] and not 0<=(date.fromisoformat(visit['visit_date'])-date.fromisoformat(started['started_on'][:10])).days<10:
                 return 'This session is outside the ten-calendar-day window.',400
             db.execute('UPDATE fitness_intake SET started_on=COALESCE(started_on,?) WHERE member_id=?',(visit['visit_date'],visit['member_id']))
@@ -213,7 +234,7 @@ def record_visit(vid):
         flash("Interaction recorded.", "success"); return redirect(url_for("onboarding.today_list"))
     instructors = db.execute("SELECT id,full_name FROM users WHERE active=1 AND role IN ('trainer','instructor','admin','manager') ORDER BY full_name").fetchall()
     started=db.execute('SELECT * FROM fitness_intake WHERE member_id=?',(visit['member_id'],)).fetchone()
-    first=(started['started_on'] if started else None) or visit['visit_date']
+    first=(started['program_start_on'] if started else None) or visit['visit_date']
     calendar_day=(date.fromisoformat(visit['visit_date'])-date.fromisoformat(first[:10])).days+1
     prior=db.execute('SELECT * FROM assessments WHERE member_id=? ORDER BY date DESC,id DESC',(visit['member_id'],)).fetchall()
     import json

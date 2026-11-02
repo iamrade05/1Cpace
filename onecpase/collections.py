@@ -9,6 +9,7 @@ from flask import (Blueprint, current_app, flash, g, jsonify, redirect, render_t
                    request, session, url_for)
 from flask_mail import Message
 from .auth import permission_required, roles_required
+from .dashboard_access import dashboard_only
 from .communication import (collection_care_email_html,
                             collection_care_email_subject,
                             collection_care_message)
@@ -41,7 +42,7 @@ collections_bp = Blueprint("collections", __name__, url_prefix="/collections")
 
 PAYMENT_METHODS = ["cash", "card", "eft", "debicheck", "snapscan", "other"]
 STATUSES = ["pending", "paid", "partial", "failed", "reversed"]
-MIN_DAILY_CALL_TARGET = 80
+MIN_DAILY_CALL_TARGET = 100
 DAILY_CALL_TARGET = 100
 DAILY_CONTACT_TARGET = 10
 # Follow-up question asked after an outcome is picked: (prompt, [choices]).
@@ -471,11 +472,14 @@ def collections_index():
         "total_outstanding": sum(v["total_arrears"] for v in bulk_member_arrears(db).values()),
     }
 
+    from .reporting_cycle import current_cycle
+    first, last = current_cycle()
     monthly = db.execute(
         """SELECT SUM(amount_paid) as month_paid FROM collections
-           WHERE strftime('%Y-%m', collection_date) = strftime('%Y-%m', 'now')
-           AND status IN ('paid','partial')"""
+           WHERE substr(collection_date,1,10) BETWEEN ? AND ?
+           AND status IN ('paid','partial')""", (first.isoformat(), last.isoformat())
     ).fetchone()
+
 
     return render_template(
         "collections/index.html",
@@ -490,15 +494,21 @@ def collections_index():
 
 @collections_bp.route("/dashboard")
 @permission_required("all_collections")
+@dashboard_only('reception')
 def dashboard():
     from . import collections_workspace as workspace
+    from .staff_kpi import build_daily_scorecard
+    from .dashboard_reporting import resolve_period,dashboard_context
 
     db = get_db()
+    period=resolve_period()
     transfer_due_sales_cases(db)
     user_id = session.get("user_id")
     return render_template(
         "collections/dashboard.html",
-        metrics=workspace.dashboard_metrics(db, user_id=user_id),
+        **dashboard_context(db,'collections',user_id,period=period),
+        daily_kpis=build_daily_scorecard(db, "reception", request.args.get("kpi_date") or (period.date_to if period.mode=='day' else None)),
+        metrics=workspace.dashboard_metrics(db, user_id=user_id,date_from=period.date_from,date_to=period.date_to),
         progress=daily_call_progress(db),
         counts=workspace.queue_counts(db, user_id=user_id),
         filters=workspace.QUEUE_FILTERS,

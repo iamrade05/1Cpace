@@ -1,0 +1,19 @@
+{# Shared dashboard presentation; colours and dimensions live in the common CSS. #}
+{% macro dashboard_header(title, eyebrow, description, accent='') -%}
+<header class="fd-topline page-header">
+  <div>
+    <div class="fd-eyebrow">{{ eyebrow }}</div>
+    <h1 class="fd-title">{{ title }}{% if accent %} <span>{{ accent }}</span>{% endif %}</h1>
+    <p class="fd-description">{{ description }}</p>
+  </div>
+  {% if caller is defined %}<div class="fd-controls">{{ caller() }}</div>{% endif %}
+</header>
+{%- endmacro %}
+
+{% macro dashboard_kpi(label, value, note, tone='slate') -%}
+<article class="fd-kpi is-{{ tone }}">
+  <div class="fd-kpi-label">{{ label }}</div>
+  <div class="fd-kpi-value">{{ value }}</div>
+  <div class="fd-kpi-foot"><span>{{ note }}</span></div>
+</article>
+{%- endmacro %}

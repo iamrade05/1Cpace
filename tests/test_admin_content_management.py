@@ -2,6 +2,10 @@ from onecpase.database import get_db
 
 
 def _login_admin(client):
+    with client.application.app_context():
+        db=get_db()
+        db.execute("INSERT OR IGNORE INTO users(id,username,password_hash,full_name,role,active) VALUES(1,'content-admin','x','Admin','admin',1)")
+        db.commit()
     with client.session_transaction() as session:
         session["user_id"] = 1
         session["username"] = "admin"

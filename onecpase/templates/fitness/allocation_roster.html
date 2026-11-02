@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Fitness allocation roster{% endblock %}
+{% block content %}
+<header class="page-header"><div><h1>Fitness allocation roster</h1>
+<p>Confirm account identities before enabling allocation. Mvuleni starts on the early rotation, Lindelani on late, anchored to 26 October 2026. Kamohelo uses support hours. Melizwe and Sibusiso must remain allocation-disabled; account and class access remain separate.</p></div></header>
+<p>Enter gym hours and each instructor's working weekdays. Early/late shifts swap weekly; support stays 16:00–20:00. Fixed shifts use the times entered. All times are Africa/Johannesburg.</p>
+<form method="post" class="card card-body"><h2>Gym opening hours</h2><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="hours">
+<label>Day<select name="weekday">{% for d in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}<option value="{{ loop.index0 }}">{{ d }}</option>{% endfor %}</select></label>
+<label>Opens<input type="time" name="start_time" required></label><label>Closes<input type="time" name="end_time" required></label><button class="btn btn-primary">Save opening hours</button></form>
+<form method="post" class="card card-body"><h2>Instructor and working day</h2><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="roster">
+<label>Account<select name="user_id" required>{% for u in users %}<option value="{{ u.id }}">{{ u.full_name }} ({{ u.id }})</option>{% endfor %}</select></label>
+<label>HR record for leave checks<select name="staff_id"><option value="">No linked HR record</option>{% for s in staff %}<option value="{{ s.id }}">{{ s.first_name }} {{ s.last_name }} ({{ s.id }})</option>{% endfor %}</select></label>
+<label>Type<select name="kind"><option value="fitness">Fitness instructor</option><option value="group">Group instructor</option></select></label>
+<label>Rotation<select name="rotation"><option value="early">Early in anchor week</option><option value="late">Late in anchor week</option><option value="support">Fixed support 16:00–20:00</option><option value="fixed">Fixed hours entered below</option></select></label>
+<label>Day<select name="weekday">{% for d in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}<option value="{{ loop.index0 }}">{{ d }}</option>{% endfor %}</select></label>
+<label>Starts<input type="time" name="start_time" required></label><label>Ends<input type="time" name="end_time" required></label>
+<label><input type="checkbox" name="enabled" value="yes"> Eligible for client allocation</label><button class="btn btn-primary">Save instructor day</button></form>
+<h2>Configured opening hours</h2>{% for h in hours %}<p>{{ ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][h.weekday] }}: {{ h.start_time }}–{{ h.end_time }}</p>{% else %}<p>No opening hours configured. Allocation will wait.</p>{% endfor %}
+<h2>Configured roster</h2><div class="table-wrap"><table class="table"><thead><tr><th>Instructor</th><th>Type / rotation</th><th>Day</th><th>Fixed hours</th><th>Eligible</th></tr></thead><tbody>{% for r in roster %}<tr><td>{{ r.full_name }}</td><td>{{ r.kind }} / {{ r.rotation }}</td><td>{{ ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][r.weekday] if r.weekday is not none else 'No working days' }}</td><td>{{ r.start_time }}–{{ r.end_time }}</td><td>{{ 'Yes' if r.enabled else 'No' }}</td></tr>{% else %}<tr><td colspan="5">No roster configured.</td></tr>{% endfor %}</tbody></table></div>
+<p>Legacy classes have no end time: an instructor with a class that day waits for schedule review rather than risking a conflicting booking.</p>
+<a href="{{ url_for('fitness_journey.allocations') }}">Back to allocations</a>
+{% endblock %}

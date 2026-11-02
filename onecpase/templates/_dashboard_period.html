@@ -1,0 +1,31 @@
+{% if dashboard_period is defined %}
+{% set dp = dashboard_period %}
+{% macro value_text(value,kind) -%}
+{% if value is none %}—{% elif kind=='money' %}R{{ '{:,.2f}'.format(value) }}{% elif kind=='percent' %}{{ '{:,.1f}'.format(value) }}%{% else %}{{ '{:,.0f}'.format(value) }}{% endif %}
+{%- endmacro %}
+<section class="fd-panel dashboard-reporting" aria-label="Dashboard period comparison">
+  <div class="fd-panel-head"><h2 class="fd-panel-title">Period comparison</h2><span class="fd-panel-tag">South African dates</span></div>
+  <form method="get" class="dashboard-period-form" data-dashboard-period-form>
+    {% for key in ('cat','status','q','kpi_date') %}{% if request.args.get(key) %}<input type="hidden" name="{{ key }}" value="{{ request.args.get(key) }}">{% endif %}{% endfor %}
+    <label>View<select name="period" data-dashboard-period>{% for key,label in period_options %}<option value="{{ key }}" {% if dp.mode==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label data-period-field="date" {% if dp.mode not in ('day','week') %}hidden{% endif %}>Day / week containing<input type="date" name="on" value="{{ dp.anchor }}" max="{{ dp.today }}" {% if dp.mode not in ('day','week') %}disabled{% endif %} required></label>
+    <label data-period-field="cycle" {% if dp.mode not in ('cycle','3cycles','6cycles','12cycles') %}hidden{% endif %}>Cycle ending month<input type="month" name="cycle" value="{{ dp.cycle }}" max="{{ dp.max_cycle }}" {% if dp.mode not in ('cycle','3cycles','6cycles','12cycles') %}disabled{% endif %} required></label>
+    <label data-period-field="custom" {% if dp.mode!='custom' %}hidden{% endif %}>From<input type="date" name="from" value="{{ dp.start }}" {% if dp.mode!='custom' %}disabled{% endif %} required></label>
+    <label data-period-field="custom" {% if dp.mode!='custom' %}hidden{% endif %}>To<input type="date" name="to" value="{{ dp.full_end }}" {% if dp.mode!='custom' %}disabled{% endif %} required></label>
+    {% if consultants is defined %}<label>Consultant<select name="consultant"><option value="">Everyone</option>{% for person in consultants %}<option value="{{ person.id }}" {% if selected_consultant==person.id|string %}selected{% endif %}>{{ person.username }}</option>{% endfor %}</select></label>{% endif %}
+    <button class="btn btn-primary" type="submit">Apply period</button>
+  </form>
+  <div class="dashboard-comparison-dates">
+    <p><strong>Current:</strong> <span data-current-period>{{ dp.start.strftime('%d %b %Y') }} – {{ dp.end.strftime('%d %b %Y') }}</span> · {{ dp.days }} day(s)</p>
+    <p><strong>Previous:</strong> <span data-previous-period>{{ dp.previous_start.strftime('%d %b %Y') }} – {{ dp.previous_end.strftime('%d %b %Y') }}</span> · {{ dp.previous_days }} day(s)</p>
+  </div>
+  <p class="card-note">{% if dp.mode=='day' %}Daily compares with the previous day.{% elif dp.mode=='week' %}Weeks run Monday–Sunday.{% elif dp.mode=='custom' %}Custom dates compare with the preceding period of the same length.{% else %}Each cycle runs from the 15th through the 14th. A cycle is selected by its ending month.{% endif %} {% if dp.partial %}This period is in progress (ends {{ dp.full_end.strftime('%d %b %Y') }}). The comparison uses the same elapsed days, capped at the end of the previous period.{% else %}Completed periods compare with the complete previous period.{% endif %}</p>
+  <div class="table-wrap"><table class="table dashboard-comparison-table">
+    <thead><tr><th scope="col">Period activity</th><th scope="col" class="num">Current</th><th scope="col" class="num">Previous</th><th scope="col">Change</th></tr></thead>
+    <tbody>{% for row in period_rows %}<tr><th scope="row">{{ row.label }}</th><td class="num"><span class="dashboard-cell-label">Current</span>{{ value_text(row.current,row.kind) }}</td><td class="num"><span class="dashboard-cell-label">Previous</span>{{ value_text(row.previous,row.kind) }}</td><td><span class="dashboard-cell-label">Change</span>
+      {% if row.change is none %}—{% elif row.kind=='percent' %}{{ '+' if row.change>0 else '' }}{{ '{:,.1f}'.format(row.change) }} percentage points{% else %}{{ '+' if row.change>0 else '−' if row.change<0 else '' }}{{ value_text(row.change|abs,row.kind) }}{% if row.percent is not none %} ({{ '+' if row.percent>0 else '' }}{{ row.percent }}%){% elif row.current %} · No prior activity{% endif %}{% endif %}
+    </td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="card-note">Current balances, membership states, open queues and today's targets below show the latest position. They are not historical snapshots.</p>
+</section>
+{% endif %}

@@ -10,8 +10,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
-  {% if request.blueprint in ('hr','workforce') %}<link rel="stylesheet" href="{{ url_for('static', filename='css/hr-workforce.css') }}">{% endif %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css', v='dashboard-periods-20261028') }}">
+  {% if request.blueprint in ('hr','workforce') %}<link rel="stylesheet" href="{{ url_for('static', filename='css/hr-workforce.css', v='hr-cleanup-20261028') }}">{% endif %}
+  {% if request.blueprint=='reception_admin' %}<link rel="stylesheet" href="{{ url_for('static', filename='css/reception-admin.css', v='reception-admin-20261028') }}">{% endif %}
 </head>
 <body class="oc">
 
@@ -30,11 +31,14 @@
   </div>
   {% endif %}
   <nav class="sidebar-nav">
-    <a href="{{ url_for('dashboard.dashboard') }}"
-       class="nav-item {% if request.endpoint == 'dashboard.dashboard' %}active{% endif %}">
+    <a href="{{ url_for(department_home) }}"
+       class="nav-item {% if request.endpoint == department_home %}active{% endif %}">
       <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Dashboard
     </a>
 
+    {% if reception_admin_allowed and phase_open('reception_admin') %}
+    <a href="{{ url_for('reception_admin.index') }}" class="nav-item {% if request.blueprint == 'reception_admin' %}active{% endif %}">Reception Admin</a>
+    {% endif %}
     {% if session.user_id %}
     <a href="{{ url_for('training.index') }}" class="nav-item {% if request.blueprint == 'training' %}active{% endif %}">
       <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v15M12 5C8 3 5 3 2 4v15c3-1 6-1 10 1 4-2 7-2 10-1V4c-3-1-6-1-10 1z"/></svg> Staff Training
@@ -60,10 +64,10 @@
          class="nav-item {% if request.blueprint == 'leads' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Sales CRM
       </a>
-      <a href="{{ url_for('dashboard.sales_dashboard') }}"
+      {% if dashboard_scope in ('admin','sales') %}<a href="{{ url_for('dashboard.sales_dashboard') }}"
          class="nav-item {% if request.endpoint == 'dashboard.sales_dashboard' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Sales Funnel
-      </a>
+      </a>{% endif %}
       <a href="{{ url_for('call_list.index') }}"
          class="nav-item {% if request.blueprint == 'call_list' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Call List Upload
@@ -160,10 +164,10 @@
       <span>Collections</span><span class="nav-accordion-chevron">▸</span>
     </button>
     <div class="nav-accordion-panel" data-section-panel="connections" hidden>
-      <a href="{{ url_for('collections.dashboard') }}"
+      {% if dashboard_scope in ('admin','reception') %}<a href="{{ url_for('collections.dashboard') }}"
          class="nav-item {% if request.endpoint == 'collections.dashboard' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Collections Dashboard
-      </a>
+      </a>{% endif %}
       <a href="{{ url_for('collections.case_queue') }}"
          class="nav-item {% if request.endpoint == 'collections.case_queue' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Case Queue
@@ -180,10 +184,10 @@
          class="nav-item {% if request.endpoint == 'collections.call_queue' or request.endpoint == 'collections.call_profile' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Collections Call Queue
       </a>
-      <a href="{{ url_for('ptp.ptp_dashboard') }}"
+      {% if dashboard_scope in ('admin','reception') %}<a href="{{ url_for('ptp.ptp_dashboard') }}"
          class="nav-item {% if request.blueprint == 'ptp' and request.endpoint != 'ptp.legal_referrals' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> PTP / Collection
-      </a>
+      </a>{% endif %}
       <a href="{{ url_for('ptp.legal_referrals') }}"
          class="nav-item {% if request.endpoint in ('ptp.legal_referrals', 'ptp.refer_to_legal', 'ptp.resolve_legal_referral') %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Legal Referrals
@@ -230,60 +234,18 @@
       <span>Fitness</span><span class="nav-accordion-chevron">▸</span>
     </button>
     <div class="nav-accordion-panel" data-section-panel="fitness" hidden>
+      {% if dashboard_scope in ('admin', 'fitness') %}
+      <a class="nav-item {% if request.endpoint == 'dashboard.fitness_dashboard' %}active{% endif %}" href="{{ url_for('dashboard.fitness_dashboard') }}">Dashboard</a>
+      {% endif %}
       {% if has_perm('fitness_module') %}
-      <a class="nav-item" href="{{ url_for('fitness.anatomy') }}">Anatomy & exercises</a>
-      <a href="{{ url_for('onboarding.today_list') }}"
-         class="nav-item {% if request.blueprint == 'onboarding' %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> New Member Onboarding
-      </a>
-      {% endif %}
-      {% if has_perm('classes') %}
-      <a href="{{ url_for('fitness.fitness_index') }}"
-         class="nav-item {% if request.endpoint and request.endpoint.startswith('fitness.fitness_') or request.endpoint in ('fitness.fitness_bookings', 'fitness.fitness_book', 'fitness.booking_cancel') %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Classes
-      </a>
-      {% endif %}
-      {% if has_perm('assessments') %}
-      <a href="{{ url_for('fitness.assessments_index') }}"
-         class="nav-item {% if request.endpoint in ('fitness.assessments_index', 'fitness.assessment_add') %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Assessments
-      </a>
-      {% endif %}
-      {% if has_perm('workout_plans') %}
-      <a href="{{ url_for('fitness.workout_plans_index') }}"
-         class="nav-item {% if request.endpoint in ('fitness.workout_plans_index', 'fitness.workout_plan_add') %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Workout Plans
-      </a>
-      {% endif %}
-      {% if has_perm('dailies') %}
-      <a href="{{ url_for('fitness.dailies_index') }}"
-         class="nav-item {% if request.endpoint in ('fitness.dailies_index', 'fitness.daily_add') %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Dailies
-      </a>
+      <a class="nav-item {% if request.blueprint == 'onboarding' and request.endpoint != 'onboarding.boarded_members' %}active{% endif %}" href="{{ url_for('onboarding.today_list') }}">Onboarding</a>
+      <a class="nav-item {% if request.endpoint == 'onboarding.boarded_members' %}active{% endif %}" href="{{ url_for('onboarding.boarded_members') }}">Boarded Members</a>
       {% endif %}
       {% if has_perm('incident_log') %}
-      <a href="{{ url_for('fitness.incidents_index') }}"
-         class="nav-item {% if request.blueprint == 'fitness' and request.endpoint.startswith('fitness.incident') %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> Incident Log
-      </a>
-      {% endif %}
-      {% if has_perm('body_matrix') %}
-      <a href="{{ url_for('fitness.body_matrix_index') }}"
-         class="nav-item {% if request.blueprint == 'fitness' and request.endpoint.startswith('fitness.body_matrix') %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Body Matrix
-      </a>
-      {% endif %}
-      {% if has_perm('nutrition_guide') %}
-      <a href="{{ url_for('fitness.nutrition_index') }}"
-         class="nav-item {% if request.endpoint in ('fitness.nutrition_index', 'fitness.nutrition_add') %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Nutrition Guide
-      </a>
+      <a class="nav-item {% if request.endpoint and request.endpoint.startswith('fitness.incident') %}active{% endif %}" href="{{ url_for('fitness.incidents_index') }}">Incident Logs</a>
       {% endif %}
       {% if has_perm('supplements') %}
-      <a href="{{ url_for('fitness.supplements_index') }}"
-         class="nav-item {% if request.blueprint == 'fitness' and request.endpoint.startswith('fitness.supplement') %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Supplements
-      </a>
+      <a class="nav-item {% if request.endpoint and request.endpoint.startswith('fitness.supplement') %}active{% endif %}" href="{{ url_for('fitness.supplements_index') }}">Supplements</a>
       {% endif %}
     </div>
     {% endif %}
@@ -306,41 +268,17 @@
     </button>
     <div class="nav-accordion-panel" data-section-panel="hr" hidden>
       <a href="{{ url_for('workforce.dashboard') }}" class="nav-item {% if request.endpoint == 'workforce.dashboard' %}active{% endif %}">My HR</a>
-      <a href="{{ url_for('workforce.roster') }}" class="nav-item {% if request.endpoint == 'workforce.roster' %}active{% endif %}">Roster & lunch</a>
-      {% if hr_can_calendar %}<a href="{{ url_for('workforce.calendar') }}" class="nav-item">Team availability</a>{% endif %}
-      {% if hr_can_manage %}<a href="{{ url_for('workforce.setup') }}" class="nav-item">Employee setup & balances</a>{% endif %}
-      {% if has_perm('hr_staff') %}
-      <a href="{{ url_for('hr.staff_index') }}"
-         class="nav-item {% if request.endpoint == 'hr.staff_index' or request.endpoint == 'hr.staff_add' or request.endpoint == 'hr.staff_edit' %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19h16M6 15l4-5 4 3 4-8"/></svg> HR & Staff
-      </a>
-      {% if hr_can_manage %}<a href="{{ url_for('hr.employee_index') }}"
-         class="nav-item {% if request.blueprint == 'hr' and request.endpoint.startswith('hr.employee') %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 3h14v18H5zM9 7h6M9 11h6M9 15h4"/></svg> Employee Register
-      </a>{% endif %}
-      {% endif %}
-      {% if has_perm('hr_leave') or session.user_id %}
-      <a href="{{ url_for('hr.leave_index') }}"
-         class="nav-item {% if request.endpoint in ('hr.leave_index', 'hr.leave_request') %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Leave
-      </a>
-      {% endif %}
-      {% if has_perm('hr_payroll') %}
-      <a href="{{ url_for('hr.payroll_index') }}"
-         class="nav-item {% if request.endpoint == 'hr.payroll_index' %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Payroll
-      </a>
-      {% endif %}
-      {% if has_perm('hr_timesheets') %}
-      <a href="{{ url_for('hr.timesheets_index') }}"
-         class="nav-item {% if request.blueprint == 'hr' and request.endpoint.startswith('hr.timesheet') %}active{% endif %}">
-        <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8"/></svg> Timesheets
-      </a>
-      {% endif %}
+      <a href="{{ url_for('hr.leave_index') }}" class="nav-item {% if request.endpoint in ('hr.leave_index','hr.leave_request','workforce.balances') %}active{% endif %}">Leave requests</a>
+      <a href="{{ url_for('workforce.weeks') }}" class="nav-item {% if request.endpoint in ('workforce.weeks','hr.timesheets_index','hr.timesheet_staff_week') %}active{% endif %}">Timesheets</a>
+      <a href="{{ url_for('workforce.roster') }}" class="nav-item {% if request.endpoint in ('workforce.roster','workforce.calendar') %}active{% endif %}">Roster & availability</a>
+      {% if has_perm('hr_staff') %}<a href="{{ url_for('hr.staff_index') }}" class="nav-item {% if request.endpoint in ('hr.staff_index','hr.staff_add','hr.staff_edit','hr.employee_index','hr.employee_detail','hr.employee_add','hr.employee_edit') %}active{% endif %}">People</a>{% endif %}
+      {% if hr_can_calendar %}<a href="{{ url_for('workforce.reviews') }}" class="nav-item {% if request.endpoint == 'workforce.reviews' %}active{% endif %}">Approvals</a>{% endif %}
+      {% if hr_can_manage %}<a href="{{ url_for('workforce.setup') }}" class="nav-item {% if request.endpoint == 'workforce.setup' %}active{% endif %}">HR administration</a>{% endif %}
+      {% if has_perm('hr_payroll') %}<a href="{{ url_for('hr.payroll_index') }}" class="nav-item {% if request.endpoint == 'hr.payroll_index' %}active{% endif %}">Payroll</a>{% endif %}
     </div>
     {% endif %}
 
-    {% if phase_open('analytics') and (has_perm('reports_module')) %}
+    {% if dashboard_scope=='admin' and phase_open('analytics') and (has_perm('reports_module')) %}
     <button type="button" class="nav-section nav-accordion-toggle" data-section="analytics" aria-expanded="false">
       <span>Analytics</span><span class="nav-accordion-chevron">▸</span>
     </button>
@@ -495,7 +433,7 @@
     </div>
     {% endif %}
     <span hidden>{% block page_title %}{% endblock %}</span>
-    {% if request.blueprint in ('hr','workforce') %}<div class="hr-workforce">{% endif %}
+    {% if request.blueprint in ('hr','workforce') %}<div class="hr-workforce">{% include 'hr/_workforce_nav.html' %}{% endif %}
     {% block content %}{% endblock %}
     {% if request.blueprint in ('hr','workforce') %}</div>{% endif %}
   </div>
@@ -590,7 +528,7 @@
     const token = document.querySelector('meta[name="csrf-token"]')?.content;
     if (!token) return;
     document.querySelectorAll('form').forEach(form => {
-      const method = (form.method || 'get').toLowerCase();
+      const method = (form.getAttribute('method') || 'get').toLowerCase();
       if (method === 'get') return;
       if (form.querySelector('input[name="csrf_token"]')) return;
       const input = document.createElement('input');
@@ -668,7 +606,7 @@
   })();
 </script>
 
-<script src="{{ url_for('static', filename='js/ui.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ui.js', v='dashboard-periods-20261028') }}"></script>
 {% block scripts %}{% endblock %}
 {% if config.INSPECT_MODE %}
 <script>window.__INSPECT_META__ = {{ inspect_meta | tojson }};</script>

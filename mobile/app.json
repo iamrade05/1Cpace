@@ -9,7 +9,15 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.onecpase.mobile"
+      "bundleIdentifier": "com.onecpase.mobile",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": { "NSAllowsArbitraryLoads": false, "NSAllowsLocalNetworking": true },
+        "NSCameraUsageDescription": "1Cpace uses the camera when you choose to photograph or record a document to upload to your gym workspace.",
+        "NSPhotoLibraryUsageDescription": "1Cpace opens your photo library when you choose a photo or video to upload to your gym workspace.",
+        "NSMicrophoneUsageDescription": "1Cpace uses the microphone when you choose to record a video to upload to your gym workspace."
+      }
     },
     "android": {
       "package": "com.onecpase.mobile",

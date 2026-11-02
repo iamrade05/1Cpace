@@ -127,6 +127,9 @@ def record_outgoing_result(app, phone, text, status):
             return
         g.tenant = dict(tenant)
         db = get_db()
+        from .query_funnel import record_whatsapp_result
+        record_whatsapp_result(db, phone, text, status)
+        db.commit()
         message = db.execute("""SELECT m.id FROM wa_messages m JOIN wa_conversations c ON c.id=m.conversation_id
             WHERE c.contact_phone=? AND m.content=? AND m.direction='outbound' AND m.status='queued'
             ORDER BY m.id LIMIT 1""", (phone, text)).fetchone()

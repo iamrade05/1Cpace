@@ -4,7 +4,19 @@
 {% block page_title %}Request Leave{% endblock %}
 
 {% block content %}
-<header class="page-header"><div><h1>Request Leave</h1></div></header>
+<header class="page-header"><div><h1>Request Leave</h1><p>Check your employment details, choose the leave type and submit your dates for review.</p></div></header>
+{% if setup_missing %}
+<section class="callout callout-warning" role="status" aria-labelledby="leave-setup-title">
+  <div><h2 id="leave-setup-title">HR setup needs confirmation</h2>
+    <p>Your HR profile is incomplete. These details must be confirmed before this form can be submitted:</p>
+    <ul>{% for item in setup_missing %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% if can_manage_setup %}<p><a class="btn btn-primary" href="{{ url_for('workforce.setup',user_id=employee_profile.user_id) }}">Open your employee setup</a></p>
+    {% else %}<p>Ask HR or your manager to arrange confirmation in <strong>HR → Employee setup</strong>.</p>{% endif %}
+  </div>
+</section>
+{% elif employee_profile.employment_type=='contractor' %}
+<div class="callout callout-info" role="status">Your confirmed profile is an independent contractor. This form offers unpaid time off for review under your agreed terms. Contact HR if your classification needs correction.</div>
+{% endif %}
 <div class="form-card">
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -15,7 +27,7 @@
         <select id="leave_type" name="leave_type">
           {% for t in leave_types %}
           <option value="{{ t }}" {% if request.form.get('leave_type', 'annual') == t %}selected{% endif %}>
-            {{ t|capitalize }}
+            {{ 'Unpaid time off' if employee_profile.employment_type=='contractor' and t=='unpaid' else ('Family responsibility' if t=='family' else t|capitalize) }}
           </option>
           {% endfor %}
         </select>
@@ -45,7 +57,7 @@
 
     <div class="form-actions">
       <label><input type="checkbox" name="attest" value="yes" required> I confirm these dates and this leave request are correct.</label>
-      <button type="submit" class="btn btn-primary">Submit Request</button>
+      <button type="submit" class="btn btn-primary" {% if setup_missing %}disabled aria-describedby="leave-setup-title"{% endif %}>{{ 'HR setup required' if setup_missing else 'Submit Request' }}</button>
       <a href="{{ url_for('hr.leave_index') }}" class="btn btn-ghost">Cancel</a>
     </div>
   </form>
