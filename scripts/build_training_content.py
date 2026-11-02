@@ -12,10 +12,10 @@ TOPICS = [
     ('sales', 'Sales', 34, 'Capture prospects, record activities and decisions, check evidence and hand over applications.'),
     ('collections', 'Collections', 38, 'Verify balances, work collection calls, record payments and escalate unresolved cases.'),
     ('ptp', 'Promise to Pay (PTP)', 41, 'Prepare arrangements, understand approvals and instalments, and follow up missed promises.'),
-    ('debicheck', 'DebiCheck and NuPay', 44, 'Capture mandates, interpret provider status and handle failed debits or banking changes.'),
-    ('queries', 'Queries', 46, 'Assign cases, investigate issues, request approvals, escalate and close with evidence.'),
-    ('notifications', 'Notifications and handover', 49, 'Work alerts with your own supervisor, acknowledge reminders and hand over unfinished work.'),
-    ('practice', 'Practice and daily checklist', 51, 'Use five practice cases and a daily checklist to assess readiness.'),
+    ('debicheck', 'DebiCheck and NuPay', 44, 'Capture mandates, interpret provider status, sync with NuPay and handle failed debits or banking changes.'),
+    ('queries', 'Queries', 48, 'Assign cases, investigate issues, request approvals, escalate and close with evidence.'),
+    ('notifications', 'Notifications and handover', 51, 'Work alerts with your own supervisor, acknowledge reminders and hand over unfinished work.'),
+    ('practice', 'Practice and daily checklist', 53, 'Use five practice cases and a daily checklist to assess readiness.'),
 ]
 
 

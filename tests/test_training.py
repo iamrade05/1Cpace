@@ -56,3 +56,13 @@ def test_training_unknown_resources_and_stale_tenant(staff):
 def test_ptp_example_and_query_status_table_are_readable(staff):
     assert b'<table>' in staff.get('/training/topics/ptp').data
     assert b'Pending Approval' in staff.get('/training/topics/queries').data
+
+
+def test_sales_and_debicheck_topics_state_current_rules(staff):
+    sales = staff.get('/training/topics/sales').data
+    assert b'more than 7 days from today' in sales
+    assert b'First-Month Failed Debits' in sales
+    debicheck = staff.get('/training/topics/debicheck').data
+    assert b'J P Smith' in debicheck
+    assert b'Sync with NuPay' in debicheck
+    assert b'Unverified' in debicheck
