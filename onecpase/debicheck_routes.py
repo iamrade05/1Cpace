@@ -6,7 +6,7 @@ from datetime import date
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 
 from . import nupay_driver, nupay_sync
-from .auth import permission_required
+from .auth import permission_required, roles_required
 from .database import get_db, member_activity
 from .debicheck import (
     IMPORTED_MANDATE_MESSAGE,
@@ -505,6 +505,7 @@ def _background_manual_review_push(
 
 @debicheck_bp.post("/<int:mandate_id>/review-on-nupay")
 @permission_required("new_debicheck")
+@roles_required("admin", "manager")
 def review_on_nupay(mandate_id):
     db = get_db()
     row = db.execute("SELECT * FROM debicheck_mandates WHERE id=?", (mandate_id,)).fetchone()

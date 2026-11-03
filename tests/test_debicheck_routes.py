@@ -1,5 +1,7 @@
 """NuPay uses the member ID and requires documents and qualifying analysis."""
 
+from types import SimpleNamespace
+
 from onecpase.database import get_db
 
 
@@ -61,7 +63,7 @@ def test_nupay_push_is_blocked_without_application_evidence(client, monkeypatch)
 def test_nupay_manual_review_is_blocked_without_application_evidence(client, monkeypatch):
     import onecpase.debicheck_routes as routes
     monkeypatch.setattr(routes, "push_mandate_to_nupay_manual_review", lambda mandate: (_ for _ in ()).throw(AssertionError("Must not submit")))
-    _login(client)
+    _login(client, role="manager")
     with client.application.app_context():
         db = get_db()
         _member_id, mandate_id = _member_and_mandate(db)
@@ -108,6 +110,63 @@ def test_nupay_push_uses_member_id_after_evidence_gate_passes(client, monkeypatc
             "SELECT status FROM debicheck_mandates WHERE id=?", (mandate_id,)
         ).fetchone()
     assert row["status"] == "submitted"
+
+
+def _ready_to_submit(client):
+    with client.application.app_context():
+        db = get_db()
+        member_id, mandate_id = _member_and_mandate(db)
+        aid = db.execute("INSERT INTO membership_applications (member_id) VALUES (?)", (member_id,)).lastrowid
+        db.execute("INSERT INTO compliance_checklists (application_id, id_copy_status, bank_statement_status) VALUES (?, 'not_uploaded', 'analysed')", (aid,))
+        db.execute("INSERT INTO statement_analyses (application_id, verification_qualified) VALUES (?, 1)", (aid,))
+        db.execute("INSERT INTO member_documents (member_id, document_type, original_name, stored_name, analysis_json) VALUES (?, 'Bank Statement', 'test.pdf', 'test.pdf', ?)", (member_id, '{"estimated_income":10000,"income_detected":true,"avg_balance":2000,"max_balance":5000,"returned_debits":0,"months_seen":2,"rating":"good","verification_qualified":true,"cashflow":{"months":2,"enough_months":true}}'))
+        db.commit()
+    return member_id, mandate_id
+
+
+def test_only_managers_see_review_and_submit_on_nupay(client):
+    member_id, mandate_id = _ready_to_submit(client)
+    mandate_link = f'href="/debicheck/{mandate_id}"'.encode()
+
+    def sign_in(role):
+        _login(client, role=role)
+        with client.session_transaction() as session:
+            session["permissions"] = session["permissions"] + ["all_members"]
+
+    sign_in("staff")
+    for page in (f"/debicheck/{mandate_id}", f"/members/{member_id}"):
+        response = client.get(page)
+        assert response.status_code == 200
+        assert b"Review &amp; Submit on NuPay" not in response.data
+    # Sales still complete the application: the profile leads to the mandate, which can be sent.
+    assert mandate_link in client.get(f"/members/{member_id}").data
+    assert b"Resend Automatically" in client.get(f"/debicheck/{mandate_id}").data
+
+    for role in ("manager", "admin"):
+        sign_in(role)
+        for page in (f"/debicheck/{mandate_id}", f"/members/{member_id}"):
+            response = client.get(page)
+            assert response.status_code == 200
+            assert b"Review &amp; Submit on NuPay" in response.data
+
+
+def test_review_and_submit_on_nupay_refuses_everyone_but_managers(client, monkeypatch):
+    import onecpase.debicheck_routes as routes
+    threads = []
+    monkeypatch.setattr(routes, "threading", SimpleNamespace(Thread=lambda **kwargs: threads.append(kwargs) or SimpleNamespace(start=lambda: None)))
+    _member_id, mandate_id = _ready_to_submit(client)
+
+    def status():
+        with client.application.app_context():
+            return get_db().execute("SELECT status FROM debicheck_mandates WHERE id=?", (mandate_id,)).fetchone()["status"]
+
+    _login(client, role="staff")
+    client.post(f"/debicheck/{mandate_id}/review-on-nupay", follow_redirects=True)
+    assert threads == [] and status() == "pending"
+
+    _login(client, role="manager")
+    client.post(f"/debicheck/{mandate_id}/review-on-nupay", follow_redirects=True)
+    assert len(threads) == 1 and status() == "reviewing"
 
 
 # ── Mandate coverage: which Debit Order members have no mandate at all ──────

@@ -136,9 +136,13 @@
         {% if mandate and mandate.status == 'reviewing' %}
           <span class="btn btn-ghost btn-sm u-2a9295c3">⏳ Waiting on the NuPay browser window</span>
         {% elif mandate and mandate.status != 'active' %}
+          {% if is_manager %}
           <form method="post" action="{{ url_for('debicheck.review_on_nupay', mandate_id=mandate.id) }}">
             <button class="btn btn-secondary btn-sm">Review &amp; Submit on NuPay</button>
           </form>
+          {% elif has_perm('debicheck_mandates') %}
+          <a href="{{ url_for('debicheck.detail', mandate_id=mandate.id) }}" class="btn btn-secondary btn-sm">Open DebiCheck Mandate</a>
+          {% endif %}
           {% if mandate.status in ('unverified', 'failed', 'rejected') %}
             <a href="{{ url_for('debicheck.add', member_id=member.id) }}" class="btn btn-secondary btn-sm">Create Replacement Mandate</a>
           {% endif %}

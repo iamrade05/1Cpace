@@ -141,7 +141,16 @@ def test_overview_page_shows_the_upload_prompt_before_any_report(app, client):
     assert page.status_code == 200 and b"No NuPay report loaded yet" in page.data and b"Upload and check" in page.data
 
 
-def test_a_manager_can_upload_and_the_pages_fill_in(app, client):
+class _FixedDate(date):
+    """The upload page uses the real today, which must stay within 45 days of these debits."""
+
+    @classmethod
+    def today(cls):
+        return TODAY
+
+
+def test_a_manager_can_upload_and_the_pages_fill_in(app, client, monkeypatch):
+    monkeypatch.setattr(rec, "date", _FixedDate)
     with app.app_context():
         db = get_db()
         mid = _member(db, 8, "1950298")

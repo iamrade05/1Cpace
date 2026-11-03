@@ -130,7 +130,9 @@ def clean(path):
         db.execute('DROP TABLE temp.false_ids')
         db.execute('COMMIT')
     except BaseException:
-        db.execute('ROLLBACK')
+        # SQLite has already rolled back by itself after some errors, such as a full disk.
+        if db.in_transaction:
+            db.execute('ROLLBACK')
         db.close()
         raise
     timings['delete_seconds'] = round(time.time() - started)
@@ -251,8 +253,13 @@ def apply(path):
     copy = backup / '0-1cpase.db'
     sqlite_copy(path, copy)
     say(step='backed_up', seconds=round(time.time() - started), bytes=copy.stat().st_size)
+    compressed = compress(copy)
+    say(step='backup_compressed', seconds=round(time.time() - started), bytes=compressed['compressed_bytes'])
+    # The delete's rollback journal can hold every page of the database until it commits.
+    free = shutil.disk_usage('/').free
+    assert free > path.stat().st_size + RESERVE * 2, f'Not enough space for the delete: {free // 1048576} MB free'
 
-    result = dict(backup=str(backup), started_utc=now)
+    result = dict(backup=str(backup), started_utc=now, backup_compressed=compressed)
     outage_started = time.time()
     subprocess.run(['systemctl', 'stop', 'onecpase'], check=True)
     try:
@@ -265,7 +272,6 @@ def apply(path):
     result['outage_seconds'] = round(time.time() - outage_started)
     assert healthy(), 'App did not come back healthy'
     say(step='cleaned', **result)
-    result['backup_compressed'] = compress(copy)
     (backup / 'manifest.json').write_text(json.dumps(dict(
         source=str(path), restore='Stop onecpase, gunzip this copy over the database, start onecpase. Loses anything written since.',
         backup=result['backup_compressed'], removed=result['clean']['removed']), indent=2))
