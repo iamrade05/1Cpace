@@ -49,7 +49,7 @@ def scoped_hash(value):
 
 
 def fingerprint(kind, row):
-    values = (row['password_hash'], row['email']) if kind == 'staff' else (
+    values = (row['password_hash'], row['email'], row['session_version']) if kind == 'staff' else (
         row['member_ref'], row['email'], row['member_status'])
     return digest(repr(values))
 

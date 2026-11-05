@@ -1,11 +1,12 @@
 """Common bank statement upload and cashflow rules across the app."""
+import hashlib
 import json
 from collections import Counter
 from pathlib import Path
 from uuid import uuid4
 from flask import current_app, session, request
 from werkzeug.utils import secure_filename
-from .statement_parser import analyse_pdf, analyse_cashflow
+from .statement_parser import analyse_pdf, analyse_cashflow, money_in_rating, money_in_summary
 
 
 def _batch_analysis(results, all_rows, monthly_installment):
@@ -31,15 +32,19 @@ def _batch_analysis(results, all_rows, monthly_installment):
         result.get("income_detected") for result in results
     ))
     balances = [row[3] for row in all_rows]
-    balance_qualified = monthly_installment > 0 and bool(balances) and all(
-        monthly_installment <= balance * 0.30 for balance in balances
-    )
+    # A credit in overlapping statements is one credit, so the same row counts once.
+    counted = list(dict.fromkeys(tuple(row) for result in results for row in result.get("money_in_rows", [])))
+    money_in = money_in_summary(counted, monthly_installment)
     combined.update(
+        money_in,
+        money_in_rows=counted,
+        disputed_debits=sum(result.get("disputed_debits", 0) for result in results),
+        failed_debits=sum(result.get("failed_debits", 0) for result in results),
         income_detected=any(result.get("income_detected") for result in results),
         income_months=income_count if separate else max(result.get("income_months", 0) for result in results),
         salary_payments=sorted(payments, reverse=True),
         returned_debits=sum(result.get("returned_debits", 0) for result in results),
-        verification_qualified=bool(income_qualified or balance_qualified),
+        verification_qualified=bool(income_qualified or money_in["money_in_qualified"]),
         tx_rows=all_rows,
     )
     incomes = [result.get("estimated_income", 0) for result in results if result.get("income_detected")]
@@ -64,6 +69,8 @@ def _batch_analysis(results, all_rows, monthly_installment):
         affordable = ratio <= 0.15 or (ratio <= 0.30 and combined["returned_debits"] <= 2)
         combined["can_afford"] = affordable
         combined["rating"] = "good" if monthly_installment > 0 and ratio <= 0.15 else "moderate" if affordable else "risk"
+    elif money_in["money_in_qualified"]:
+        combined["rating"], combined["can_afford"] = money_in_rating(money_in["monthly_money_in"], monthly_installment), True
     combined["summary"] = "<br>".join(result.get("summary", "") for result in results)
     return combined
 
@@ -81,10 +88,19 @@ def upload_statements(db, mid, files):
     all_rows, errors, analysis = [], [], {}
     results = []
     stored_names = []
+    seen_files = set()
+    duplicates = []
     for file in files:
         stored_name = f"{uuid4().hex}_{secure_filename(file.filename)}"
         dest = upload_dir / stored_name
         file.save(str(dest))
+        # The same file twice in one upload would double its money in and its declined payments.
+        fingerprint = hashlib.sha256(dest.read_bytes()).hexdigest()
+        if fingerprint in seen_files:
+            dest.unlink()
+            duplicates.append(file.filename)
+            continue
+        seen_files.add(fingerprint)
         stored_names.append(stored_name)
         analysis = analyse_pdf(
             str(dest),
@@ -106,11 +122,18 @@ def upload_statements(db, mid, files):
         "UPDATE compliance_checklists SET bank_statement_status=?, updated_at=datetime('now') WHERE application_id=?",
         ("uploaded" if errors else "analysed", aid),
     )
-    # Statements from several files are read together, oldest first.
-    all_rows.sort(key=lambda r: (r[0], r[1], r[2]))
+    # Statements from several files are read together, oldest first. A transaction
+    # in overlapping statements appears once.
+    all_rows = sorted(dict.fromkeys(all_rows), key=lambda r: (r[0], r[1], r[2]))
     analysis = _batch_analysis(results, all_rows, float(member["monthly_installment"] or 0) if member else 0.0)
+    cashflow = analyse_cashflow(all_rows)
+    if duplicates:
+        cashflow["note"] = f"Skipped duplicate file(s): {', '.join(duplicates)}. {cashflow['note']}".strip()
+        member_activity(db, mid, f"Skipped duplicate Bank Statement: {', '.join(duplicates)}")
     analysis = {**analysis, "error": "; ".join(errors) if errors else None,
-                "cashflow": analyse_cashflow(all_rows)}
+                "cashflow": cashflow, "duplicates": duplicates}
+    if len(results) > 1 and cashflow["months"]:
+        analysis["months_seen"] = cashflow["months"]
     if errors:
         analysis["verification_qualified"] = False
     for stored in stored_names:
@@ -148,4 +171,6 @@ def upload_statements(db, mid, files):
             ),
         )
     sync_application_status(db, aid)
+    from .ptp_grant import refresh_member_grants
+    refresh_member_grants(db, mid)
     return analysis

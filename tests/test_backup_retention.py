@@ -14,22 +14,22 @@ def database(path):
         db.commit()
 
 
-def test_keep_five_valid_databases_and_remove_incomplete_copy(tmp_path):
+def test_keep_three_valid_databases_and_remove_incomplete_copy(tmp_path):
     for day in range(1, 7):
         database(tmp_path / f'backup_202610{day:02d}_040000.db')
     broken = tmp_path / 'backup_20261007_040000.db'
     broken.write_bytes(b'incomplete')
     journal = broken.with_name(broken.name + '-journal'); journal.write_bytes(b'partial')
     plan = prune_databases(tmp_path, apply=False, minimum_age_seconds=0)
-    assert len(plan['retained']) == 5 and broken.name in plan['invalid']
+    assert len(plan['retained']) == 3 and broken.name in plan['invalid']
     assert len(list(tmp_path.glob('*.db'))) == 7
     prune_databases(tmp_path, apply=True, minimum_age_seconds=0)
-    assert len(list(tmp_path.glob('*.db'))) == 5
+    assert len(list(tmp_path.glob('*.db'))) == 3
     assert not broken.exists() and not journal.exists()
     assert not (tmp_path / 'backup_20261001_040000.db').exists()
 
 
-def test_fewer_than_five_valid_backups_prevents_pruning(tmp_path):
+def test_fewer_than_three_valid_backups_prevents_pruning(tmp_path):
     database(tmp_path / 'backup_20261001.db')
     broken = tmp_path / 'backup_20261002.db'; broken.write_bytes(b'incomplete')
     assert prune_databases(tmp_path, apply=True, minimum_age_seconds=0)['removed'] == []
@@ -79,7 +79,7 @@ def test_snapshot_is_published_complete_and_oldest_is_pruned(tmp_path):
     published = snapshot_database(source, root, 'backup_20261006.db')
     with closing(sqlite3.connect(published)) as db:
         assert db.execute('SELECT value FROM example').fetchone()[0] == 'retained'
-    assert len(list(root.glob('*.db'))) == 5
+    assert len(list(root.glob('*.db'))) == 3
     assert not list(root.glob('*.partial'))
 
 

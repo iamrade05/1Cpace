@@ -157,7 +157,9 @@
           <form method="post" action="{{ url_for('applications.push_application', aid=application.id) }}">
             <button class="btn btn-secondary btn-sm">Push to Itensity</button>
           </form>
-        {% elif session.get('role') == 'admin' and application.push_status not in ('pushed', 'pushing') %}
+        {% elif itensity_can_override and itensity_needs_statement_check and application.push_status not in ('pushed', 'pushing') %}
+          <a href="{{ url_for('applications.application_detail', aid=application.id) }}" class="btn btn-ghost btn-sm">Check Statement &amp; Override</a>
+        {% elif itensity_can_override and application.push_status not in ('pushed', 'pushing') %}
           <form method="post" action="{{ url_for('applications.push_application', aid=application.id) }}"
                 id="itensityOverrideForm">
             <input type="hidden" name="override" value="1">
@@ -168,7 +170,7 @@
           function confirmItensityOverride() {
             var missing = {{ itensity_missing|tojson }};
             var msg = 'This member is NOT fully verified. Missing:\n\n- ' + missing.join('\n- ')
-                      + '\n\nPush to Itensity anyway? This will be logged as an admin override.';
+                      + '\n\nPush to Itensity anyway? This will be logged as an override under your name.';
             showInlineConfirmation(document.getElementById('itensityOverrideForm'), msg);
           }
           </script>
@@ -290,7 +292,7 @@ document.addEventListener("DOMContentLoaded", function () {
       <div class="note-item">
         <div class="note-meta">
           <strong>{{ n.author or 'System' }}</strong>
-          <span>{{ n.created_at[:19].replace('T', ' ') if n.created_at else '' }}</span>
+          <span>{{ n.created_at|sast('%Y-%m-%d %H:%M:%S') }}</span>
         </div>
         <div class="note-text">{{ n.note }}</div>
       </div>
@@ -329,7 +331,7 @@ document.addEventListener("DOMContentLoaded", function () {
         <label class="u-91e41e20">
           File <span class="u-7e3a9447">(PDF, JPG, PNG, DOC, DOCX — max 15 MB)</span>
         </label>
-        <input type="file" name="document" required data-statement-upload
+        <input type="file" name="document" required multiple data-statement-upload
                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
                class="u-23598f88">
       </div>
@@ -365,7 +367,7 @@ document.addEventListener("DOMContentLoaded", function () {
             <span class="u-971b9b4e">{{ doc.document_type }}</span>
             <span>{{ (doc.file_size / 1024)|round(1) }} KB</span>
             <span>&bull; {{ doc.uploader or 'Unknown' }}</span>
-            <span>&bull; {{ doc.uploaded_at[:16].replace('T',' ') if doc.uploaded_at else '' }}</span>
+            <span>&bull; {{ doc.uploaded_at|sast }}</span>
             {% if analysis %}
               {% if analysis.rating == 'good' %}
                 <span class="u-76dfd8a4"> GOOD</span>
@@ -1127,7 +1129,7 @@ document.addEventListener("DOMContentLoaded", function () {
         <tbody>
           {% for log in contact_logs %}
           <tr class="u-9c10dbd3">
-            <td class="u-3db2ff50">{{ log.created_at[:16].replace('T',' ') if log.created_at else '?' }}</td>
+            <td class="u-3db2ff50">{{ log.created_at|sast or '?' }}</td>
             <td class="u-fb2a467a">{{ log.consultant_name or '—' }}</td>
             <td class="u-3877ff12"><span class="badge badge-gray">{{ (log.contact_method or 'call')|upper }}</span></td>
             <td class="u-bb017f37">

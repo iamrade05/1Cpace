@@ -8,6 +8,8 @@ from onecpase.platform_db import register_integration
 
 
 def _login(client, permissions=None, role="staff"):
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,role,permissions=permissions or [])
     with client.session_transaction() as session:
         session["user_id"] = 1
         session["username"] = "testuser"

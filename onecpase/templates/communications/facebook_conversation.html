@@ -23,7 +23,7 @@
     {% if messages %}
       {% for m in messages %}
       <div class="chat-bubble {{ m.direction }}">{{ m.content }}</div>
-      <div class="chat-meta {{ m.direction }}">{{ (m.timestamp or '')[:16] }}</div>
+      <div class="chat-meta {{ m.direction }}">{{ m.timestamp|sast }}</div>
       {% endfor %}
     {% else %}
       <div style="text-align:center;color:#9ca3af;font-size:.82rem;padding:20px 0;">No messages yet.</div>

@@ -36,7 +36,9 @@ def test_reconciliation_sync_route_uses_reconciliation_payload(app, monkeypatch)
     with app.test_client() as client:
         with client.session_transaction() as sess:
             sess["user_id"] = 1
-            sess["tenant_slug"] = None
+            sess["tenant_slug"] = 'elev8'
+        from onecpase.tenants import TENANT_COOKIE_NAME
+        client.set_cookie(TENANT_COOKIE_NAME, 'elev8')
 
         response = client.post("/dashboard/reconciliation/sync")
 

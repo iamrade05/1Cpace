@@ -24,6 +24,7 @@ from .database import (
 )
 from .encryption import decrypt_member, encrypt_member
 from .extensions import mail
+from .local_time import SAST
 from .platform_db import get_platform_db
 from .comms import send_whatsapp_message
 
@@ -239,7 +240,7 @@ def render_contract(contract_template, member, *, signing_enabled: bool = False,
         debit_mandate=debit_mandate,
         section_enabled=section_enabled,
         field_enabled=field_enabled,
-        generated_at=datetime.now().strftime("%d %B %Y %H:%M"),
+        generated_at=datetime.now(SAST).strftime("%d %B %Y %H:%M"),
         signing_enabled=signing_enabled,
         signatures=_latest_signatures(get_db(), member_id),
         share=share,

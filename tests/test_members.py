@@ -16,6 +16,8 @@ def _find_member(db, id_number):
 
 def _login_as_admin(client):
     """Create the same authorization state established by a real admin login."""
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,'admin')
     with client.session_transaction() as sess:
         sess["user_id"] = 1
         sess["username"] = "testuser"

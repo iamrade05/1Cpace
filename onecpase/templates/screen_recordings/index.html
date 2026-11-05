@@ -47,7 +47,7 @@
         <tr>
           <td>{{ recording.title }}</td>
           <td>{{ recording.created_by_name }}</td>
-          <td>{{ recording.created_at }}</td>
+          <td>{{ recording.created_at|sast }}</td>
           <td>{% if recording.duration_seconds is not none %}{{ '%.0f'|format(recording.duration_seconds) }} sec{% else %}—{% endif %}</td>
           <td>{{ '%.1f'|format(recording.file_size / 1048576) }} MB</td>
           <td><a class="btn btn-ghost btn-sm" href="{{ url_for('screen_recordings.download', recording_id=recording.id) }}">Download</a></td>

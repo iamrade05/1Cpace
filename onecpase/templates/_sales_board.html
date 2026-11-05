@@ -1,0 +1,46 @@
+<section class="sales-board" aria-labelledby="sales-board-title">
+  <div class="board-heading">
+    <div><span class="board-eyebrow">CONSULTANT SCOREBOARD</span><h2 id="sales-board-title">Consultant sales board</h2><p>{{ sales_board.start }} – {{ sales_board.end }} · Cycle to {{ sales_board.day }}</p></div>
+    <form method="get" class="board-day-form">
+      {% include '_dashboard_period_values.html' %}
+      {% if selected_consultant %}<input type="hidden" name="consultant" value="{{ selected_consultant }}">{% endif %}
+      <label>Board day<input class="form-control" type="date" name="kpi_date" value="{{ sales_board.day }}" required></label>
+      <button class="btn btn-primary" type="submit">View board</button>
+    </form>
+  </div>
+  <div class="board-stats">
+    <div><span>Credited sales</span><strong>{{ sales_board.actual }}</strong><small>{{ sales_board.configured }} of {{ sales_board.rows|length }} targets set · {{ sales_board.target }} planned units</small></div>
+    <div><span>Planning days</span><strong>{{ sales_board.days }}</strong><small>Monday to Saturday</small></div>
+    <div><span>Days elapsed</span><strong>{{ sales_board.elapsed }}</strong><small>Including the board day</small></div>
+    <div><span>Days remaining</span><strong>{{ sales_board.remaining }}</strong><small>After the board day</small></div>
+  </div>
+  <div class="table-wrap board-table-wrap" tabindex="0" role="region" aria-label="Consultant sales board, scroll for all columns">
+    <table class="table board-table">
+      <thead><tr><th scope="col">Consultant</th><th scope="col">Target</th><th scope="col">Cycle to date</th><th scope="col">Balance</th><th scope="col">Projection</th><th scope="col">Daily pace</th><th scope="col">Commitment</th><th scope="col">Day's sales</th><th scope="col">Achievement</th></tr></thead>
+      <tbody>{% for person in sales_board.rows %}
+        <tr><th scope="row"><span class="board-name">{{ person.name }}</span><small>Sales consultant</small></th>
+          <td>{{ person.target if person.target is not none else 'Not set' }}</td><td class="board-actual">{{ person.actual }}</td>
+          <td>{{ person.balance if person.balance is not none else '—' }}</td>
+          <td>{{ person.projection if person.projection is not none else '—' }}</td>
+          <td>{{ person.daily if person.daily is not none else '—' }}</td>
+          <td>{{ person.commitment if person.commitment is not none else '—' }}</td><td>{{ person.today }}</td>
+          <td>{% if person.percent is not none %}<span class="board-status {% if person.met %}is-met{% endif %}">{{ person.percent }}%{% if person.band %} · {{ person.band }}{% endif %}</span><progress max="100" value="{{ [person.percent,100]|min }}" aria-label="{{ person.name }} target achieved">{{ person.percent }}%</progress>{% else %}<span class="card-note">{{ 'Zero target' if person.target == 0 else 'Set a target' }}</span>{% endif %}</td>
+        </tr>
+      {% else %}<tr><td colspan="9" class="sales-empty">No active sales consultants in this view.</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <div class="board-footnote"><span>Target 1 <strong>125%</strong> · Target 2 <strong>110%</strong> · Target 3 <strong>100%</strong></span><span>Projection = sales ÷ elapsed days × planning days</span></div>
+  <details class="board-disclosure"><summary>How the board is calculated &amp; package breakdown</summary><div class="board-disclosure-body">
+    <p class="card-note">Sales count when compliance first becomes complete, using South African dates and the credited consultant. Current compliance blockers exclude credit. Daily pace is the remaining balance divided by remaining planning days, rounded up to one decimal. These Monday–Saturday planning days are estimates, not staff attendance or a holiday-adjusted roster. A dash means no target or no remaining days. Commitments are planned units for the board day.</p>
+    <p class="card-note">Package names come from credited applications; categories are not inferred from the photograph.</p>
+    {% for person in sales_board.rows %}<div class="board-package-row"><strong>{{ person.name }}</strong><span>{% for name,count in person.packages %}{{ name }}: {{ count }}{% if not loop.last %} · {% endif %}{% else %}No credited sales{% endfor %}</span></div>{% endfor %}
+  </div></details>
+  {% if can_manage_board %}<details class="board-disclosure"><summary>Set consultant targets &amp; daily commitments</summary><div class="board-disclosure-body">
+    <p class="card-note">Targets apply to this reporting cycle. Commitments apply only to {{ sales_board.day }}. Leave a field blank to clear it.</p>
+    {% for person in sales_board.rows %}<form method="post" action="{{ board_save_url }}" class="board-target-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="user_id" value="{{ person.id }}"><input type="hidden" name="day" value="{{ sales_board.day }}">
+      <strong>{{ person.name }}</strong><label>Cycle target<input class="form-control" type="number" name="target" min="0" max="10000" step="1" value="{{ person.target if person.target is not none else '' }}"></label>
+      <label>Day commitment<input class="form-control" type="number" name="commitment" min="0" max="10000" step="1" value="{{ person.commitment if person.commitment is not none else '' }}"></label><button type="submit" class="btn btn-primary" aria-label="Save targets for {{ person.name }}">Save</button>
+    </form>{% endfor %}
+  </div></details>{% endif %}
+</section>

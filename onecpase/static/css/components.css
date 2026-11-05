@@ -473,6 +473,12 @@ body.oc { background:var(--bg); color:var(--txt); font-family:var(--font-body); 
 .callout-error,.callout-danger { border-left-color:var(--err); }
 .callout-warning { border-left-color:var(--warn); }
 .callout-success { border-left-color:var(--ok); }
+.statement-check { text-align:left; margin-top:12px; font-size:.85rem; }
+.statement-check p { margin:6px 0 2px; }
+.statement-check ul { margin:0 0 8px 18px; }
+.statement-check label { display:block; margin-bottom:6px; }
+.statement-check-form { width:100%; }
+.statement-check-actions { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; margin-top:12px; }
 .empty-state { padding:24px; text-align:center; color:var(--t2); }
 .form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; max-width:960px; }
 .form-group,.form-field { margin-bottom:18px; }

@@ -38,7 +38,7 @@
           <td>{{ c.months_owing or 0 }} mo</td>
           <td>{{ (c.collection_stage or 'CONTACT_REQUIRED')|replace('_', ' ')|title }}</td>
           <td>{% if c.owner_type == 'SALES' %}Sales{% if c.owner_name %} · {{ c.owner_name }}{% endif %}{% else %}Reception{% endif %}</td>
-          <td>{{ c.last_contact_at or 'None' }}</td>
+          <td>{{ c.last_contact_at|sast or 'None' }}</td>
           <td>{{ (c.ptp_summary or '—')|replace('_', ' ') }}</td>
           <td>{{ (c.debicheck_status or 'unknown')|title }}</td>
           <td>{{ (c.access_status or 'allowed')|title }}</td>

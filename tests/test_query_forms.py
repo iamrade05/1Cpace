@@ -10,6 +10,8 @@ from onecpase.query_forms import freeze_timing
 
 
 def seed(app,client,kind='refund'):
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,'admin')
     with app.app_context():
         db=get_db()
         mid=db.execute("INSERT INTO members(first_name,last_name,id_number,contact,email) VALUES('Form','Client','form-member','0821111111','form@example.test')").lastrowid
@@ -99,6 +101,8 @@ def test_query_evidence_download_is_authorised_and_immutable(app,client):
     with app.app_context():doc=get_db().execute('SELECT id FROM member_documents WHERE member_id=? ORDER BY id DESC',(mid,)).fetchone()[0]
     assert client.get(f'/members/{mid}/documents/{doc}/download').status_code==200
     assert client.post(f'/members/{mid}/documents/{doc}/delete').status_code==409
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,'staff',permissions=['all_members'])
     with client.session_transaction() as sess:sess.update(role='staff',permissions=['all_members'])
     assert client.get(f'/members/{mid}/documents/{doc}/download').status_code==403
 
@@ -125,6 +129,8 @@ def test_verified_refund_handoff_requires_designated_processor_and_actual_collec
              evidence=(io.BytesIO(b'%PDF-1.4\nPayment confirmation'),'paid.pdf'))
     assert client.post(path,data=pay).status_code==403
     with client.session_transaction() as sess:sess.update(user_id=3,role='staff',permissions=['daily_queries'])
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,'staff',user_id=3,permissions=['daily_queries'])
     pay['evidence']=(io.BytesIO(b'%PDF-1.4\nPayment confirmation'),'paid.pdf')
     assert client.post(path,data=pay).status_code==302
     assert client.post(path,data={'action':'payment_made'}).status_code==409

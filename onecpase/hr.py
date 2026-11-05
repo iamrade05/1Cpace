@@ -182,7 +182,7 @@ def staff_edit(uid: int):
                 if new_password:
                     db.execute(
                         """UPDATE users SET full_name=?, role=?, department=?, contact=?, email=?,
-                           active=?, must_change_password=?, password_hash=? WHERE id=?""",
+                           active=?, must_change_password=?, password_hash=?, session_version=session_version+1 WHERE id=?""",
                         (full_name, role, department, contact, email, active, must_change,
                          generate_password_hash(new_password), uid),
                     )
@@ -192,6 +192,8 @@ def staff_edit(uid: int):
                            active=?, must_change_password=? WHERE id=?""",
                         (full_name, role, department, contact, email, active, must_change, uid),
                     )
+                    if active != user['active'] or email != user['email']:
+                        db.execute('UPDATE users SET session_version=session_version+1 WHERE id=?', (uid,))
 
                 # Replace permissions
                 selected = {k[5:] for k in request.form if k.startswith("perm_") and k[5:] in ALL_PERMISSIONS}

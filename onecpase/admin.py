@@ -780,7 +780,7 @@ def user_edit(uid: int):
                            department=?, active=?, is_sales_consultant=?, sales_available=?,
                            sales_rotation_order=?, sales_disqualification_category=?,
                            sales_skip_remaining=?, is_collections_caller=?, pbx_extension=?,
-                           password_hash=?, must_change_password=1, supervisor_id=?
+                           password_hash=?, must_change_password=1, supervisor_id=?, session_version=session_version+1
                            WHERE id=?""",
                         (full_name, email, contact, role, dept, active,
                          is_sales_consultant, sales_available, sales_rotation_order,
@@ -801,6 +801,8 @@ def user_edit(uid: int):
                          skip_remaining if is_sales_consultant else 0,
                          is_collections_caller, pbx_extension or None, supervisor_id, uid)
                     )
+                    if active != user['active'] or email != user['email']:
+                        db.execute('UPDATE users SET session_version=session_version+1 WHERE id=?', (uid,))
                 db.execute("DELETE FROM user_permissions WHERE user_id=?", (uid,))
                 for perm in selected_perms:
                     db.execute(
@@ -847,7 +849,7 @@ def user_reset_password(uid: int):
         return redirect(url_for("admin.users_index"))
 
     db.execute(
-        """UPDATE users SET password_hash=?, must_change_password=1 WHERE id=?""",
+        """UPDATE users SET password_hash=?, must_change_password=1, session_version=session_version+1 WHERE id=?""",
         (generate_password_hash(DEFAULT_STAFF_PASSWORD), uid),
     )
     db.commit()
@@ -878,7 +880,7 @@ def user_toggle(uid: int):
     if not user["active"] and not valid_email_address(user["email"]):
         flash("Add a valid email address before enabling this account for OTP sign-in.", "error")
         return redirect(url_for("admin.users_index"))
-    db.execute("UPDATE users SET active = 1 - active WHERE id=?", (uid,))
+    db.execute("UPDATE users SET active = 1 - active, session_version=session_version+1 WHERE id=?", (uid,))
     db.commit()
     flash("User status updated.", "success")
     return redirect(url_for("admin.users_index"))

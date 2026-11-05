@@ -244,6 +244,12 @@ def decide_offer(
 
     # ── Checklist ──────────────────────────────────────────────────────────
     # Every line says what is needed, who has to act, and what to do next.
+    if 'statement_months_ready' in flags and (intention != INTENT_SETTLE or percent > 0):
+        check('statement_months', 'Two months of bank statements analysed',
+              flags['statement_months_ready'], 'client', 'Send two months of bank statements')
+        if intention == INTENT_SETTLE and percent > 0:
+            check('discount_debicheck', 'Discount requires approved DebiCheck',
+                  debicheck_confirmed, 'client', 'Authorise the required DebiCheck mandate')
     if intention == INTENT_SETTLE:
         check("settlement", "Full settlement payment not received",
               upfront_received + 0.005 >= total, "client", "Record the proof of payment")

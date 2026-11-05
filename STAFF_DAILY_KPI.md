@@ -1,13 +1,14 @@
 # Daily staff KPI targets
 
-Confirmed on 26 October 2026. Targets apply to each staff member on each South African calendar day.
+Sales columns revised on 2 November 2026. Targets apply to each staff member on each South African calendar day.
 
 | Department | Metric | Daily target |
 | --- | --- | ---: |
+| Sales | Calls made | Actual count; no numeric target |
 | Sales | Connected calls | 30 |
 | Sales | Referrals captured | 30+ |
 | Sales | Appointments booked | 10 |
-| Sales | Joined members | 3 |
+| Sales | Shows | Actual count; target not yet specified |
 | Reception | Outbound calls | 100 |
 | Reception | Connected calls | 10 |
 | Reception | Phone PTPs | 2 |
@@ -18,10 +19,11 @@ The scorecards appear on Sales, Reception and Collections dashboards. They show 
 
 ## Counting rules
 
-- Calls use individually attributed outbound PBX records. Connections use the existing `contact_talk_seconds` rule (60 seconds by default). Ringing time, inbound calls and calls without a staff attribution do not earn connection credit. Naive PBX start times follow the existing PBX local-time convention; UTC database clocks are converted to South African time.
+- Sales calls use completed `call` activities, credited to the staff member who saved the result on its South African activity date. Each saved attempt counts as Calls made. The current dropdown's appointment-booked, follow-up-required and not-interested results all count as Connected calls; No response does not. Blank outcomes do not establish a connection. Historical no-answer, voicemail, dropped-call, nonexistent-number and unreachable results remain non-response outcomes. WhatsApp and email activity do not count as phone calls. PBX duration is not required and PBX records are not added on top of CRM calls. The Sales period comparison uses these same rules.
+- Reception calls continue to use individually attributed outbound PBX records. Reception connections use the existing `contact_talk_seconds` rule (60 seconds by default). Naive PBX start times follow the existing PBX local-time convention; UTC database clocks are converted to South African time.
 - Referrals count non-duplicate leads originally sourced as Referral, credited to their creator on capture day. Reassigning a lead does not create another referral.
 - Appointments count the first recorded `APPOINTMENT_BOOKED` transition for a non-duplicate prospect, credited to the booking staff member on booking day. The future appointment date and subsequent rescheduling do not create new credit.
-- Joined members reuse the existing Sales credit rule: first compliance completion, attributed to the credited consultant, with current compliance blockers excluded. A lead agreeing to join or an incomplete application does not qualify.
+- Shows count the first completed attendance activity per non-duplicate prospect, attributed to the staff member recording attendance. Appointment Showed/Agreed to Join and visit Arrived/Completed/Agreed to Join/Not interested prove attendance. No-show, scheduled or cancelled appointments do not. Later attendance or decision entries do not duplicate that prospect's show credit. Joined-member sales credit remains available on the consultant board and in sales reporting, separate from these five activity columns.
 - PTPs carry an explicit phone, walk-in or other contact channel. Collections-call arrangements are recorded as phone. Older clients can still submit an unclassified arrangement, but it does not count toward either split target. Historical channels are not inferred. Cancelled, rejected and superseded agreements are excluded; pending arrangements remain recorded promises and do not become granted through KPI recording.
 - DebiChecks count once, on the day approval/authentication is first confirmed locally, against the submitting staff member (owner fallback if no submitter exists). Scheduled NuPay refreshes and manual status checks use the same recording hook. Submission, pending status, and the staff member merely refreshing a mandate do not earn authentication credit. Repeated checks or a later reactivation do not count twice. First local confirmation is used because these integrations do not reliably supply the bank's exact authentication timestamp.
 

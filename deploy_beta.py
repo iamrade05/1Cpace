@@ -239,11 +239,11 @@ def report(client: paramiko.SSHClient, args: argparse.Namespace) -> None:
 
 
 def prune_backups(client: paramiko.SSHClient) -> None:
-    """Retain five database snapshots and five dated deployment rollback sets."""
+    """Retain three database snapshots and five dated deployment rollback sets."""
     run(client, '/opt/onecpase/venv/bin/python -I /opt/onecpase/onecpase/backup_retention.py '
         '--database-dir /opt/onecpase/backups --deployment-dir /opt/onecpase-backups '
         '--apply --minimum-age-seconds 0')
-    print(f"Kept the newest {KEEP_BACKUPS} backups per type.")
+    print(f"Kept the newest 3 database backups and {KEEP_BACKUPS} deployment sets.")
 
 
 def deploy(client: paramiko.SSHClient, archive: Path, args: argparse.Namespace) -> None:

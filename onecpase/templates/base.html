@@ -10,7 +10,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css', v='funnel-buttons-20261102') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css', v='statement-check-20261105') }}">
+  {% if request.endpoint=='dashboard.sales_dashboard' %}<link rel="stylesheet" href="{{ url_for('static', filename='css/sales-board.css', v='20261102') }}">{% endif %}
+  {% if request.endpoint=='collections.call_profile' %}<link rel="stylesheet" href="{{ url_for('static', filename='css/collection-call-script.css', v='negotiation-20261102') }}"><script defer src="{{ url_for('static', filename='js/collection-conversation.js', v='20261102') }}"></script>{% endif %}
   {% if request.blueprint in ('hr','workforce') %}<link rel="stylesheet" href="{{ url_for('static', filename='css/hr-workforce.css', v='hr-cleanup-20261028') }}">{% endif %}
   {% if request.blueprint=='reception_admin' %}<link rel="stylesheet" href="{{ url_for('static', filename='css/reception-admin.css', v='reception-admin-20261028') }}">{% endif %}
 </head>

@@ -246,7 +246,7 @@
               {{ r.follow_up_date or '—' }}
             </td>
             <td style="font-size:.72rem;color:#9ca3af;white-space:nowrap;">
-              {{ r.created_at[:16] }}
+              {{ r.created_at|sast }}
               {% if r.logged_by_name %}
               <div style="font-size:.68rem;">{{ r.logged_by_name.split()[0] }}</div>
               {% endif %}

@@ -140,6 +140,8 @@ def test_performance_report_totals(app):
 
 
 def test_reports_page_renders_and_survives_a_bad_month(app, client):
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     with client.session_transaction() as session:
         session["user_id"] = 1
         session["role"] = "admin"
@@ -181,6 +183,8 @@ def test_daily_call_stats_use_call_date_and_count_reactivation(app):
 
 
 def test_daily_call_stats_page_and_bad_date(app, client):
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     with client.session_transaction() as session:
         session['user_id'] = 1
         session['role'] = 'admin'

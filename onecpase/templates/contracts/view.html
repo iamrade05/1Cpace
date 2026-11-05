@@ -521,7 +521,7 @@
       </div>
       <div class="sig-name">{{ m.payer_name if m.payer_id_number else (m.first_name ~ ' ' ~ m.last_name) }}</div>
       <div class="sig-label">Account holder signature authorising the debit order</div>
-      {% if signatures.get('debit_authoriser') %}<div class="sig-signed-at">Signed {{ signatures['debit_authoriser'].signed_at[:16].replace('T', ' ') }}</div>{% endif %}
+      {% if signatures.get('debit_authoriser') %}<div class="sig-signed-at">Signed {{ signatures['debit_authoriser'].signed_at|sast }}</div>{% endif %}
     </div>
     {% endif %}
   </div>
@@ -675,7 +675,7 @@
     <div class="sig-name">{{ name }}</div>
     <div class="sig-label">{{ label }}</div>
     {% if signatures.get(role) %}
-    <div class="sig-signed-at">Signed {{ signatures[role].signed_at[:16].replace('T', ' ') if signatures[role].signed_at else '' }}</div>
+    <div class="sig-signed-at">Signed {{ signatures[role].signed_at|sast }}</div>
     {% if signing_enabled %}
     <button type="button" class="btn-sign" data-role="{{ role }}" data-label="{{ label }}" onclick="openSigPad(this.dataset.role, this.dataset.label)">Re-sign</button>
     {% endif %}

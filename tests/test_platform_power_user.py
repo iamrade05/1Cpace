@@ -138,4 +138,8 @@ def test_a_platform_shadow_user_needs_power_user_mode_for_the_dashboard(app, cli
     with client.session_transaction() as sess:
         del sess["is_power_user"]
 
-    assert client.get("/dashboard").status_code == 403
+    response = client.get("/dashboard")
+    assert response.status_code == 302
+    assert response.location.endswith('/login')
+    with client.session_transaction() as sess:
+        assert 'user_id' not in sess

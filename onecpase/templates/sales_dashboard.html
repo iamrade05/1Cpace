@@ -3,16 +3,21 @@
 {% block title %}Sales KPI | Sales Funnel | 1Cpace{% endblock %}
 {% block page_title %}Sales KPI{% endblock %}
 {% block content %}
-<p class="card-note">Monthly reporting cycle: 15th to 14th. Daily targets remain per day.</p>
 
 <div class="future-dashboard sales-page">
-  {% call dashboard_header('Sales performance', '1Cpace sales performance', 'Track lead activity, activation and completed sales. Consultant sales credit requires completed compliance.') %}
+  {% call dashboard_header('Sales performance', 'Sales workspace', 'Your consultant board, daily activity and sales performance in one place.') %}
     <div class="dashboard-period"><strong>{{ report.date_from }}</strong> to <strong>{{ report.date_to }}</strong></div>
   {% endcall %}
 
-  {% include '_dashboard_period.html' %}
+  {% include '_sales_board.html' %}
 
   {% include '_daily_staff_kpis.html' %}
+
+  <details class="sales-analysis"><summary>Period comparison &amp; reporting filters</summary><div class="sales-analysis-content">
+    {% include '_dashboard_period.html' %}
+  </div></details>
+
+  <details class="sales-analysis"><summary>Sales analysis, credited applications &amp; follow-up queues · {{ untouched|length }} untouched leads · {{ stalled|length }} stalled applications</summary><div class="sales-analysis-content">
 
   <section class="sales-section sales-card">
     <h2>Credited sales in selected period: {{ report.completed_sales.count }}</h2>
@@ -71,5 +76,6 @@
   </section>
 
   <section class="sales-section sales-card"><h3>Manager controls</h3><p class="card-note">Operational signals requiring leadership follow-up.</p><div class="table-wrap"><table class="table"><tr><th>Approval requests</th><th>Pending approvals</th><th>Average approval hours</th><th>Discount offers</th><th>Failure reasons</th></tr><tr><td class="strong-cell">{{ report.approval_turnaround.requests }}</td><td>{{ report.approval_turnaround.pending }}</td><td>{{ report.approval_turnaround.avg_hours if report.approval_turnaround.avg_hours is not none else '—' }}</td><td>{{ report.discount_usage.offers }}</td><td>{{ report.failure_mix|length }}</td></tr></table></div></section>
+  </div></details>
 </div>
 {% endblock %}

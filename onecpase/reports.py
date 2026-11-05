@@ -9,6 +9,7 @@ from .database import get_db
 from .encryption import decrypt
 from .member_counts import get_member_counts
 from .reporting_cycle import today as business_today, current_cycle, cycle_key, cycle_bounds, shift_month, history_start
+from .financial_reporting import cash_amount, cash_received, monthly_totals, totals as financial_totals
 
 reports_bp = Blueprint("reports", __name__, url_prefix="/reports")
 
@@ -48,9 +49,14 @@ def _itensity_last_visits():
     digits of the cellphone number. Returns (dict, error). Cached for 5 minutes.
     When the server cannot be reached the report still loads, with no visit data,
     rather than showing invented dates."""
+    from .elev8_data import elev8_source_enabled
+    if not elev8_source_enabled():
+        return {}, 'External attendance is not configured for this gym.'
     from datetime import datetime
+    from flask import current_app, g
+    cache_key = (current_app.config['PLATFORM_DATABASE_PATH'], g.tenant_slug)
     now = datetime.now()
-    if _VISIT_CACHE["at"] and (now - _VISIT_CACHE["at"]).total_seconds() < 300:
+    if _VISIT_CACHE.get('tenant') == cache_key and _VISIT_CACHE["at"] and (now - _VISIT_CACHE["at"]).total_seconds() < 300:
         return _VISIT_CACHE["data"], _VISIT_CACHE["error"]
     data, error = {}, None
     try:
@@ -72,7 +78,7 @@ def _itensity_last_visits():
             conn.close()
     except Exception as exc:  # no driver, server off, not on the gym network
         data, error = {}, str(exc)[:160]
-    _VISIT_CACHE.update(at=now, data=data, error=error)
+    _VISIT_CACHE.update(tenant=cache_key, at=now, data=data, error=error)
     return data, error
 
 
@@ -95,6 +101,11 @@ def _load_register(db, status='', search='', segment=''):
     from .ptp import bulk_member_arrears
     arrears = bulk_member_arrears(db)
     visits, visit_error = _itensity_last_visits()
+    cash_dates = {}
+    for payment in db.execute('SELECT member_id,collection_date,amount_paid,status,notes FROM collections WHERE COALESCE(amount_paid,0)>0'):
+        if cash_amount(payment) > 0:
+            mid = payment['member_id']
+            cash_dates[mid] = max(cash_dates.get(mid,''), str(payment['collection_date'] or '')[:10])
 
     out = []
     for r in rows:
@@ -105,11 +116,12 @@ def _load_register(db, status='', search='', segment=''):
         last_visit = visits.get(_phone_key(d["contact"])) or (d["local_last_visit"] or "")[:10] or None
         d["last_visit"] = last_visit
         d["days_since_visit"] = (today - date.fromisoformat(last_visit)).days if last_visit else None
-        d["last_paid"] = (d["last_paid"] or "")[:10] or None
+        d["last_paid"] = cash_dates.get(d['id']) or None
         d["owing"] = round(arrears.get(d["id"], {}).get("total_arrears", 0) or 0, 2)
         ms = (d["mandate_status"] or "").strip()
         if ms:
-            d["mandate"], d["mandate_ok"] = ms.replace("_", " ").title(), True
+            from .debicheck import normalise_debicheck_status
+            d["mandate"], d["mandate_ok"] = ms.replace("_", " ").title(), normalise_debicheck_status(ms) == 'approved'
         elif (d["payment_type"] or "") == "Debit Order":
             d["mandate"], d["mandate_ok"] = "No mandate on file", False
         else:
@@ -138,9 +150,9 @@ def _load_register(db, status='', search='', segment=''):
         FROM members WHERE join_date IS NOT NULL AND substr(join_date,1,10) BETWEEN '{history_start(12)}' AND '{current_cycle()[1].isoformat()}'
         GROUP BY month ORDER BY month DESC
     """).fetchall()
-    collected = {r["month"]: r["total"] for r in db.execute(
-        "SELECT strftime('%Y-%m', date(collection_date,'-14 days','start of month','+1 month')) AS month, SUM(amount_paid) AS total "
-        f"FROM collections WHERE substr(collection_date,1,10) BETWEEN '{history_start(12)}' AND '{current_cycle()[1].isoformat()}' GROUP BY month")}
+    collected = {r['month']: r['collected'] for r in monthly_totals(db.execute(
+        'SELECT * FROM collections WHERE substr(collection_date,1,10) BETWEEN ? AND ?',
+        (history_start(12),current_cycle()[1].isoformat())).fetchall())}
     joins_by_month = [{**dict(j), "collected": collected.get(j["month"], 0)} for j in joins]
 
     if status:
@@ -365,19 +377,17 @@ def _load_overview(db):
     s['cancelled_members']   = member_counts['by_status'].get('Cancelled', 0)
     s['total_members']       = member_counts['total']
     s['new_this_month']      = db.execute("SELECT COUNT(*) FROM members WHERE substr(join_date,1,10) BETWEEN ? AND ?", (month_start, month_end,)).fetchone()[0]
-    s['collected_this_month']= db.execute("SELECT COALESCE(SUM(amount_paid),0) FROM collections WHERE substr(collection_date,1,10) BETWEEN ? AND ?", (month_start, month_end,)).fetchone()[0]
+    s['collected_this_month']= cash_received(db, month_start, month_end)
     from .ptp import bulk_member_arrears
     s['total_outstanding']   = sum(v["total_arrears"] for v in bulk_member_arrears(db).values())
     s['open_queries']        = db.execute("SELECT COUNT(*) FROM queries WHERE status NOT IN ('resolved','closed')").fetchone()[0]
     s['active_ptps']         = db.execute("SELECT COUNT(*) FROM ptp_agreements WHERE ptp_status IN ('pending','partially_paid')").fetchone()[0]
     s['broken_ptps']         = db.execute("SELECT COUNT(*) FROM ptp_agreements WHERE ptp_status='broken'").fetchone()[0]
 
-    monthly = db.execute(f"""
-        SELECT strftime('%Y-%m', date(collection_date,'-14 days','start of month','+1 month')) AS month,
-               SUM(amount_paid) AS collected, SUM(outstanding_balance) AS outstanding, COUNT(*) AS cnt
+    monthly = monthly_totals(db.execute(f"""
+        SELECT *
         FROM collections WHERE substr(collection_date,1,10) BETWEEN '{history_start(6)}' AND '{current_cycle()[1].isoformat()}'
-        GROUP BY month ORDER BY month DESC
-    """).fetchall()
+    """).fetchall())
     joins_monthly = db.execute(f"""
         SELECT strftime('%Y-%m', date(join_date,'-14 days','start of month','+1 month')) AS month, COUNT(*) AS cnt
         FROM members WHERE substr(join_date,1,10) BETWEEN '{history_start(6)}' AND '{current_cycle()[1].isoformat()}'
@@ -429,17 +439,21 @@ def _load_membership(db, period):
 
 def _load_finance(db, period):
     from_date, to_date = _date_range(period)
-    monthly_collections = db.execute("""
-        SELECT strftime('%Y-%m', date(collection_date,'-14 days','start of month','+1 month')) AS month, COUNT(*) AS cnt,
-               SUM(amount_paid) AS collected, SUM(outstanding_balance) AS outstanding,
-               SUM(CASE WHEN status='paid' THEN 1 ELSE 0 END) AS paid_cnt,
-               SUM(CASE WHEN status='partial' THEN 1 ELSE 0 END) AS partial_cnt,
-               SUM(CASE WHEN status IN ('pending','failed') THEN 1 ELSE 0 END) AS failed_cnt
-        FROM collections WHERE DATE(collection_date) BETWEEN ? AND ?
-        GROUP BY month ORDER BY month DESC
-    """, (from_date, to_date)).fetchall()
-    payment_methods = db.execute("SELECT method, COUNT(*) AS cnt, SUM(amount_paid) AS total FROM collections WHERE DATE(collection_date) BETWEEN ? AND ? GROUP BY method ORDER BY total DESC", (from_date, to_date)).fetchall()
-    status_breakdown = db.execute("SELECT status, COUNT(*) AS cnt, SUM(amount_paid) AS total FROM collections WHERE DATE(collection_date) BETWEEN ? AND ? GROUP BY status ORDER BY cnt DESC", (from_date, to_date)).fetchall()
+    from collections import defaultdict
+    from decimal import Decimal
+    rows = db.execute('''SELECT c.*,m.package FROM collections c LEFT JOIN members m ON m.id=c.member_id
+        WHERE substr(c.collection_date,1,10) BETWEEN ? AND ?''',(from_date,to_date)).fetchall()
+    monthly_collections = monthly_totals(rows)
+    methods, statuses, packages = defaultdict(list), defaultdict(list), defaultdict(list)
+    for row in rows:
+        statuses[row['status']].append(row)
+        if cash_amount(row):
+            methods[row['method']].append(row)
+            if row['package']:
+                packages[row['package']].append(row)
+    cash_sum = lambda entries: float(sum((cash_amount(r) for r in entries), Decimal(0)).quantize(Decimal('0.01')))
+    payment_methods = sorted((dict(method=key,cnt=len(entries),total=cash_sum(entries)) for key,entries in methods.items()),key=lambda r:r['total'],reverse=True)
+    status_breakdown = sorted((dict(status=key,cnt=len(entries),total=cash_sum(entries)) for key,entries in statuses.items()),key=lambda r:r['cnt'],reverse=True)
 
     from .ptp import bulk_member_arrears, ARREARS_RESTRICTION_MONTHS
     member_rows = {
@@ -460,13 +474,8 @@ def _load_finance(db, period):
         })
     top_outstanding.sort(key=lambda r: r["net_owed"], reverse=True)
     top_outstanding = top_outstanding[:25]
-    totals = db.execute("SELECT COALESCE(SUM(amount_paid),0) AS total_collected, COALESCE(SUM(outstanding_balance),0) AS total_billed, COUNT(*) AS total_records FROM collections WHERE DATE(collection_date) BETWEEN ? AND ?", (from_date, to_date)).fetchone()
-    revenue_by_package = db.execute("""
-        SELECT m.package, SUM(c.amount_paid) AS collected, COUNT(DISTINCT c.member_id) AS members
-        FROM collections c JOIN members m ON c.member_id = m.id
-        WHERE DATE(c.collection_date) BETWEEN ? AND ? AND m.package IS NOT NULL AND m.package!=''
-        GROUP BY m.package ORDER BY collected DESC
-    """, (from_date, to_date)).fetchall()
+    totals = financial_totals(rows)
+    revenue_by_package = sorted((dict(package=key,collected=cash_sum(entries),members=len({r['member_id'] for r in entries})) for key,entries in packages.items()),key=lambda r:r['collected'],reverse=True)
     return dict(from_date=from_date, to_date=to_date,
                 monthly_collections=monthly_collections, payment_methods=payment_methods,
                 fin_status_breakdown=status_breakdown, top_outstanding=top_outstanding,

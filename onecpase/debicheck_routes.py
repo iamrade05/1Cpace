@@ -289,11 +289,28 @@ def detail(mandate_id):
         flash("DebiCheck mandate not found.", "warning")
         return redirect(url_for("debicheck.index"))
     mandate = decrypt_mandate(row)
+    collection_call_url = None
+    if session.get('role') == 'admin' or 'collections_call_queue' in (session.get('permissions') or []):
+        call = get_db().execute("""SELECT id FROM collection_call_tasks WHERE member_id=?
+            AND queue_type<>'reminder' AND (? OR assigned_to=?) ORDER BY id DESC LIMIT 1""",
+            (row['member_id'], int(session.get('role') == 'admin'), session.get('user_id'))).fetchone()
+        if call:
+            collection_call_url = url_for('collections.call_profile', task_id=call['id']) + '#arrangement-confirmation-title'
+    from .applications import can_override_nupay, needs_statement_check, statement_check_context, statement_money_in_months
+    blockers = _submission_blockers(get_db(), row["member_id"])
+    role = session.get("role")
+    can_override = can_override_nupay(role, blockers, statement_money_in_months(get_db(), row["member_id"]))
     return render_template("debicheck/detail.html", mandate=mandate,
+                           collection_call_url=collection_call_url,
                            mandate_field_errors=validate_stored_mandate(mandate),
                            submission_checklist=_checklist(get_db(), row["member_id"]),
                            statement_months_ready=_months_ready(get_db(), row["member_id"]),
-                           statement_blockers=_submission_blockers(get_db(), row["member_id"]))
+                           statement_blockers=blockers,
+                           statement_can_override=can_override,
+                           statement_check=(
+                               statement_check_context(get_db(), row["member_id"])
+                               if can_override and needs_statement_check(role, blockers) else None
+                           ))
 
 
 @debicheck_bp.route("/<int:mandate_id>/edit", methods=["GET", "POST"])
@@ -394,6 +411,11 @@ def _admin_override(db, member_id, blockers):
     return authorize_nupay_override(db, member_id, blockers)
 
 
+def _override_note(db, member_id, blockers):
+    from .applications import nupay_override_note
+    return nupay_override_note(db, member_id, blockers) if blockers else None
+
+
 def _prepare_reference(db, mandate_id, mandate, member_id):
     row = db.execute("SELECT status, nupay_response FROM debicheck_mandates WHERE id=?", (mandate_id,)).fetchone()
     if row and row["status"] == "pending" and not row["nupay_response"]:
@@ -412,6 +434,7 @@ def _push(db, mandate_id, mandate: dict, member_id: int):
     if blockers and not _admin_override(db, member_id, blockers):
         flash("NuPay submission blocked: " + "; ".join(blockers), "error")
         return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
+    override_note = _override_note(db, member_id, blockers)
     errors = _prepare_reference(db, mandate_id, mandate, member_id)
     if errors:
         flash("; ".join(errors), "error")
@@ -427,6 +450,8 @@ def _push(db, mandate_id, mandate: dict, member_id: int):
         f"DebiCheck mandate #{mandate_id} "
         f"{'submitted to NuPay' if success else 'push failed'}: {message}",
     )
+    if success and override_note:
+        member_activity(db, member_id, override_note)
     db.commit()
     flash(
         ("Mandate sent to NuPay for client approval: " if success else "NuPay push failed: ") + message,
@@ -459,7 +484,7 @@ def push(mandate_id):
 
 def _background_manual_review_push(
     app, db_path: str, mandate_id: int, mandate: dict, member_id: int,
-    overridden: bool = False, user_id: int | None = None,
+    overridden: bool = False, user_id: int | None = None, override_note: str | None = None,
 ) -> None:
     """Runs the visible-browser, human-paced NuPay push off the request
     thread — it blocks until the person finishes in the window (or closes
@@ -472,8 +497,10 @@ def _background_manual_review_push(
             try:
                 blockers = _submission_blockers(conn, member_id)
                 actor = conn.execute("SELECT role, active FROM users WHERE id=?", (user_id,)).fetchone()
-                admin_override = overridden and actor and actor["role"] == "admin" and actor["active"]
-                if blockers and (not admin_override or not _months_ready(conn, member_id)):
+                from .applications import can_override_nupay, statement_money_in_months
+                override_allowed = overridden and actor and actor["active"] and can_override_nupay(
+                    actor["role"], blockers, statement_money_in_months(conn, member_id))
+                if blockers and not override_allowed:
                     success, message = False, "; ".join(blockers)
                 else:
                     success, message = push_mandate_to_nupay_manual_review(mandate)
@@ -485,6 +512,8 @@ def _background_manual_review_push(
                 f"DebiCheck mandate #{mandate_id} "
                 f"{'submitted to NuPay (reviewed in browser)' if success else 'manual-review push ended'}: {message}",
             )
+            if success and override_note:
+                member_activity(conn, member_id, override_note, user_id=user_id)
             conn.commit()
     except Exception:
         app.logger.exception(
@@ -524,6 +553,7 @@ def review_on_nupay(mandate_id):
         flash("NuPay submission blocked: " + "; ".join(blockers), "error")
         return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
 
+    override_note = _override_note(db, row["member_id"], blockers)
     mandate = decrypt_mandate(row)
     errors = validate_stored_mandate(mandate)
     if errors:
@@ -547,7 +577,7 @@ def review_on_nupay(mandate_id):
     app_obj = current_app._get_current_object()
     threading.Thread(
         target=_background_manual_review_push,
-        args=(app_obj, db_path, mandate_id, mandate, row["member_id"], overridden, session.get("user_id")),
+        args=(app_obj, db_path, mandate_id, mandate, row["member_id"], overridden, session.get("user_id"), override_note),
         daemon=True,
     ).start()
 

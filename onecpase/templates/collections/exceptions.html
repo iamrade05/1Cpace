@@ -44,7 +44,7 @@
             <td class="num">R{{ '%.2f'|format(ptp.arrears_amount or 0) }}</td>
             <td class="num">R{{ '%.2f'|format(ptp.promise_amount or 0) }}</td>
             <td>{{ ptp.requested_by_name or '—' }}
-              <div style="color:#6b7280;font-size:.78rem;">{{ ptp.created_at }}</div>
+              <div style="color:#6b7280;font-size:.78rem;">{{ ptp.created_at|sast }}</div>
             </td>
             <td style="min-width:230px;">
               <form method="POST"
@@ -95,7 +95,7 @@
             <td style="max-width:280px;">{{ item.reason }}</td>
             <td style="max-width:240px;">{{ item.requested_action or '—' }}</td>
             <td>{{ item.raised_by_name or 'System' }}
-              <div style="color:#6b7280;font-size:.78rem;">{{ item.created_at }}</div>
+              <div style="color:#6b7280;font-size:.78rem;">{{ item.created_at|sast }}</div>
             </td>
             <td style="min-width:230px;">
               <form method="POST"

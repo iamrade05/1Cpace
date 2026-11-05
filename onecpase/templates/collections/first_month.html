@@ -74,7 +74,7 @@
           <td>R{{ '%.2f'|format(owed.get('total_arrears', 0) or 0) }}
             <div style="color:#6b7280;font-size:.8rem;">{{ owed.get('months_in_arrears', 0) }} month(s)</div></td>
           <td>
-            {% if case.last_contact_at %}{{ case.last_contact_at }}
+            {% if case.last_contact_at %}{{ case.last_contact_at|sast }}
               <div style="color:#6b7280;font-size:.8rem;">{{ outcome_labels.get(case.last_outcome, case.last_outcome or '') }}</div>
             {% else %}Not yet contacted{% endif %}
           </td>

@@ -4,6 +4,8 @@ from onecpase.database import get_db
 
 
 def _login_admin(client):
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,'admin')
     with client.session_transaction() as session:
         session.update({
             "user_id": 1,

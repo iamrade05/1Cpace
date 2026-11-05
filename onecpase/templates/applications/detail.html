@@ -16,7 +16,7 @@
 
 <!-- Header banner -->
 <div style="background:{{ color }}18; border:1px solid {{ color }}44; border-radius:10px;
-            padding:16px 22px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+            padding:16px 22px; margin-bottom:20px; display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:center;">
   <div>
     <div style="font-weight:700; font-size:1rem; color:#1a1a2e;">
       {% if app.first_name %}{{ app.first_name }} {{ app.last_name }}
@@ -37,21 +37,24 @@
                  border-radius:20px; font-size:0.78rem; font-weight:700; margin-left:10px;">
       ⏳ Itensity push in progress — refresh to check
     </span>
+    {% elif app.push_status == 'push_unknown' %}
+    <p role="alert">The Itensity outcome is unknown. An administrator must check Itensity before another submission.</p>
     {% elif ready_to_push %}
     <form method="POST" action="{{ url_for('applications.push_application', aid=app.id) }}"
           style="display:inline; margin-left:10px;">
       <button type="submit" class="btn btn-primary"
               style="background:#059669; border-color:#059669; font-size:0.8rem;">
-         Push to Itensity
+         {% if app.push_status == 'reconcile_required' %}Complete Local Activation{% else %}Push to Itensity{% endif %}
       </button>
     </form>
-    {% elif is_admin and checklist and app.push_status not in ('pushed', 'pushing') %}
+    {% elif can_override_push and app.push_status not in ('pushed', 'pushing', 'push_unknown') %}
     <form method="POST" action="{{ url_for('applications.push_application', aid=app.id) }}"
-          id="overridePushForm" style="display:inline; margin-left:10px;">
+          id="overridePushForm" style="display:{{ 'block' if statement_check else 'inline' }}; margin-left:10px;">
       <input type="hidden" name="override" value="1">
+      {% if statement_check %}{% include 'applications/_statement_check.html' %}{% endif %}
       <button type="button" onclick="confirmOverridePush()" class="btn btn-primary"
               style="background:#dc2626; border-color:#dc2626; font-size:0.8rem;">
-         Override &amp; Push to Itensity (Admin)
+         {% if app.push_status == 'reconcile_required' %}Override &amp; Complete Activation{% else %}Override &amp; Push to Itensity{% endif %}
       </button>
     </form>
     <script>
@@ -59,13 +62,66 @@
       const missing = {{ missing_items | tojson }};
       const msg = 'This application is NOT fully verified. Missing:\n\n- '
                   + missing.join('\n- ')
-                  + '\n\nPush to Itensity anyway? This will be logged as an admin override.';
+                  + '\n\nPush to Itensity anyway? This will be logged as an override under your name.';
       showInlineConfirmation(document.getElementById('overridePushForm'), msg);
     }
     </script>
     {% endif %}
   </div>
 </div>
+
+{% if app.push_status == 'reconcile_required' %}
+<div class="card"><div class="card-body"><p role="alert">Itensity confirmed reference {{ app.itensity_confirmed_ref }}. Local activation needs recovery. Completing activation reuses this reference and does not create another external member.</p></div></div>
+{% endif %}
+{% if is_admin and (app.push_status in ('push_unknown', 'pushing') or (app.application_status == 'active' and app.push_status == 'push_failed')) %}
+<div class="card"><div class="card-body">
+  <h2>Review Itensity Outcome</h2>
+  <p>Check the external roster before allowing another submission. A running push cannot be reviewed. Interrupted pushes become reviewable after 30 minutes.</p>
+  <form method="post" class="form-grid-2" action="{{ url_for('applications.review_push', aid=app.id) }}">
+    <div class="form-group"><label for="pushOutcome">Confirmed outcome</label><select id="pushOutcome" name="outcome" required><option value="found">Member exists in Itensity</option><option value="not_created">Confirmed no member was created</option></select></div>
+    <div class="form-group"><label for="pushReference">Itensity member reference</label><input id="pushReference" name="itensity_ref"></div>
+    <div class="form-group"><label for="pushEvidence">Evidence of external check</label><textarea id="pushEvidence" name="notes" rows="3" required></textarea></div>
+    <div class="form-group"><button class="btn btn-primary" type="submit" data-confirm="Record this verified external outcome?">Record Outcome</button></div>
+  </form>
+</div></div>
+{% endif %}
+{% if app.push_status == 'pushed' and has_perm('add_member') %}
+{% set fee = itensity_sent.reg_fee %}
+<div class="card"><div class="card-body">
+  <h2>Sent to Itensity</h2>
+  <p><strong>Member:</strong> created{% if app.itensity_confirmed_ref %} (reference {{ app.itensity_confirmed_ref }}){% endif %}</p>
+  <p><strong>Documents</strong></p>
+  <ul>
+    {% for doc in itensity_sent.documents %}
+    <li>{{ doc.document_type }}: {% if doc.status in ('sent', 'already_attached') %}attached{% elif doc.status == 'sending' %}sending or interrupted{% elif doc.status == 'unknown' %}not confirmed, check the Itensity profile{% elif doc.status == 'failed' %}not sent{% else %}not sent yet{% endif %}{% if doc.error %} ({{ doc.error }}){% endif %}</li>
+    {% else %}
+    <li>No documents on file</li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="{{ url_for('applications.send_itensity_documents', aid=app.id) }}">
+    <button class="btn btn-primary" type="submit">Send Missing Documents</button>
+  </form>
+  <p><strong>Reg fee:</strong>
+    {% if not fee %}not sent yet
+    {% elif fee.status == 'sent' %}R{{ '%.2f'|format(fee.amount) }} recorded{% if not fee.fee_detected %}. Check that Itensity allocated it to the joining fee{% endif %}
+    {% elif fee.status == 'already_in_itensity' %}already on the Itensity account, nothing added
+    {% elif fee.status == 'failed' %}not sent{% if fee.error %} ({{ fee.error }}){% endif %}
+    {% else %}not confirmed. Check the Itensity account before anything else{% if fee.error %} ({{ fee.error }}){% endif %}
+    {% endif %}
+  </p>
+  {% if not fee or fee.status == 'failed' %}
+  <form method="post" action="{{ url_for('applications.send_itensity_reg_fee', aid=app.id) }}">
+    <button class="btn btn-primary" type="submit" data-confirm="Record this registration fee on the member's Itensity account?">Send Reg Fee</button>
+  </form>
+  {% elif fee.status in ('unknown', 'sending') and is_admin %}
+  <form method="post" class="form-grid-2" action="{{ url_for('applications.review_itensity_reg_fee', aid=app.id) }}">
+    <div class="form-group"><label for="feeOutcome">What the Itensity account shows</label><select id="feeOutcome" name="outcome" required><option value="found">The payment is there</option><option value="not_recorded">The payment is not there</option></select></div>
+    <div class="form-group"><label for="feeEvidence">What you checked</label><textarea id="feeEvidence" name="notes" rows="2" required></textarea></div>
+    <div class="form-group"><button class="btn btn-primary" type="submit" data-confirm="Record what the Itensity account shows?">Record Outcome</button></div>
+  </form>
+  {% endif %}
+</div></div>
+{% endif %}
 
 {% if app.member_id and app.application_status != 'active' and has_perm('new_debicheck') %}
 <div class="card">
@@ -164,7 +220,7 @@
         {% endfor %}
       </div>
 
-      <!-- DebiCheck and ID block activation; the registration fee remains a follow-up. -->
+      <!-- Every item here blocks the Itensity push. -->
       {% if followups %}
       <div style="margin-top:14px; padding-top:14px; border-top:1px solid #f3f4f6;">
         <div style="font-size:0.75rem; font-weight:700; color:#6b7280; text-transform:uppercase;
@@ -210,7 +266,7 @@
           </div>
           <div style="flex:1; min-width:180px;">
             <label style="font-size:0.75rem;font-weight:600;color:#6b7280;display:block;margin-bottom:4px;">File</label>
-            <input type="file" name="document" required data-statement-upload
+            <input type="file" name="document" required multiple data-statement-upload
                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
                    style="display:block;width:100%;padding:7px 10px;border:1px solid #e5e7eb;
                           border-radius:8px;font-size:0.8rem;">
@@ -230,7 +286,7 @@
                         overflow:hidden; text-overflow:ellipsis;">{{ doc.original_name }}</div>
             <div style="font-size:0.72rem; color:#9ca3af; margin-top:2px;">
               <span style="background:#EEF4FA;color:#185FA5;padding:1px 6px;border-radius:4px;font-weight:600;">{{ doc.document_type }}</span>
-              {{ doc.uploader or 'Unknown' }} · {{ doc.uploaded_at[:16].replace('T',' ') if doc.uploaded_at else '' }}
+              {{ doc.uploader or 'Unknown' }} · {{ doc.uploaded_at|sast }}
               {% if doc.analysis and doc.analysis.rating %} · {{ doc.analysis.rating|title }}{% endif %}
             </div>
           </div>
@@ -436,7 +492,7 @@
             <div style="color:#6b7280; font-size:0.74rem;">→ {{ entry.new_value }}</div>
             {% endif %}
             <div style="color:#9ca3af; font-size:0.72rem; margin-top:1px;">
-              {{ entry.user_name or 'System' }} · {{ entry.timestamp[:16] if entry.timestamp else '' }}
+              {{ entry.user_name or 'System' }} · {{ entry.timestamp|sast }}
             </div>
           </div>
         </div>

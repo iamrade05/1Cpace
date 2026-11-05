@@ -342,6 +342,8 @@ def _member_with_bank_details(app, mandate_status=None):
 
 
 def _admin(client):
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     with client.session_transaction() as sess:
         sess["user_id"] = 1
         sess["role"] = "admin"

@@ -63,6 +63,7 @@ def _complete_login(user):
         "permissions":          list(perms),
         "must_change_password": bool(user["must_change_password"]),
         "tenant_slug":          g.tenant["slug"] if g.get("tenant") else None,
+        "session_version":      user["session_version"],
     })
     get_db().execute(
         "UPDATE users SET last_login = datetime('now') WHERE id = ?", (user["id"],)
@@ -95,6 +96,38 @@ def _session_expired_response():
         return jsonify(ok=False, error="Your session expired. Please sign in again."), 401
     flash("Your session expired. Please sign in again.", "warning")
     return redirect(url_for("auth.login"))
+
+
+def refresh_staff_session():
+    """Validate the current principal before any browser authorization check.
+
+    Version zero permits existing cookies through an additive upgrade. Password
+    resets and account state changes increment the database version, revoking
+    those cookies as well as sessions issued by the current login flow.
+    """
+    if not session_tenant_ok():
+        return _session_expired_response()
+    user = get_db().execute('SELECT * FROM users WHERE id=?',
+                            (session['user_id'],)).fetchone()
+    if (not user or not user['active'] or
+            session.get('session_version', 0) != user['session_version']):
+        return _session_expired_response()
+    if user['is_platform_user']:
+        from .platform_admin import platform_session_valid
+        owner = session.get('platform_admin_id')
+        if (not session.get('is_power_user') or owner != user['platform_admin_id']
+                or session.get('power_user_tenant_slug') != g.get('tenant_slug')
+                or not platform_session_valid()):
+            return _session_expired_response()
+    from .permissions import staff_access_profile
+    session.update(role=user['role'], username=user['username'], full_name=user['full_name'],
+                   is_sales_consultant=bool(user['is_sales_consultant']),
+                   must_change_password=bool(user['must_change_password']),
+                   permissions=sorted(_load_permissions(user['id'])),
+                   access_profile=staff_access_profile(user['role'], user['department'],
+                                                       user['is_sales_consultant']))
+    g.staff_actor = user
+    return None
 
 
 def login_required(view):
@@ -300,9 +333,9 @@ def login():
                 db.execute("DELETE FROM login_otp_challenges WHERE expires_at <= ?", (time.time(),))
                 db.execute(
                     """INSERT INTO login_otp_challenges
-                       (challenge_hash, user_id, code_hash, expires_at, attempts)
-                       VALUES (?, ?, ?, ?, 0)""",
-                    (challenge_hash, user["id"], _otp_hash(challenge_hash, code), expires_at),
+                       (challenge_hash, user_id, code_hash, expires_at, attempts, session_version)
+                       VALUES (?, ?, ?, ?, 0, ?)""",
+                    (challenge_hash, user["id"], _otp_hash(challenge_hash, code), expires_at,user['session_version']),
                 )
                 db.commit()
                 session["_otp_challenge"] = challenge_id
@@ -363,7 +396,7 @@ def verify_otp():
                 (otp_data["user_id"],),
             ).fetchone()
             _clear_otp_challenge()
-            if user:
+            if user and user['session_version'] == otp_data['session_version']:
                 _complete_login(user)
                 return redirect(url_for("dashboard.dashboard"))
             flash("Your account is no longer available. Please sign in again.", "error")
@@ -378,10 +411,10 @@ def verify_otp():
             flash(f"Incorrect code. {remaining_attempts} attempt(s) remaining.", "error")
 
     user = get_db().execute(
-        "SELECT email FROM users WHERE id=? AND active=1 AND COALESCE(is_platform_user, 0)=0",
+        "SELECT email,session_version FROM users WHERE id=? AND active=1 AND COALESCE(is_platform_user, 0)=0",
         (otp_data["user_id"],),
     ).fetchone()
-    if not user:
+    if not user or user['session_version'] != otp_data['session_version']:
         _clear_otp_challenge()
         return redirect(url_for("auth.login"))
     remaining = max(0, int(otp_data["expires_at"] - time.time()))
@@ -409,7 +442,7 @@ def resend_otp():
            AND COALESCE(is_platform_user, 0)=0""",
         (otp_data["user_id"],),
     ).fetchone()
-    if user and user["email"]:
+    if user and user["email"] and user['session_version'] == otp_data['session_version']:
         code = _generate_otp()
         db.execute(
             """UPDATE login_otp_challenges SET code_hash=?, expires_at=?, attempts=0
@@ -436,6 +469,7 @@ def _default_staff_password() -> str:
 
 
 @auth_bp.route("/change-password", methods=["GET", "POST"])
+@login_required
 def change_password():
     if not session.get("user_id"):
         return redirect(url_for("auth.login"))
@@ -459,12 +493,16 @@ def change_password():
         elif new_pw.casefold() == _default_staff_password().casefold():
             flash("That is the standard starting password and cannot be used. Choose your own.", "error")
         else:
-            db.execute(
-                "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
-                (generate_password_hash(new_pw), session["user_id"]),
+            changed = db.execute(
+                "UPDATE users SET password_hash = ?, must_change_password = 0, session_version=session_version+1 WHERE id = ? AND password_hash=? AND session_version=?",
+                (generate_password_hash(new_pw), session["user_id"],user['password_hash'],user['session_version']),
             )
+            if changed.rowcount != 1:
+                db.rollback()
+                return _session_expired_response()
             db.commit()
             session["must_change_password"] = False
+            session['session_version'] = user['session_version'] + 1
             flash("Password changed successfully.", "success")
             return redirect(url_for("dashboard.dashboard"))
 
@@ -530,8 +568,8 @@ def forgot_password():
             db.execute("DELETE FROM login_otp_challenges WHERE expires_at <= ?", (now,))
             recent = db.execute(
                 """SELECT 1 FROM login_otp_challenges
-                   WHERE user_id = ? AND challenge_hash LIKE ? AND expires_at > ?""",
-                (user["id"], _RESET_PREFIX + "%", now + ttl - _RESET_COOLDOWN),
+                   WHERE user_id = ? AND challenge_hash LIKE ? AND expires_at > ? AND session_version=?""",
+                (user["id"], _RESET_PREFIX + "%", now + ttl - _RESET_COOLDOWN,user['session_version']),
             ).fetchone()
             if recent:
                 # A code went out moments ago; keep the browser tied to it.
@@ -543,9 +581,9 @@ def forgot_password():
                            (user["id"], _RESET_PREFIX + "%"))
                 db.execute(
                     """INSERT INTO login_otp_challenges
-                       (challenge_hash, user_id, code_hash, expires_at, attempts)
-                       VALUES (?, ?, ?, ?, 0)""",
-                    (reset_hash, user["id"], _otp_hash(reset_hash, code), now + ttl),
+                       (challenge_hash, user_id, code_hash, expires_at, attempts, session_version)
+                       VALUES (?, ?, ?, ?, 0, ?)""",
+                    (reset_hash, user["id"], _otp_hash(reset_hash, code), now + ttl,user['session_version']),
                 )
                 db.commit()
                 if not _send_reset_email(user["email"], user["full_name"], code):
@@ -591,15 +629,15 @@ def reset_password():
             flash("That is the standard starting password and cannot be used. Choose your own.", "error")
         else:
             user = db.execute(
-                """SELECT id FROM users WHERE id = ? AND active = 1
+                """SELECT id,session_version FROM users WHERE id = ? AND active = 1
                      AND COALESCE(is_platform_user, 0) = 0""",
                 (row["user_id"],),
             ).fetchone()
             db.execute("DELETE FROM login_otp_challenges WHERE challenge_hash = ?", (reset_hash,))
-            if user:
+            if user and user['session_version'] == row['session_version']:
                 db.execute(
-                    "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
-                    (generate_password_hash(new_pw), user["id"]),
+                    "UPDATE users SET password_hash = ?, must_change_password = 0, session_version=session_version+1 WHERE id = ? AND session_version=?",
+                    (generate_password_hash(new_pw), user["id"],row['session_version']),
                 )
             db.commit()
             session.pop("_reset_challenge", None)
@@ -614,9 +652,11 @@ def logout():
     if session.get("is_power_user") and session.get("platform_admin_id"):
         platform_admin_id = session["platform_admin_id"]
         platform_username = session.get("platform_admin_username", "")
+        platform_fingerprint = session.get('platform_auth_fingerprint')
         session.clear()
         session["platform_admin_id"] = platform_admin_id
         session["platform_admin_username"] = platform_username
+        session['platform_auth_fingerprint'] = platform_fingerprint
         flash("You returned to the 1Cpace platform.", "info")
         response = redirect(url_for("platform.tenants_index"))
         from .tenants import TENANT_COOKIE_NAME

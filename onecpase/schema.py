@@ -502,6 +502,37 @@ CREATE TABLE IF NOT EXISTS member_documents (
     FOREIGN KEY (uploaded_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS itensity_document_pushes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    member_id INTEGER NOT NULL,
+    document_id INTEGER NOT NULL UNIQUE,
+    itensity_title TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error TEXT,
+    attempted_at TEXT DEFAULT (datetime('now')),
+    confirmed_at TEXT,
+    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_id) REFERENCES member_documents(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS itensity_reg_fee_pushes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    member_id INTEGER NOT NULL,
+    collection_id INTEGER NOT NULL UNIQUE,
+    amount REAL NOT NULL,
+    receipt TEXT NOT NULL,
+    status TEXT NOT NULL,
+    fee_detected INTEGER DEFAULT 0,
+    error TEXT,
+    attempted_at TEXT DEFAULT (datetime('now')),
+    confirmed_at TEXT,
+    reviewed_by INTEGER,
+    review_notes TEXT,
+    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+    FOREIGN KEY (collection_id) REFERENCES collections(id),
+    FOREIGN KEY (reviewed_by) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS itensity_live_snapshot (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     active_count INTEGER NOT NULL DEFAULT 0,
@@ -1674,6 +1705,37 @@ CREATE TABLE IF NOT EXISTS member_documents (
     uploaded_at TIMESTAMPTZ DEFAULT NOW(),
     FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
     FOREIGN KEY (uploaded_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS itensity_document_pushes (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL,
+    document_id INTEGER NOT NULL UNIQUE,
+    itensity_title TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error TEXT,
+    attempted_at TIMESTAMPTZ DEFAULT NOW(),
+    confirmed_at TIMESTAMPTZ,
+    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_id) REFERENCES member_documents(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS itensity_reg_fee_pushes (
+    id SERIAL PRIMARY KEY,
+    member_id INTEGER NOT NULL,
+    collection_id INTEGER NOT NULL UNIQUE,
+    amount REAL NOT NULL,
+    receipt TEXT NOT NULL,
+    status TEXT NOT NULL,
+    fee_detected INTEGER DEFAULT 0,
+    error TEXT,
+    attempted_at TIMESTAMPTZ DEFAULT NOW(),
+    confirmed_at TIMESTAMPTZ,
+    reviewed_by INTEGER,
+    review_notes TEXT,
+    FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+    FOREIGN KEY (collection_id) REFERENCES collections(id),
+    FOREIGN KEY (reviewed_by) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS member_notes (

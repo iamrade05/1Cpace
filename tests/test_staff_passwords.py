@@ -25,6 +25,7 @@ def _make_admin(client):
                (id, username, password_hash, full_name, role, active)
                VALUES (1, 'admin', 'unused', 'Test Admin', 'admin', 1)"""
         )
+        db.execute("UPDATE users SET role='admin' WHERE id=1")
         db.commit()
 
 

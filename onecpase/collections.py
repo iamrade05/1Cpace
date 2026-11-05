@@ -466,7 +466,8 @@ def collections_index():
     rows = db.execute(query, params).fetchall()
 
     from .ptp import bulk_member_arrears
-    total_paid = db.execute("SELECT SUM(amount_paid) FROM collections").fetchone()[0]
+    from .financial_reporting import cash_received
+    total_paid = cash_received(db)
     totals = {
         "total_paid": total_paid,
         "total_outstanding": sum(v["total_arrears"] for v in bulk_member_arrears(db).values()),
@@ -474,11 +475,7 @@ def collections_index():
 
     from .reporting_cycle import current_cycle
     first, last = current_cycle()
-    monthly = db.execute(
-        """SELECT SUM(amount_paid) as month_paid FROM collections
-           WHERE substr(collection_date,1,10) BETWEEN ? AND ?
-           AND status IN ('paid','partial')""", (first.isoformat(), last.isoformat())
-    ).fetchone()
+    monthly = {'month_paid': cash_received(db,first,last)}
 
 
     return render_template(
@@ -519,12 +516,14 @@ def dashboard():
 @permission_required("all_collections")
 def member_profile(mid: int):
     from . import collections_workspace as workspace
+    from .collection_arrangement import arrangement_confirmation
 
     profile = workspace.member_profile(get_db(), mid)
     if profile is None:
         flash("Member not found.", "warning")
         return redirect(url_for("collections.case_queue"))
-    return render_template("collections/member.html", p=profile)
+    return render_template("collections/member.html", p=profile,
+                           arrangement_confirmation=arrangement_confirmation(get_db(), mid))
 
 
 @collections_bp.post("/member/<int:mid>/notes")
@@ -770,6 +769,8 @@ def _offer_from_request(db, member_id: int, form) -> dict:
             "SELECT 1 FROM member_documents WHERE member_id=? AND lower(COALESCE(document_type,'')) LIKE '%bank%' LIMIT 1",
             member_id),
     }
+    from .applications import statement_months_analysed
+    flags['statement_months_ready'] = statement_months_analysed(db, member_id)
     offered = amount("upfront_offered")
     verified = str(form.get("upfront_verified", "")).lower() in ("1", "true", "on", "yes")
     # "Instalments only" is an arrangement with no upfront; only a paid upfront is ever recorded.
@@ -797,7 +798,8 @@ def _offer_from_request(db, member_id: int, form) -> dict:
         upfront_offered=offered,
         upfront_received=offered if verified else 0,
         intention=intention,
-        returning_member=str(form.get("returning_member", "")).lower() in ("1", "true", "on", "yes"),
+        returning_member=(form.get('conversation_intention') == 'return') if form.get('conversation_intention')
+        else str(form.get("returning_member", "")).lower() in ("1", "true", "on", "yes"),
         bank_statement_status=form.get("bank_statement_status"),
         policy=load_policy(db),
         last_payment_date=last_payment,
@@ -942,7 +944,7 @@ def call_profile(task_id: int):
         flash("Pre-debit reminders are messages, not collection calls. Use the reminder list.", "warning")
         return redirect(url_for("collections.call_queue"))
     current_user = db.execute(
-        "SELECT is_collections_caller FROM users WHERE id=?", (session.get("user_id"),)
+        "SELECT is_collections_caller,full_name,username FROM users WHERE id=?", (session.get("user_id"),)
     ).fetchone()
     if (
         session.get("role") != "admin"
@@ -959,22 +961,18 @@ def call_profile(task_id: int):
     from .ptp import compute_arrears_from_profile
     payment_profile = _build_payment_profile(collections)
     arrears = compute_arrears_from_profile(payment_profile)
-    payment_stats = db.execute(
-        """SELECT
-             SUM(CASE WHEN amount_paid>0 AND status IN ('paid','partial') THEN 1 ELSE 0 END) AS payments_made,
-             SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS payments_failed,
-             MAX(CASE WHEN amount_paid>0 THEN collection_date END) AS last_payment_date,
-             SUM(CASE WHEN amount_paid>0 THEN amount_paid ELSE 0 END) AS total_paid
-           FROM collections WHERE member_id=?""",
-        (task["member_id"],),
-    ).fetchone()
-    payment_methods = db.execute(
-        """SELECT method, COUNT(*) AS payments, SUM(amount_paid) AS amount
-           FROM collections
-           WHERE member_id=? AND amount_paid>0 AND status IN ('paid','partial')
-           GROUP BY method ORDER BY amount DESC""",
-        (task["member_id"],),
-    ).fetchall()
+    from .financial_reporting import cash_amount, totals as financial_totals
+    receipts = [row for row in collections if cash_amount(row)>0]
+    payment_stats = dict(payments_made=len(receipts),
+                         payments_failed=sum(row['status']=='failed' for row in collections),
+                         last_payment_date=max((row['collection_date'] or '' for row in receipts),default=None),
+                         total_paid=financial_totals(collections)['total_collected'])
+    methods = {}
+    for row in receipts:
+        entry=methods.setdefault(row['method'],dict(method=row['method'],payments=0,amount=0))
+        entry['payments']+=1
+        entry['amount']+=float(cash_amount(row))
+    payment_methods=sorted(methods.values(),key=lambda entry:entry['amount'],reverse=True)
     arrangements = db.execute(
         """SELECT p.*, u.full_name AS created_by_name
            FROM ptp_agreements p LEFT JOIN users u ON u.id=p.created_by
@@ -1003,6 +1001,8 @@ def call_profile(task_id: int):
         "SELECT * FROM members WHERE id=?", (task["member_id"],)
     ).fetchone()
     last_visit = _get_last_gym_visit(db, member_for_visit)
+    from .collection_call_script import build_call_script
+    from .collection_arrangement import arrangement_confirmation
     tenant_name = g.tenant["name"] if g.get("tenant") else "1Cpace"
     return render_template(
         "collections/call_profile.html",
@@ -1016,6 +1016,8 @@ def call_profile(task_id: int):
         queries=queries,
         previous_calls=previous_calls,
         last_gym_visit=last_visit,
+        call_script=build_call_script(task, current_user, last_visit, arrears),
+        arrangement_confirmation=arrangement_confirmation(db, task['member_id']),
         visit_approach=visit_call_approach(last_visit["days_ago"] if last_visit else None),
         initial_offer=_offer_from_request(db, task["member_id"], {}),
         call_outcomes=CALL_OUTCOMES,
@@ -1098,6 +1100,13 @@ def record_call_result(task_id: int):
         flash("That call has already been completed.", "warning")
         return redirect(url_for("collections.call_queue"))
 
+    from .collection_call_script import conversation_notes
+    try:
+        conversation_context = conversation_notes(request.form)
+    except ValueError as exc:
+        flash(str(exc), 'error')
+        return redirect(url_for('collections.call_profile', task_id=task_id))
+
     follow_up = OUTCOME_FOLLOW_UPS.get(outcome)
     if follow_up:
         prompt, choices = follow_up
@@ -1147,7 +1156,8 @@ def record_call_result(task_id: int):
             f"Conditional offer [{offer['policy_version']}]: {offer['decision_label']}. "
             f"Owing R{offer['original_arrears']:,.2f} ({offer['months_owing']} mo), "
             f"discount {offer['discount_percent']:g}% (R{offer['discount_amount']:,.2f}), "
-            f"total R{offer['total_to_collect']:,.2f}, upfront received R{offer['upfront_received']:,.2f}, "
+            f"total R{offer['total_to_collect']:,.2f}, upfront offered R{offer['upfront_offered']:,.2f}, "
+            f"upfront received R{offer['upfront_received']:,.2f}, "
             f"remaining R{offer['remaining_to_collect']:,.2f}."
         )
         if offer["conditions"]:
@@ -1180,6 +1190,8 @@ def record_call_result(task_id: int):
             return redirect(url_for("collections.call_profile", task_id=task_id))
         notes = f"Callback {callback_date} at {callback_time}" + (f" — {notes}" if notes else "")
 
+    if conversation_context:
+        notes = f'{conversation_context} {notes}'.strip()
     successful = 1 if call_result["successful_contact"] else 0
     next_channel = call_result["next_action"] or None
     db.execute(
@@ -1475,6 +1487,8 @@ def _background_itensity_pos_push(
     conn.row_factory = sqlite3.Row
     try:
         with app.app_context():
+            from .integrations import bind_itensity_tenant
+            bind_itensity_tenant(db_path)
             pushed, pos_error = push_pos_payment_to_itensity(
                 member_data, amount=amount, description=description, payment_type=method, pos="Reception",
             )

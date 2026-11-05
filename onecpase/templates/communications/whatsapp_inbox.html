@@ -41,7 +41,7 @@
               {{ (c.last_content or '')[:120] }}
             </td>
             <td style="font-size:.75rem;color:#9ca3af;white-space:nowrap;">
-              {{ (c.last_message_at or '')[:16] }}
+              {{ c.last_message_at|sast }}
             </td>
             <td style="white-space:nowrap;">
               {% if c.unread_count %}

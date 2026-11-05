@@ -1,15 +1,19 @@
 import sqlite3
 import threading
+from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, session, url_for
 from .auth import permission_required
 from .database import get_db, audit_log, member_activity
 from .encryption import decrypt, decrypt_member
-from .integrations import push_member_to_itensity, update_member_in_itensity
+from .integrations import ItensityNotSubmitted, push_member_to_itensity, update_member_in_itensity
 
 applications_bp = Blueprint("applications", __name__, url_prefix="/applications")
+_push_workers = set()
+_push_workers_lock = threading.Lock()
 
-# Managers may review escalations; only admins may bypass submission gates.
+# Managers may review escalations and override the failing-statement gates after
+# checking the statement themselves; every other gate is admin-only.
 MANAGER_ROLES = {"admin", "manager"}
 
 APPLICATION_STATUSES = [
@@ -175,9 +179,11 @@ def _is_statement_qualified(analysis) -> bool:
 
 
 def _is_ready_to_push(cl, analysis=None) -> bool:
-    """Require documents, qualified affordability and approved DebiCheck."""
+    """Require documents, qualified affordability, approved DebiCheck, a signed contract and the paid reg fee."""
     return (
         cl["debit_check_status"] == "approved"
+        and cl["contract_status"] == "signed"
+        and cl["pos_status"] == "paid"
         and cl["id_copy_status"] in ("uploaded", "verified")
         and cl["bank_statement_status"] == "analysed"
         and _is_statement_qualified(analysis)
@@ -198,15 +204,165 @@ def _missing_requirements(cl, analysis=None) -> list[str]:
     if cl["bank_statement_status"] != "analysed":
         missing.append("Bank statement not analysed")
     elif not _is_statement_qualified(analysis):
-        missing.append("Bank statement does not meet the two-month income or 30% balance rule")
+        missing.append(AFFORDABILITY_BLOCKER)
+    if cl["contract_status"] != "signed":
+        missing.append(CONTRACT_BLOCKER)
+    if cl["pos_status"] != "paid":
+        missing.append(REG_FEE_BLOCKER)
     if cl["guardian_required"] == "required" and cl["guardian_status"] != "approved":
-        missing.append("Guardian consent not approved")
+        missing.append(GUARDIAN_BLOCKER)
     if cl["manager_approval_status"] not in ("not_required", "approved"):
-        missing.append("Manager approval pending")
+        missing.append(MANAGER_APPROVAL_BLOCKER)
     return missing
 
 
+CONTRACT_BLOCKER = "Contract signing not confirmed"
+REG_FEE_BLOCKER = "Registration fee not fully paid"
+AFFORDABILITY_BLOCKER = "Bank statement does not meet the salary or R3,000 money-in rule"
+GUARDIAN_BLOCKER = "Guardian consent not approved"
+MANAGER_APPROVAL_BLOCKER = "Manager approval pending"
 STATEMENT_MONTHS_BLOCKER = "At least two statement months must be automatically analysed before NuPay submission."
+STATEMENT_QUALIFYING_BLOCKER = "A qualifying bank-statement analysis is required; inform the client or escalate to a manager"
+MANAGER_OVERRIDABLE_BLOCKERS = frozenset({
+    AFFORDABILITY_BLOCKER, STATEMENT_MONTHS_BLOCKER, STATEMENT_QUALIFYING_BLOCKER,
+    GUARDIAN_BLOCKER, MANAGER_APPROVAL_BLOCKER,
+})
+STATEMENT_CHECK_BLOCKERS = frozenset({AFFORDABILITY_BLOCKER, STATEMENT_MONTHS_BLOCKER, STATEMENT_QUALIFYING_BLOCKER})
+STATEMENT_OPENED_ACTION = "statement_opened"
+
+
+def can_override_push(role, missing) -> bool:
+    """Admins may push past anything; managers only past affordability, guardian consent and manager approval."""
+    if not missing:
+        return False
+    return role == "admin" or (role == "manager" and MANAGER_OVERRIDABLE_BLOCKERS.issuperset(missing))
+
+
+def can_override_nupay(role, blockers, money_in_months=0) -> bool:
+    """A short statement can only be accepted when R3,000 came in during two calendar months;
+    a manager may override that and a failed affordability result, nothing else."""
+    if not blockers or (STATEMENT_MONTHS_BLOCKER in blockers and money_in_months < 2):
+        return False
+    return role == "admin" or (
+        role == "manager" and {STATEMENT_QUALIFYING_BLOCKER, STATEMENT_MONTHS_BLOCKER}.issuperset(blockers)
+    )
+
+
+def needs_statement_check(role, missing) -> bool:
+    return role == "manager" and bool(STATEMENT_CHECK_BLOCKERS.intersection(missing))
+
+
+def _latest_statement(db, member_id):
+    return db.execute(
+        "SELECT id, member_id, original_name, analysis_json FROM member_documents "
+        "WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone()
+
+
+def _statement_analysis(statement) -> dict:
+    import json
+    try:
+        analysis = json.loads(statement["analysis_json"] or "null") if statement else None
+    except (TypeError, ValueError):
+        analysis = None
+    return analysis if isinstance(analysis, dict) else {}
+
+
+def _latest_statement_analysis(db, member_id) -> dict:
+    return _statement_analysis(db.execute(
+        "SELECT analysis_json FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone())
+
+
+def statement_check_context(db, member_id) -> dict | None:
+    """What the system read from the latest statement, for a manager to compare with the file."""
+    statement = _latest_statement(db, member_id)
+    if not statement:
+        return None
+    return {"document": statement, "analysis": _statement_analysis(statement)}
+
+
+def mark_statement_accepted(db, member_id) -> None:
+    """A manager or admin accepted this statement, so the later steps needn't ask again.
+    It is kept on the document: a newer statement starts over, and so does analysing it again."""
+    import json
+    statement = db.execute(
+        "SELECT id, analysis_json FROM member_documents WHERE member_id=? AND document_type='Bank Statement' ORDER BY id DESC LIMIT 1",
+        (member_id,),
+    ).fetchone()
+    if statement:
+        analysis = _statement_analysis(statement)
+        analysis["manager_accepted"] = True
+        db.execute("UPDATE member_documents SET analysis_json=? WHERE id=?", (json.dumps(analysis), statement["id"]))
+
+
+def statement_accepted(db, member_id) -> bool:
+    return _latest_statement_analysis(db, member_id).get("manager_accepted") is True
+
+
+def _push_analysis(db, member_id, analysis):
+    """The affordability result for the Itensity push: a manager's acceptance counts as a pass."""
+    return {"verification_qualified": 1} if statement_accepted(db, member_id) else analysis
+
+
+def statement_money_in_months(db, member_id) -> int:
+    """Months with R3,000 coming in, on a latest statement that was read without errors."""
+    analysis = _latest_statement_analysis(db, member_id)
+    if analysis.get("error") or analysis.get("batch_error"):
+        return 0
+    months = analysis.get("money_in_months")
+    return months if isinstance(months, int) and not isinstance(months, bool) else 0
+
+
+def _statement_problems(db, member_id, blockers) -> str:
+    """What was wrong with the statement, in words for the client's activity log."""
+    analysis = _latest_statement_analysis(db, member_id)
+    problems = []
+    if STATEMENT_MONTHS_BLOCKER in blockers:
+        cash = analysis.get("cashflow") if isinstance(analysis.get("cashflow"), dict) else {}
+        problems.append(f"it covers only about {cash.get('months') or 0} month(s), not two")
+    if STATEMENT_QUALIFYING_BLOCKER in blockers:
+        if (analysis.get("money_in_months") or 0) >= 2:
+            problems.append("the instalment is more than 30% of the money coming in")
+        else:
+            problems.append("no salary was found and R3,000 did not come in during two months")
+    for field, label in (("failed_debits", "failed"), ("disputed_debits", "disputed")):
+        if analysis.get(field):
+            problems.append(f"{analysis[field]} {label} debit order(s)")
+    known = {STATEMENT_MONTHS_BLOCKER, STATEMENT_QUALIFYING_BLOCKER}
+    problems.extend(blocker for blocker in blockers if blocker not in known)
+    return "; ".join(problems)
+
+
+def nupay_override_note(db, member_id, blockers) -> str:
+    """The note on the client's activity once an overridden mandate has gone to NuPay."""
+    who = session.get("full_name") or session.get("username") or "a manager"
+    note = f"Pushed to NuPay via Override by {who}. What was wrong with the bank statement: {_statement_problems(db, member_id, blockers)}."
+    finding = request.form.get("statement_note", "").strip()
+    return f"{note} Manager's check: {finding}" if finding else note
+
+
+def statement_check_problem(db, member_id) -> str | None:
+    """Why this manager can't override yet: the file must be opened and the finding written down."""
+    statement = _latest_statement(db, member_id)
+    if not statement:
+        return "Upload a bank statement before overriding."
+    opened = db.execute(
+        "SELECT 1 FROM audit_logs WHERE action=? AND user_id=? AND new_value=? LIMIT 1",
+        (STATEMENT_OPENED_ACTION, session.get("user_id"), str(statement["id"])),
+    ).fetchone()
+    if not opened:
+        return "Open the latest bank statement and check it before overriding."
+    if request.form.get("statement_checked") != "1" or not request.form.get("statement_note", "").strip():
+        return "Confirm you checked the statement and write what you found before overriding."
+    return None
+
+
+def _statement_check_record(db, member_id) -> str:
+    statement = _latest_statement(db, member_id)
+    return f"Statement document {statement['id']} checked: {request.form.get('statement_note', '').strip()}"
 
 
 def statement_months_analysed(db, member_id):
@@ -274,44 +430,76 @@ def nupay_submission_blockers(db, member_id: int) -> list[str]:
     if not statement_months_analysed(db, member_id):
         missing.append(STATEMENT_MONTHS_BLOCKER)
     if not bank_statement_qualified(db, member_id):
-        missing.append("A qualifying bank-statement analysis is required; inform the client or escalate to a manager")
+        missing.append(STATEMENT_QUALIFYING_BLOCKER)
     return missing
 
 
 def authorize_nupay_override(db, member_id: int, blockers: list[str]) -> bool:
-    """Record the explicit admin exception before allowing a NuPay submission."""
-    if STATEMENT_MONTHS_BLOCKER in blockers:
+    """Record the explicit admin or checked manager exception before allowing a NuPay submission."""
+    role = session.get("role")
+    if not can_override_nupay(role, blockers, statement_money_in_months(db, member_id)) or request.form.get("override") != "1":
         return False
-    if not blockers or session.get("role") != "admin" or request.form.get("override") != "1":
-        return False
+    record = "Missing requirements: " + "; ".join(blockers)
+    if needs_statement_check(role, blockers):
+        problem = statement_check_problem(db, member_id)
+        if problem:
+            flash(problem, "error")
+            return False
+        record += "; " + _statement_check_record(db, member_id)
     application = db.execute("SELECT id FROM membership_applications WHERE member_id=? ORDER BY id DESC LIMIT 1", (member_id,)).fetchone()
-    audit_log(db, "nupay_admin_override", application_id=application["id"] if application else None,
-              new_value="Missing requirements: " + "; ".join(blockers))
+    audit_log(db, f"nupay_{role}_override", application_id=application["id"] if application else None,
+              new_value=record)
+    if STATEMENT_CHECK_BLOCKERS.intersection(blockers):
+        mark_statement_accepted(db, member_id)
     return True
 
 
 def _itensity_hard_blockers(db, aid, member_id):
-    """Evidence gates; only an explicit, audited admin override may bypass them."""
+    """Evidence gates; only an explicit, audited override may bypass them (see can_override_push)."""
     missing = nupay_submission_blockers(db, member_id)
+    if statement_accepted(db, member_id):
+        missing = [blocker for blocker in missing if blocker not in STATEMENT_CHECK_BLOCKERS]
     identity_checklist = db.execute("SELECT id_copy_status FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
     identity_document = db.execute("SELECT id FROM member_documents WHERE member_id=? AND document_type='SA ID Copy' LIMIT 1", (member_id,)).fetchone()
     if not identity_checklist or identity_checklist['id_copy_status'] not in ('uploaded', 'verified') or not identity_document:
         missing.append("ID copy not uploaded")
-    cl = db.execute("SELECT debit_check_status FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
+    cl = db.execute("SELECT debit_check_status,contract_status,pos_status FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
     mandate = db.execute("SELECT status FROM debicheck_mandates WHERE member_id=? ORDER BY id DESC LIMIT 1", (member_id,)).fetchone()
     from .debicheck import normalise_debicheck_status
     if not cl or cl["debit_check_status"] != "approved" or not mandate or normalise_debicheck_status(mandate["status"]) != "approved":
         missing.append("DebiCheck approval not confirmed for the latest mandate")
+    if not cl or cl["contract_status"] != "signed" or not _signed_contract_on_file(db, member_id):
+        missing.append(CONTRACT_BLOCKER)
+    if not cl or cl["pos_status"] != "paid" or not registration_fee_paid(db, member_id):
+        missing.append(REG_FEE_BLOCKER)
     return missing
+
+
+def _signed_contract_on_file(db, member_id: int) -> bool:
+    return bool(
+        db.execute("SELECT 1 FROM member_documents WHERE member_id=? AND document_type='Signed Contract' LIMIT 1", (member_id,)).fetchone()
+        or db.execute("SELECT 1 FROM contract_signatures WHERE member_id=? AND signer_role='member' LIMIT 1", (member_id,)).fetchone()
+        or db.execute("SELECT 1 FROM contract_share_tokens WHERE member_id=? AND status='approved' AND verified_at IS NOT NULL AND responded_at IS NOT NULL LIMIT 1", (member_id,)).fetchone()
+    )
+
+
+def registration_fee_due(joining_fee) -> float:
+    """The member's own fee, else the fee set for the Itensity gym."""
+    fee = float(joining_fee or 0)
+    if fee:
+        return fee
+    from .integrations import itensity_tenant_enabled
+    return float(current_app.config.get("REGISTRATION_FEE_AMOUNT") or 0) if itensity_tenant_enabled() else 0.0
 
 
 def registration_fee_paid(db, member_id: int) -> bool:
     member = db.execute("SELECT joining_fee FROM members WHERE id=?", (member_id,)).fetchone()
-    paid = db.execute(
-        "SELECT COALESCE(SUM(amount_paid), 0) FROM collections WHERE member_id=? AND payment_purpose='registration_fee' AND status='paid' AND amount_paid > 0",
+    from .financial_reporting import cash_amount
+    paid = sum((cash_amount(row) for row in db.execute(
+        "SELECT amount_paid,status,notes FROM collections WHERE member_id=? AND payment_purpose='registration_fee' AND status='paid' AND amount_paid > 0",
         (member_id,),
-    ).fetchone()[0]
-    return bool(paid > 0 and float(paid) >= float(member["joining_fee"] or 0)) if member else False
+    )),0)
+    return bool(paid > 0 and float(paid) >= registration_fee_due(member["joining_fee"])) if member else False
 
 
 def compliance_completion_blockers(db, aid: int) -> list[str]:
@@ -322,15 +510,6 @@ def compliance_completion_blockers(db, aid: int) -> list[str]:
     if application["application_status"] != "active" or application["push_status"] != "pushed":
         missing.append("Itensity activation not complete")
     cl = db.execute("SELECT * FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
-    contract = db.execute("SELECT 1 FROM member_documents WHERE member_id=? AND document_type='Signed Contract' LIMIT 1", (application["member_id"],)).fetchone()
-    if not contract:
-        contract = db.execute("SELECT 1 FROM contract_signatures WHERE member_id=? AND signer_role='member' LIMIT 1", (application["member_id"],)).fetchone()
-    if not contract:
-        contract = db.execute("SELECT 1 FROM contract_share_tokens WHERE member_id=? AND status='approved' AND verified_at IS NOT NULL AND responded_at IS NOT NULL LIMIT 1", (application["member_id"],)).fetchone()
-    if not cl or cl["contract_status"] != "signed" or not contract:
-        missing.append("Contract signing not confirmed")
-    if not cl or cl["pos_status"] != "paid" or not registration_fee_paid(db, application["member_id"]):
-        missing.append("Registration fee not fully paid")
     if cl and cl["guardian_required"] == "required" and cl["guardian_status"] != "approved":
         missing.append("Guardian consent not approved")
     if cl and cl["manager_approval_status"] not in ("not_required", "approved"):
@@ -359,7 +538,7 @@ def _sync_compliance_completion(db, aid: int, actor_id=None) -> None:
 
 
 def _outstanding_followups(cl) -> list[dict]:
-    """Completion summary; DebiCheck and ID also block the Itensity push."""
+    """Completion summary; every item here also blocks the Itensity push."""
     if cl is None:
         return []
     return [
@@ -512,9 +691,9 @@ def application_detail(aid: int):
     ).fetchall()
 
     ready = (
-        _is_ready_to_push(checklist, analysis)
+        _is_ready_to_push(checklist, _push_analysis(db, app["member_id"], analysis))
         and not _itensity_hard_blockers(db, aid, app["member_id"])
-        and app["push_status"] not in ("pushed", "pushing")
+        and app["push_status"] not in ("pushed", "pushing", "push_unknown")
         if checklist else False
     )
 
@@ -534,6 +713,12 @@ def application_detail(aid: int):
             row["analysis"] = _json.loads(d["analysis_json"]) if d["analysis_json"] else None
             documents.append(row)
 
+    push_missing = list(dict.fromkeys(
+        _missing_requirements(checklist, _push_analysis(db, app["member_id"], analysis))
+        + _itensity_hard_blockers(db, aid, app["member_id"])
+    )) if checklist else []
+
+    from .itensity_followups import followup_status
     intake_context = request.args.get("intake") == "1" and app["application_status"] != "active"
     nupay_blockers = nupay_submission_blockers(db, app["member_id"]) if app["member_id"] else ["Create a member profile first"]
     latest_mandate = db.execute("SELECT id, status FROM debicheck_mandates WHERE member_id=? ORDER BY id DESC LIMIT 1", (app["member_id"],)).fetchone()
@@ -550,9 +735,16 @@ def application_detail(aid: int):
         pending_approval=pending_approval,
         trail=trail,
         ready_to_push=ready,
-        missing_items=_missing_requirements(checklist, analysis) if checklist else [],
+        missing_items=push_missing,
+        can_override_push=can_override_push(session.get("role"), push_missing),
+        statement_check=(
+            statement_check_context(db, app["member_id"])
+            if can_override_push(session.get("role"), push_missing) and needs_statement_check(session.get("role"), push_missing)
+            else None
+        ),
         followups=_outstanding_followups(checklist),
         documents=documents,
+        itensity_sent=followup_status(db, app["member_id"]),
         compliance_blockers=compliance_completion_blockers(db, aid),
         doc_types=["Signed Contract", "Bank Statement", "SA ID Copy"],
         is_manager=session.get("role") in MANAGER_ROLES,
@@ -794,10 +986,10 @@ def _mark_itensity_push_started(db, aid: int) -> bool:
     """Atomically claim the application for a single Itensity push worker."""
     cur = db.execute(
         """UPDATE membership_applications
-           SET push_status='pushing', updated_at=datetime('now')
+           SET push_status='pushing', push_started_at=datetime('now'), updated_at=datetime('now')
            WHERE id=?
-             AND push_status NOT IN ('pushing', 'pushed')
-             AND application_status <> 'active'""",
+             AND push_status NOT IN ('pushing', 'pushed', 'push_unknown')
+             AND (application_status <> 'active' OR push_status='reconcile_required')""",
         (aid,),
     )
     return cur.rowcount == 1
@@ -808,9 +1000,23 @@ def _itensity_result_is_valid(success, itensity_ref) -> bool:
     return bool(success and itensity_ref and str(itensity_ref).strip())
 
 
+def _push_actor(conn, user_id, session_version):
+    from .permissions import effective_permissions_for
+    actor = conn.execute('SELECT * FROM users WHERE id=?',(user_id,)).fetchone()
+    granted = [r['permission'] for r in conn.execute('SELECT permission FROM user_permissions WHERE user_id=?',(user_id,))]
+    if (not actor or not actor['active'] or
+            (session_version is not None and session_version != actor['session_version']) or
+            (actor['role'] != 'admin' and 'add_member' not in effective_permissions_for(
+                actor['role'],actor['department'],granted,actor['is_sales_consultant']))):
+        raise ValueError('The requesting account no longer has authority to activate members.')
+    return actor
+
+
 def _background_itensity_push(
     app, db_path: str, aid: int, member_id: int,
     itensity_ref_existing: str | None, overridden: bool, missing: list[str], user_id: int | None,
+    reconcile_only: bool = False,
+    session_version: int | None = None,
 ) -> None:
     """Runs the (possibly minutes-long) Itensity browser push off the request
     thread. Opens its own sqlite connection since the request's is gone by
@@ -819,8 +1025,16 @@ def _background_itensity_push(
     there's no request here to read it from."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    external_attempted = False
+    confirmed_ref = None
+    with _push_workers_lock:
+        _push_workers.add((db_path, aid))
     try:
         with app.app_context():
+            from .integrations import bind_itensity_tenant
+            bind_itensity_tenant(db_path)
+            saved = conn.execute('SELECT itensity_confirmed_ref FROM membership_applications WHERE id=?', (aid,)).fetchone()
+            confirmed_ref = saved['itensity_confirmed_ref'] if saved else None
             member = conn.execute("SELECT * FROM members WHERE id = ?", (member_id,)).fetchone()
             if member is None:
                 conn.execute(
@@ -831,31 +1045,54 @@ def _background_itensity_push(
                 return
 
             blockers = _itensity_hard_blockers(conn, aid, member_id)
-            actor = conn.execute("SELECT role, active FROM users WHERE id=?", (user_id,)).fetchone()
-            admin_override = overridden and actor and actor["role"] == "admin" and actor["active"]
-            if blockers and not admin_override:
-                conn.execute("UPDATE membership_applications SET push_status='push_failed', updated_at=datetime('now') WHERE id=?", (aid,))
+            actor = _push_actor(conn,user_id,session_version)
+            override_allowed = overridden and actor and actor["active"] and can_override_push(actor["role"], blockers)
+            if blockers and not override_allowed:
+                conn.execute("UPDATE membership_applications SET push_status=?, updated_at=datetime('now') WHERE id=?", ('reconcile_required' if confirmed_ref else 'push_failed', aid))
                 member_activity(conn, member_id, "Itensity push blocked: " + "; ".join(blockers), user_id=user_id)
                 conn.commit()
                 return
             member_data = decrypt_member(member)
-            if itensity_ref_existing:
+            if reconcile_only or (saved and saved['itensity_confirmed_ref']):
+                confirmed_ref = saved['itensity_confirmed_ref'] if saved else None
+                if not confirmed_ref:
+                    raise ValueError('No confirmed external reference is available for recovery.')
+                success, itensity_ref, error_msg = True, confirmed_ref, None
+            elif itensity_ref_existing:
+                external_attempted = True
                 success, error_msg = update_member_in_itensity(itensity_ref_existing, member_data)
                 itensity_ref = itensity_ref_existing
             else:
+                external_attempted = True
                 success, itensity_ref, error_msg = push_member_to_itensity(member_data)
 
             if not _itensity_result_is_valid(success, itensity_ref):
                 failure = error_msg or "Itensity did not return a valid member reference."
+                # Stopped before Submit means no member can exist, so staff can
+                # fix the cause and retry without an outcome review.
+                failed_status = 'push_failed' if isinstance(error_msg, ItensityNotSubmitted) else 'push_unknown'
                 conn.execute(
-                    "UPDATE membership_applications SET push_status='push_failed', updated_at=datetime('now') WHERE id=?",
-                    (aid,),
+                    "UPDATE membership_applications SET push_status=?, updated_at=datetime('now') WHERE id=?",
+                    (failed_status, aid),
                 )
                 audit_log(conn, "itensity_push_failed", application_id=aid, new_value=failure, user_id=user_id)
                 member_activity(conn, member_id, f"Itensity push failed: {failure}", user_id=user_id)
                 conn.commit()
                 return
 
+            # Persist the external outcome before starting local activation.
+            # A later local rollback must never erase the identity already created.
+            confirmed_ref = str(itensity_ref).strip()
+            conn.execute('UPDATE membership_applications SET itensity_confirmed_ref=? WHERE id=?',
+                         (confirmed_ref, aid))
+            audit_log(conn, 'itensity_external_confirmed', application_id=aid,
+                      new_value=confirmed_ref, user_id=user_id)
+            conn.commit()
+
+            actor = _push_actor(conn,user_id,session_version)
+            blockers = _itensity_hard_blockers(conn,aid,member_id)
+            if blockers and not (overridden and can_override_push(actor['role'], blockers)):
+                raise ValueError('Activation evidence changed after the external submission: '+ '; '.join(blockers))
             conn.execute(
                 """UPDATE membership_applications
                    SET application_status='active', push_status='pushed',
@@ -878,7 +1115,7 @@ def _background_itensity_push(
                           new_value=f"missing: {', '.join(missing)}; itensity_ref={itensity_ref}", user_id=user_id)
                 member_activity(
                     conn, member_id,
-                    f"Pushed to Itensity via ADMIN OVERRIDE (incomplete: {', '.join(missing)}). Ref: {itensity_ref}",
+                    f"Pushed to Itensity via {actor['role'].upper()} OVERRIDE (incomplete: {', '.join(missing)}). Ref: {itensity_ref}",
                     user_id=user_id,
                 )
             else:
@@ -892,18 +1129,76 @@ def _background_itensity_push(
             _sync_sales_stage_for_application(conn, aid, "active", actor_id=user_id, strict=True)
             _sync_compliance_completion(conn, aid, actor_id=user_id)
             conn.commit()
+            if app.config.get("ITENSITY_AUTO_FOLLOWUPS"):
+                from .itensity_followups import run_followups
+                run_followups(app, db_path, aid, member_id, user_id)
     except Exception:
         app.logger.exception("Background Itensity push crashed for application %s", aid)
         try:
+            conn.rollback()
+            status = 'reconcile_required' if confirmed_ref else 'push_unknown' if external_attempted else 'push_failed'
             conn.execute(
-                "UPDATE membership_applications SET push_status='push_failed', updated_at=datetime('now') WHERE id=?",
-                (aid,),
+                "UPDATE membership_applications SET push_status=?, itensity_confirmed_ref=COALESCE(?,itensity_confirmed_ref), updated_at=datetime('now') WHERE id=?",
+                (status, confirmed_ref, aid),
             )
+            audit_log(conn, 'itensity_recovery_required', application_id=aid,
+                      new_value=status, user_id=user_id)
             conn.commit()
         except Exception:
             pass
     finally:
         conn.close()
+        with _push_workers_lock:
+            _push_workers.discard((db_path, aid))
+
+
+@applications_bp.post('/<int:aid>/review-push')
+@permission_required('add_member')
+def review_push(aid):
+    """Resolve unknown/interrupted outcomes only after an explicit external check."""
+    if session.get('role') != 'admin':
+        abort(403)
+    db = get_db()
+    db.execute('BEGIN IMMEDIATE')
+    application = db.execute('SELECT * FROM membership_applications WHERE id=?', (aid,)).fetchone()
+    if not application:
+        abort(404)
+    with _push_workers_lock:
+        db_path = db.execute('PRAGMA database_list').fetchone()['file']
+        running = (db_path, aid) in _push_workers
+    started = application['push_started_at'] or application['updated_at']
+    if started:
+        parsed = datetime.fromisoformat(str(started).replace('Z','+00:00'))
+        parsed = parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+        stale = parsed < datetime.now(timezone.utc) - timedelta(minutes=30)
+    else:
+        stale = True  # Legacy interrupted records can lack a start timestamp.
+    legacy_inconsistent = application['application_status'] == 'active' and application['push_status'] == 'push_failed'
+    if running or (application['push_status'] not in ('push_unknown', 'pushing') and not legacy_inconsistent) or (application['push_status'] == 'pushing' and not stale):
+        abort(409, description='This push is still running or does not require outcome review.')
+    notes = request.form.get('notes', '').strip()
+    reference = request.form.get('itensity_ref', '').strip()
+    outcome = request.form.get('outcome')
+    if not notes or outcome not in ('found', 'not_created') or (outcome == 'found' and not reference):
+        abort(400, description='Record the external check and its confirmed outcome.')
+    member = db.execute('SELECT itensity_ref FROM members WHERE id=?',(application['member_id'],)).fetchone()
+    known_ref = application['itensity_confirmed_ref'] or (member['itensity_ref'] if member else None)
+    if outcome == 'not_created' and (known_ref or application['application_status']=='active'):
+        abort(409, description='A confirmed external reference already exists; reconcile it instead.')
+    if outcome == 'found' and known_ref and reference != str(known_ref).strip():
+        abort(409, description='The reviewed reference must match the existing external identity.')
+    if outcome == 'found' and db.execute('SELECT id FROM members WHERE itensity_ref=? AND id<>?',
+                                        (reference,application['member_id'])).fetchone():
+        abort(409, description='This reference is already linked to another member.')
+    if outcome == 'found' and db.execute('SELECT id FROM membership_applications WHERE itensity_confirmed_ref=? AND member_id<>?',
+                                        (reference,application['member_id'])).fetchone():
+        abort(409, description='This reference is already confirmed for another member.')
+    db.execute('UPDATE membership_applications SET push_status=?,itensity_confirmed_ref=?,updated_at=datetime(\'now\') WHERE id=?',
+               ('reconcile_required' if outcome == 'found' else 'push_failed', reference if outcome == 'found' else None, aid))
+    audit_log(db, 'itensity_outcome_reviewed', application_id=aid,
+              new_value=f'{outcome}; reference={reference}; {notes}', user_id=session['user_id'])
+    db.commit()
+    return redirect(url_for('applications.application_detail', aid=aid))
 
 
 @applications_bp.post("/<int:aid>/push")
@@ -917,9 +1212,16 @@ def push_application(aid: int):
         flash("Application not found.", "warning")
         return redirect(url_for("applications.applications_index"))
 
-    if application["push_status"] in ("pushing", "pushed") or application["application_status"] == "active":
+    from .integrations import itensity_tenant_enabled, itensity_writes_allowed
+    if not itensity_tenant_enabled():
+        abort(403, description='The shared Itensity integration is not configured for this gym.')
+    # Completing a local activation writes nothing to Itensity.
+    if application['push_status'] != 'reconcile_required' and not itensity_writes_allowed(aid):
+        flash("Pushing to Itensity is switched off for this application.", "warning")
+        return redirect(url_for("applications.application_detail", aid=aid))
+    if application["push_status"] in ("pushing", "pushed", "push_unknown") or (application["application_status"] == "active" and application['push_status'] != 'reconcile_required'):
         flash(
-            "This application is already being processed or has already been pushed to Itensity.",
+            "This application is already being processed, already pushed, or requires an administrator to review its external outcome.",
             "warning",
         )
         return redirect(url_for("applications.application_detail", aid=aid))
@@ -934,14 +1236,22 @@ def push_application(aid: int):
     ).fetchone()
 
     missing = list(dict.fromkeys(
-        _missing_requirements(cl, analysis)
+        _missing_requirements(cl, _push_analysis(db, application["member_id"], analysis))
         + _itensity_hard_blockers(db, aid, application["member_id"])
     ))
-    overridden = bool(missing) and session.get("role") == "admin" and request.form.get("override") == "1"
+    overridden = can_override_push(session.get("role"), missing) and request.form.get("override") == "1"
 
     if missing and not overridden:
         flash(f"Application is missing: {', '.join(missing)}.", "error")
         return redirect(url_for("applications.application_detail", aid=aid))
+
+    override_record = "Missing requirements: " + "; ".join(missing)
+    if overridden and needs_statement_check(session.get("role"), missing):
+        problem = statement_check_problem(db, application["member_id"])
+        if problem:
+            flash(problem, "error")
+            return redirect(url_for("applications.application_detail", aid=aid))
+        override_record += "; " + _statement_check_record(db, application["member_id"])
 
     if not application["member_id"]:
         flash("Create a member profile before pushing this application to Itensity.", "error")
@@ -965,13 +1275,14 @@ def push_application(aid: int):
         flash("Another Itensity push has already started for this application.", "warning")
         return redirect(url_for("applications.application_detail", aid=aid))
     if overridden:
-        audit_log(db, "itensity_admin_override_requested", application_id=aid,
-                  new_value="Missing requirements: " + "; ".join(missing), user_id=user_id)
+        audit_log(db, f"itensity_{session.get('role')}_override_requested", application_id=aid,
+                  new_value=override_record, user_id=user_id)
     db.commit()
 
     threading.Thread(
         target=_background_itensity_push,
-        args=(app_obj, db_path, aid, member["id"], member["itensity_ref"], overridden, missing, user_id),
+        args=(app_obj, db_path, aid, member["id"], member["itensity_ref"], overridden, missing, user_id,
+              application['push_status'] == 'reconcile_required', session.get('session_version',0)),
         daemon=True,
     ).start()
 
@@ -980,6 +1291,125 @@ def push_application(aid: int):
         "Refresh this page to check the result.",
         "info",
     )
+    return redirect(url_for("applications.application_detail", aid=aid))
+
+
+def push_ready_applications(app, db_path: str, actor_id: int, from_date: str) -> list[int]:
+    """Push each new application that meets every requirement, one at a time.
+
+    Only an application that has never been tried is picked up: a stopped push
+    needs a person to look at why, and from_date keeps older clients out.
+    """
+    pushed = []
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        with app.app_context():
+            from .integrations import bind_itensity_tenant, itensity_writes_allowed
+            bind_itensity_tenant(db_path)
+            try:
+                _push_actor(conn, actor_id, None)
+            except ValueError:
+                app.logger.error("Automatic Itensity push skipped: user %s can't activate members", actor_id)
+                return pushed
+            candidates = conn.execute(
+                """SELECT ma.id, ma.member_id FROM membership_applications ma
+                   JOIN members m ON m.id = ma.member_id
+                   WHERE ma.push_status = 'not_pushed'
+                     AND ma.application_status <> 'active'
+                     AND ma.itensity_confirmed_ref IS NULL
+                     AND (m.itensity_ref IS NULL OR TRIM(m.itensity_ref) = '')
+                     AND date(ma.created_at) >= date(?)
+                   ORDER BY ma.id""",
+                (from_date,),
+            ).fetchall()
+            for candidate in candidates:
+                aid, member_id = candidate["id"], candidate["member_id"]
+                if not itensity_writes_allowed(aid):
+                    continue
+                cl = conn.execute("SELECT * FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
+                analysis = conn.execute(
+                    "SELECT * FROM statement_analyses WHERE application_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
+                    (aid,),
+                ).fetchone()
+                if not cl or not _is_ready_to_push(cl, _push_analysis(conn, member_id, analysis)) or _itensity_hard_blockers(conn, aid, member_id):
+                    continue
+                if not _mark_itensity_push_started(conn, aid):
+                    conn.rollback()
+                    continue
+                audit_log(conn, "itensity_auto_push_started", application_id=aid,
+                          new_value="All requirements in place", user_id=actor_id)
+                member_activity(conn, member_id, "Automatic Itensity push started: all requirements in place", user_id=actor_id)
+                conn.commit()
+                _background_itensity_push(app, db_path, aid, member_id, None, False, [], actor_id)
+                pushed.append(aid)
+    finally:
+        conn.close()
+    return pushed
+
+
+def _start_itensity_followup(aid: int, part: str):
+    """Retry one follow-up in the background, after the member exists in Itensity."""
+    from .integrations import itensity_tenant_enabled, itensity_writes_allowed
+    from .itensity_followups import run_followups
+    db = get_db()
+    application = db.execute("SELECT * FROM membership_applications WHERE id=?", (aid,)).fetchone()
+    if application is None:
+        abort(404)
+    if not itensity_tenant_enabled():
+        abort(403, description='The shared Itensity integration is not configured for this gym.')
+    if not itensity_writes_allowed(aid):
+        flash("Pushing to Itensity is switched off for this application.", "warning")
+    elif application["push_status"] != "pushed":
+        flash("Push the member to Itensity first.", "warning")
+    else:
+        threading.Thread(
+            target=run_followups,
+            args=(current_app._get_current_object(), db.execute("PRAGMA database_list").fetchone()["file"],
+                  aid, application["member_id"], session.get("user_id"), (part,)),
+            daemon=True,
+        ).start()
+        flash("Started in the background. Refresh this page to check the result.", "info")
+    return redirect(url_for("applications.application_detail", aid=aid))
+
+
+@applications_bp.post("/<int:aid>/itensity/documents")
+@permission_required("add_member")
+def send_itensity_documents(aid: int):
+    return _start_itensity_followup(aid, "documents")
+
+
+@applications_bp.post("/<int:aid>/itensity/reg-fee")
+@permission_required("add_member")
+def send_itensity_reg_fee(aid: int):
+    return _start_itensity_followup(aid, "reg_fee")
+
+
+@applications_bp.post("/<int:aid>/itensity/reg-fee/review")
+@permission_required("add_member")
+def review_itensity_reg_fee(aid: int):
+    """Settle an uncertain payment only after someone has checked the account."""
+    if session.get("role") != "admin":
+        abort(403)
+    db = get_db()
+    application = db.execute("SELECT member_id FROM membership_applications WHERE id=?", (aid,)).fetchone()
+    if application is None:
+        abort(404)
+    notes = request.form.get("notes", "").strip()
+    outcome = {"found": "sent", "not_recorded": "failed"}.get(request.form.get("outcome"))
+    if not notes or not outcome:
+        abort(400, description="Record the external check and its confirmed outcome.")
+    updated = db.execute(
+        """UPDATE itensity_reg_fee_pushes SET status=?, review_notes=?, reviewed_by=?,
+               confirmed_at=CASE WHEN ?='sent' THEN datetime('now') END
+           WHERE member_id=? AND status IN ('unknown','sending')""",
+        (outcome, notes, session.get("user_id"), outcome, application["member_id"]),
+    )
+    if updated.rowcount != 1:
+        abort(409, description="This payment does not need reviewing.")
+    audit_log(db, "itensity_reg_fee_reviewed", application_id=aid,
+              new_value=f"{outcome}; {notes}", user_id=session.get("user_id"))
+    db.commit()
     return redirect(url_for("applications.application_detail", aid=aid))
 
 

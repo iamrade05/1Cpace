@@ -23,7 +23,7 @@
   <article class="fd-kpi is-gold"><div class="fd-kpi-label">Monthly premium, active</div><div class="fd-kpi-value">R{{ "{:,.0f}".format(s.premium_active) }}</div><div class="fd-kpi-foot"><span>What active members should pay</span></div></article>
   <article class="fd-kpi is-red"><div class="fd-kpi-label">Owing</div><div class="fd-kpi-value">{{ "{:,}".format(s.owing) }}</div><div class="fd-kpi-foot"><span>R{{ "{:,.0f}".format(s.owing_total) }} outstanding</span></div></article>
   <article class="fd-kpi is-amber"><div class="fd-kpi-label">Not attending</div><div class="fd-kpi-value">{% if s.has_visit_data %}{{ "{:,}".format(s.not_attending) }}{% else %}&mdash;{% endif %}</div><div class="fd-kpi-foot"><span>Active, no visit in {{ not_attending_days }} days</span></div></article>
-  <article class="fd-kpi is-sage"><div class="fd-kpi-label">Active, no mandate</div><div class="fd-kpi-value">{{ "{:,}".format(s.no_mandate) }}</div><div class="fd-kpi-foot"><span>Pay by debit order, none on file</span></div></article>
+  <article class="fd-kpi is-sage"><div class="fd-kpi-label">Active, no approved mandate</div><div class="fd-kpi-value">{{ "{:,}".format(s.no_mandate) }}</div><div class="fd-kpi-foot"><span>Debit order approval missing or unsuccessful</span></div></article>
   <article class="fd-kpi is-sand"><div class="fd-kpi-label">To win back</div><div class="fd-kpi-value">{{ "{:,}".format(s.reactivate) }}</div><div class="fd-kpi-foot"><span>Inactive or blocked</span></div></article>
 </section>
 
@@ -47,7 +47,7 @@
     <option value="">Everyone</option>
     <option value="not_attending" {% if segment == 'not_attending' %}selected{% endif %}>Not attending</option>
     <option value="owing" {% if segment == 'owing' %}selected{% endif %}>Owing</option>
-    <option value="no_mandate" {% if segment == 'no_mandate' %}selected{% endif %}>Active, no mandate</option>
+    <option value="no_mandate" {% if segment == 'no_mandate' %}selected{% endif %}>Active, no approved mandate</option>
     <option value="reactivate" {% if segment == 'reactivate' %}selected{% endif %}>To win back</option>
   </select></label>
   <button class="btn btn-primary" type="submit">Update</button>

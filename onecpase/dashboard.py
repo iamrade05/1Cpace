@@ -7,7 +7,7 @@ from flask import Blueprint, current_app, flash, redirect, render_template, requ
 from .auth import login_required
 from .database import get_db
 from .member_counts import get_member_counts
-from .elev8_data import get_elev8_member_count
+from .elev8_data import elev8_source_enabled, get_elev8_member_count
 from .dashboard_access import dashboard_only, current_scope, home_endpoint, actor
 
 
@@ -32,8 +32,11 @@ def _event_datetime(value):
             parsed = datetime.fromisoformat(raw)
         except ValueError:
             return None
-    # Dashboard windows use local, naive dates. Stored values are primarily
-    # YYYY-MM-DD; dropping tzinfo keeps mixed historical rows comparable.
+    # Reporting windows are local. Convert aware timestamps before comparing
+    # them with historical date-only/local values.
+    if parsed.tzinfo is not None:
+        from zoneinfo import ZoneInfo
+        parsed = parsed.astimezone(ZoneInfo('Africa/Johannesburg'))
     return parsed.replace(tzinfo=None)
 
 
@@ -90,50 +93,58 @@ def _norm_member_key(value):
 
 def build_member_reconciliation(local_members, live_members):
     """Compare actual member rows in the app to the live Itensity roster."""
-    local_by_id = {}
-    local_by_phone = {}
-    local_by_email = {}
-    for member in local_members:
-        key = _norm_member_key(member.get("id_number") or member.get("payer_id_number"))
-        if key:
-            local_by_id[key] = member
-        phone = _norm_member_key(member.get("contact") or member.get("cell") or member.get("phone"))
-        if phone:
-            local_by_phone[phone] = member
-        email = _norm_member_key(member.get("email"))
-        if email:
-            local_by_email[email] = member
+    from collections import defaultdict
+    local_members, live_members = list(local_members), list(live_members)
 
-    live_by_id = {}
-    live_by_phone = {}
-    live_by_email = {}
-    for member in live_members:
-        key = _norm_member_key(member.get("id_number") or member.get("payer_id_number"))
-        if key:
-            live_by_id[key] = member
-        phone = _norm_member_key(member.get("contact") or member.get("cell") or member.get("phone"))
-        if phone:
-            live_by_phone[phone] = member
-        email = _norm_member_key(member.get("email"))
-        if email:
-            live_by_email[email] = member
+    def keys(member):
+        phone = ''.join(ch for ch in str(member.get('contact') or member.get('cell') or member.get('phone') or '') if ch.isdigit())
+        if phone.startswith('27') and len(phone) == 11:
+            phone = '0' + phone[2:]
+        first, last = _norm_member_key(member.get('first_name')), _norm_member_key(member.get('last_name'))
+        dob = str(member.get('date_of_birth') or '')[:10]
+        return (str(member.get('itensity_ref') or member.get('unique_ref') or '').strip(),
+                _norm_member_key(member.get('id_number') or member.get('payer_id_number')),
+                phone, str(member.get('email') or '').strip().casefold(),
+                (first,last,dob) if first and last and dob else None)
+
+    local_keys, live_keys = [keys(m) for m in local_members], [keys(m) for m in live_members]
+    indexes = [defaultdict(list) for _ in range(5)]
+    live_counts = [defaultdict(int) for _ in range(5)]
+    for i, values in enumerate(local_keys):
+        for field, key in enumerate(values):
+            if key: indexes[field][key].append(i)
+    for values in live_keys:
+        for field, key in enumerate(values):
+            if key: live_counts[field][key] += 1
 
     matched_local_ids = set()
     matched_live_ids = set()
     status_mismatches = []
     matched = []
-    for live_member in live_members:
-        live_id = _norm_member_key(live_member.get("id_number") or live_member.get("payer_id_number"))
-        live_phone = _norm_member_key(live_member.get("contact") or live_member.get("cell") or live_member.get("phone"))
-        live_email = _norm_member_key(live_member.get("email"))
-        candidate = (
-            local_by_id.get(live_id)
-            or local_by_phone.get(live_phone)
-            or local_by_email.get(live_email)
-            or next((m for m in local_members if _norm_member_key(m.get("first_name")) and _norm_member_key(m.get("last_name")) and _norm_member_key(m.get("first_name")) == _norm_member_key(live_member.get("first_name")) and _norm_member_key(m.get("last_name")) == _norm_member_key(live_member.get("last_name")) and m.get("date_of_birth") == live_member.get("date_of_birth")), None)
-        )
-        if candidate is None:
+    ambiguous = []
+    for live_index, live_member in enumerate(live_members):
+        values = live_keys[live_index]
+        chosen = None
+        for field, key in enumerate(values):
+            candidates = indexes[field].get(key, []) if key else []
+            if not candidates:
+                continue
+            if len(candidates) != 1 or live_counts[field][key] != 1:
+                ambiguous.append(dict(live_index=live_index, reason='Non-unique identity evidence'))
+                break
+            index = candidates[0]
+            # Shared contacts cannot override contradictory verified identity.
+            if any(values[f] and local_keys[index][f] and values[f] != local_keys[index][f] for f in (0,1)):
+                ambiguous.append(dict(live_index=live_index, reason='Conflicting member reference or ID'))
+                break
+            if local_members[index].get('id') in matched_local_ids:
+                ambiguous.append(dict(live_index=live_index, reason='Local member already matched'))
+                break
+            chosen = index
+            break
+        if chosen is None:
             continue
+        candidate = local_members[chosen]
 
         local_id = candidate.get("id")
         matched_local_ids.add(local_id)
@@ -179,7 +190,8 @@ def build_member_reconciliation(local_members, live_members):
         "status_mismatches": status_mismatches,
         "missing_in_app": missing_in_app,
         "missing_in_itensity": missing_in_itensity,
-        "is_clean": not status_mismatches and not missing_in_app and not missing_in_itensity,
+        "ambiguous_matches": ambiguous,
+        "is_clean": not status_mismatches and not missing_in_app and not missing_in_itensity and not ambiguous,
     }
 
 
@@ -189,6 +201,8 @@ class ItensityScriptsUnavailable(RuntimeError):
 
 def sync_itensity_members_to_local(db):
     """Pull the latest live Itensity export and reconcile it into the local DB."""
+    if not elev8_source_enabled():
+        raise PermissionError('The shared Itensity roster source is not configured for this gym.')
     try:
         from scripts.import_itensity_members import import_members, read_roster
         from scripts.pull_itensity_roster import pull_roster
@@ -413,7 +427,7 @@ def dashboard():
     ).fetchone()
     # The current Elev8 roster in dbo.Members is authoritative for the total.
     # Snapshot/local values remain useful for the status breakdown.
-    authoritative_total_members = get_elev8_member_count()
+    authoritative_total_members = get_elev8_member_count() if elev8_source_enabled() else None
     if authoritative_total_members is not None:
         total_members = authoritative_total_members
 
@@ -428,10 +442,8 @@ def dashboard():
         "SELECT COUNT(*) FROM leave_requests WHERE status = 'pending'"
     ).fetchone()[0]
 
-    total_collected_ever = db.execute(
-        "SELECT COALESCE(SUM(amount_paid), 0) FROM collections "
-        "WHERE status IN ('paid','partial')"
-    ).fetchone()[0]
+    from .financial_reporting import cash_received
+    total_collected_ever = cash_received(db)
 
     # Pull one bounded, reusable history extract. It covers the current and
     # comparison periods for every supported range, including the 1Y view.
@@ -564,14 +576,60 @@ def sales_dashboard():
         ("Application Started", "applications"), ("Activated", "activated"),
     )]
     from .staff_kpi import build_daily_scorecard
+    from .sales_board import build_board, can_manage
+    daily_kpis = build_daily_scorecard(db, "sales", request.args.get("kpi_date") or (period.date_to if period.mode=='day' else None), user_id=selected_user)
     return render_template(
         "sales_dashboard.html", funnel=funnel, report=report,
         **dashboard_context(db,'sales',session['user_id'],period=period,rows=comparison),
-        daily_kpis=build_daily_scorecard(db, "sales", request.args.get("kpi_date") or (period.date_to if period.mode=='day' else None), user_id=selected_user),
+        daily_kpis=daily_kpis,
+        sales_board=build_board(db, daily_kpis['day'], selected_user),
+        can_manage_board=can_manage(actor()),
+        board_save_url=url_for('dashboard.save_sales_board', **{
+            k: v for k, v in request.args.items()
+            if k in ('period', 'from', 'to', 'consultant', 'on', 'cycle')}),
         untouched=report["untouched_leads"], stalled=report["stalled_applications"], consultants=consultants,
         selected_consultant=consultant, date_from=date_from, date_to=date_to,
         selected_user=session.get("user_id"),
     )
+
+
+@dashboard_bp.route('/sales-dashboard/board', methods=['POST'])
+@login_required
+@dashboard_only('sales')
+def save_sales_board():
+    from flask import abort
+    from datetime import date
+    from .sales_board import board_staff, can_manage
+    from .reporting_cycle import cycle_key
+    db = get_db()
+    if not can_manage(actor()):
+        abort(403)
+    try:
+        uid = int(request.form['user_id'])
+        day = date.fromisoformat(request.form['day'])
+        values = [int(request.form[name]) if request.form.get(name, '').strip() else None
+                  for name in ('target', 'commitment')]
+        if any(v is not None and not 0 <= v <= 10000 for v in values):
+            raise ValueError
+    except (KeyError, ValueError, TypeError):
+        abort(400)
+    if uid not in {p['id'] for p in board_staff(db)}:
+        abort(403)
+    for table, clock, field, stamp, value in (
+        ('sales_board_targets', 'cycle', 'target', cycle_key(day), values[0]),
+        ('sales_board_commitments', 'day', 'units', day.isoformat(), values[1]),
+    ):
+        if value is None:
+            db.execute(f'DELETE FROM {table} WHERE {clock}=? AND user_id=?', (stamp, uid))
+        else:
+            db.execute(f'''INSERT INTO {table} ({clock},user_id,{field},updated_by) VALUES(?,?,?,?)
+                ON CONFLICT({clock},user_id) DO UPDATE SET {field}=excluded.{field},updated_by=excluded.updated_by''',
+                       (stamp, uid, value, session['user_id']))
+    db.commit()
+    flash('Sales target and daily commitment saved.', 'success')
+    filters = {k: v for k, v in request.args.items() if k in ('period', 'from', 'to', 'consultant', 'on', 'cycle')}
+    filters['kpi_date'] = day.isoformat()
+    return redirect(url_for('dashboard.sales_dashboard', **filters))
 
 
 @dashboard_bp.route("/dashboard/reconciliation")
@@ -612,6 +670,9 @@ def dashboard_reconciliation():
 @login_required
 @dashboard_only('admin')
 def dashboard_reconciliation_sync():
+    if not elev8_source_enabled():
+        from flask import abort
+        abort(403)
     db = get_db()
     try:
         sync_result = sync_itensity_members_to_local(db)

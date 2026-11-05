@@ -21,7 +21,7 @@
                   border-radius:10px;padding:9px 12px;">
         <div style="font-size:.86rem;white-space:pre-wrap;">{{ m.body }}</div>
         <div style="font-size:.7rem;opacity:.72;margin-top:5px;text-align:right;">
-          {{ (m.created_at or '')|string|truncate(16, true, '') }}
+          {{ m.created_at|sast }}
           {% if mine %}{{ ' · read' if m.read_at else ' · sent' }}{% endif %}
         </div>
       </div>

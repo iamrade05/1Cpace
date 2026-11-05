@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 from onecpase.collections_engine import sync_collection_case
 from onecpase.database import get_db
 from onecpase.phases import enabled_blueprints
@@ -12,22 +14,26 @@ def _user(db, uid, name, role="staff"):
 
 
 def _sales_case(db, mid, consultant):
+    # Dated from today: a case leaves Sales 45 days after the member joined.
     db.execute(
         """INSERT INTO members (member_ref, first_name, last_name, id_number, contact,
                member_status, join_date, gym_access_status)
-           VALUES (?, ?, 'Queue', ?, ?, 'Active', '2026-09-20', 'allowed')""",
-        (f"FM-{mid}", f"Mem{mid}", f"ID-FM-{mid}", f"0730000{mid:03d}"),
+           VALUES (?, ?, 'Queue', ?, ?, 'Active', ?, 'allowed')""",
+        (f"FM-{mid}", f"Mem{mid}", f"ID-FM-{mid}", f"0730000{mid:03d}",
+         (date.today() - timedelta(days=20)).isoformat()),
     )
     member_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     db.execute("INSERT INTO membership_applications (member_id, created_by) VALUES (?, ?)",
                (member_id, consultant))
-    case_id = sync_collection_case(db, member_id, failed_debit_date="2026-10-01",
+    case_id = sync_collection_case(db, member_id, failed_debit_date=(date.today() - timedelta(days=10)).isoformat(),
                                    arrears_amount=324, months_owing=1)
     db.commit()
     return case_id
 
 
 def _as(client, uid, role="staff"):
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,role,uid)
     with client.session_transaction() as session:
         session["user_id"] = uid
         session["role"] = role

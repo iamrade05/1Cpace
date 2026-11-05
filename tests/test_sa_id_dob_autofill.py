@@ -115,6 +115,8 @@ def test_clearing_a_typed_date_lets_the_id_fill_it_again():
 # ── The forms actually load and use the script ───────────────────────────────
 
 def _login_as_admin(client):
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,'admin')
     with client.session_transaction() as sess:
         sess["user_id"] = 1
         sess["username"] = "testuser"

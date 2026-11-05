@@ -1,0 +1,35 @@
+<section class="call-script" aria-labelledby="call-script-title">
+  <header class="call-script-header">
+    <div><span class="call-script-eyebrow">ON THE CALL</span><h2 id="call-script-title">Your conversation guide</h2><p>Open each section as the conversation moves forward.</p></div>
+    {% if task.status != 'completed' %}<a class="btn btn-ghost btn-sm" href="#notes-input">Go to call notes</a>{% endif %}
+  </header>
+  <dl class="call-script-facts">
+    <div><dt>Speaking with</dt><dd>{{ call_script.client_name }}</dd></div>
+    <div><dt>Last recorded visit</dt><dd>{{ call_script.visit_label }}</dd></div>
+    <div><dt>Overdue balance</dt><dd>{{ call_script.overdue_label }}</dd></div>
+  </dl>
+  <div class="call-script-steps">
+    {% for step in call_script.steps %}
+    <details class="call-script-step" name="collection-call-script" {% if loop.first %}open{% endif %}>
+      <summary><span class="call-script-number">{{ '%02d'|format(loop.index) }}</span><span>{{ step.title }}</span></summary>
+      <div class="call-script-body"><span class="call-script-label">SAY</span><p class="call-script-say" {% if step.choose_path %}data-intention-question{% endif %}>{{ step.say }}</p><p class="call-script-cue"><strong>Pause &amp; listen</strong> {{ step.cue }}</p>
+        {% if step.choose_path and task.status != 'completed' %}
+        <div class="call-script-path-form">
+          <label for="conversation-intention">What has the client decided?</label>
+          <select id="conversation-intention" name="conversation_intention" form="collection-call-result-form" class="form-control">
+            <option value="">Select the client’s response</option>
+            {% for key,path in call_script.paths.items() %}<option value="{{ key }}">{{ path.label }}</option>{% endfor %}
+          </select>
+          {% for key,path in call_script.paths.items() %}<div data-conversation-path="{{ key }}" hidden><p class="call-script-say">{{ path.say }}</p><p class="call-script-cue">{{ path.cue }}</p></div>{% endfor %}
+          <label for="training-barrier">Client’s response / current struggle</label>
+          <textarea id="training-barrier" name="training_barrier" form="collection-call-result-form" class="form-control" rows="2" maxlength="2000" placeholder="Record the client’s own explanation"></textarea>
+          <div id="conversation-goal-group" hidden><label for="client-goal">Fitness goal / support the client wants</label><textarea id="client-goal" name="client_goal" form="collection-call-result-form" class="form-control" rows="2" maxlength="2000"></textarea></div>
+          <p class="card-note">These details are saved with the call result. Choosing a path does not record a payment promise.</p>
+        </div>
+        {% endif %}
+        {% if step.negotiate and task.status != 'completed' %}<div class="call-script-negotiate"><button type="button" class="btn btn-primary" id="open-negotiation" disabled>Explore payment options</button><span id="negotiation-guidance" class="card-note">First select the client’s response in section 04.</span></div>{% endif %}
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+</section>

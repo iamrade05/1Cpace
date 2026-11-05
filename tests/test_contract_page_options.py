@@ -57,6 +57,8 @@ def _member(app):
 
 
 def _login(client):
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     with client.session_transaction() as sess:
         sess.update({"user_id": 1, "username": "u", "role": "admin"})
 

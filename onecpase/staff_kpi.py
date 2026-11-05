@@ -3,8 +3,9 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 SAST = ZoneInfo("Africa/Johannesburg")
-SALES_TARGETS = (("connects", "Connected calls", 30), ("referrals", "Referrals", 30),
-                 ("appointments", "Appointments booked", 10), ("joined", "Joined members", 3))
+SALES_TARGETS = (("calls", "Calls made", None), ("connects", "Connected calls", 30),
+                 ("referrals", "Referrals", 30), ("appointments", "Appointments", 10),
+                 ("shows", "Shows", None))
 RECEPTION_TARGETS = (("calls", "Calls made", 100), ("connects", "Connected calls", 10),
                      ("phone_ptps", "Phone PTPs", 2), ("walk_in_ptps", "Walk-in PTPs", 2),
                      ("debicheck", "Authenticated DebiChecks", 2))
@@ -84,6 +85,41 @@ def selected_day(value=None):
         return datetime.now(SAST).date()
 
 
+def sales_call_events(db, start, end, user_ids=None):
+    """Saved CRM call attempts; duration and PBX rows never infer a connection."""
+    allowed = set(user_ids) if user_ids is not None else None
+    failed = {'no_response', 'no_answer', 'voicemail', 'call_dropped', 'does_not_exist', 'unreachable'}
+    events = []
+    for row in db.execute("""SELECT created_by,occurred_at,outcome FROM lead_activities
+            WHERE activity_type='call' AND COALESCE(status,'completed')='completed'
+            AND occurred_at>=? AND occurred_at<?""",
+                          ((start-timedelta(days=1)).isoformat(), (end+timedelta(days=2)).isoformat())).fetchall():
+        day = business_day(row['occurred_at'])
+        if day is None or not start <= day <= end or (allowed is not None and row['created_by'] not in allowed):
+            continue
+        outcome = str(row['outcome'] or '').strip().lower()
+        events.append({'user_id': row['created_by'], 'day': day,
+                       'connected': bool(outcome) and outcome not in failed})
+    return events
+
+
+def sales_show_events(db, start, end, user_ids=None):
+    """First evidenced attendance per non-duplicate prospect, credited to recorder."""
+    allowed = set(user_ids) if user_ids is not None else None
+    rows = db.execute("""SELECT a.created_by,a.occurred_at FROM lead_activities a
+        JOIN (SELECT lead_id,MIN(id) AS first_id FROM lead_activities
+              WHERE COALESCE(status,'completed')='completed' AND
+                ((activity_type='appointment' AND outcome IN ('showed','joined')) OR
+                 (activity_type='visit' AND outcome IN ('arrived','completed','joined','not_interested')))
+              GROUP BY lead_id) first_show ON a.id=first_show.first_id
+        JOIN leads l ON l.id=a.lead_id WHERE l.duplicate_of_lead_id IS NULL
+        AND a.occurred_at>=? AND a.occurred_at<?""",
+                      ((start-timedelta(days=1)).isoformat(), (end+timedelta(days=2)).isoformat())).fetchall()
+    return [{'user_id': row['created_by'], 'day': day} for row in rows
+            if (day := business_day(row['occurred_at'])) is not None and start <= day <= end
+            and (allowed is None or row['created_by'] in allowed)]
+
+
 def build_daily_scorecard(db, scope, day=None, *, user_id=None):
     from .dashboard_access import team_ids
     from .collections_engine import get_collection_rule_int
@@ -112,7 +148,7 @@ def build_daily_scorecard(db, scope, day=None, *, user_id=None):
     if counts:
         placeholders = ",".join("?" for _ in counts)
         ids = tuple(counts)
-        calls = db.execute(f"""SELECT user_id,start_time,created_at,talk_duration FROM pbx_call_logs
+        calls = [] if scope == 'sales' else db.execute(f"""SELECT user_id,start_time,created_at,talk_duration FROM pbx_call_logs
             WHERE user_id IN ({placeholders}) AND LOWER(direction)='outbound'
             AND COALESCE(NULLIF(CAST(start_time AS TEXT),''),CAST(created_at AS TEXT))>=?
             AND COALESCE(NULLIF(CAST(start_time AS TEXT),''),CAST(created_at AS TEXT))<?""", (*ids, low, high)).fetchall()
@@ -124,6 +160,11 @@ def build_daily_scorecard(db, scope, day=None, *, user_id=None):
             if float(call["talk_duration"] or 0) >= min_talk:
                 credit(call["user_id"], "connects", when, naive_zone=zone)
         if scope == "sales":
+            for call in sales_call_events(db, day, day, ids):
+                counts[call['user_id']]['calls'] += 1
+                counts[call['user_id']]['connects'] += int(call['connected'])
+            for show in sales_show_events(db, day, day, ids):
+                counts[show['user_id']]['shows'] += 1
             referrals = db.execute(f"""SELECT created_by,created_at FROM leads
                 WHERE created_by IN ({placeholders}) AND duplicate_of_lead_id IS NULL
                 AND LOWER(COALESCE(NULLIF(original_source,''),source))='referral'
@@ -138,9 +179,6 @@ def build_daily_scorecard(db, scope, day=None, *, user_id=None):
                 AND h.changed_at>=? AND h.changed_at<?""", (*ids, low, high)).fetchall()
             for booking in bookings:
                 credit(booking["changed_by"], "appointments", booking["changed_at"])
-            from .sales_kpi import credited_sales
-            for sale in credited_sales(db, lambda stamp: business_day(stamp) == day, lambda uid: uid in counts):
-                credit(sale["credited_to"], "joined", sale["credited_at"])
         else:
             ptps = db.execute(f"""SELECT created_by,kpi_contact_channel,kpi_recorded_at,created_at FROM ptp_agreements
                 WHERE created_by IN ({placeholders})
@@ -169,7 +207,8 @@ def build_daily_scorecard(db, scope, day=None, *, user_id=None):
         for key, label, target in targets:
             actual = counts[person["id"]][key]
             cells.append({"key": key, "actual": actual, "target": target,
-                          "percent": round(actual * 100 / target), "met": actual >= target})
+                          "percent": round(actual * 100 / target) if target else None,
+                          "met": actual >= target if target else False})
         rows.append({"id": person["id"], "name": person["full_name"] or person["username"], "cells": cells})
     return {"day": day.isoformat(), "scope": scope, "targets": targets, "rows": rows,
             "min_talk": min_talk, "missing_ptp_channel": missing_ptp_channel}

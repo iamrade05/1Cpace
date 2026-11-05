@@ -51,6 +51,11 @@ def _status(db, ptp_id):
 
 
 def _login(client, role="admin"):
+    with client.application.app_context():
+        db=get_db()
+        db.execute("INSERT OR IGNORE INTO users(id,username,password_hash,full_name,role,active) VALUES(1,'discount-user','x','Discount User',?,1)",(role,))
+        db.execute('UPDATE users SET role=? WHERE id=1',(role,))
+        db.commit()
     with client.session_transaction() as session:
         session["user_id"] = 1
         session["role"] = role

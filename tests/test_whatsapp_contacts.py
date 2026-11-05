@@ -66,6 +66,7 @@ def test_inbox_and_chat_show_profile_link(app,client):
     with app.app_context():
         db=get_db()
         db.execute("INSERT INTO users(id,username,password_hash,full_name,role) VALUES(1,'contacts','x','Staff','staff')")
+        db.execute("INSERT INTO user_permissions(user_id,permission) VALUES(1,'reception_whatsapp')")
         mid=member(db,'Matched','0821234567');conv=conversation(db,'27821234567');cid=conv['id'];db.commit()
     with client.session_transaction() as session:
         session.update(user_id=1,role='staff',permissions=['reception_whatsapp'])

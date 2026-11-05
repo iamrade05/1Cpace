@@ -58,8 +58,24 @@ class Config:
     NUPAY_NEW_ACCESS_TYPE = os.environ.get("NUPAY_NEW_ACCESS_TYPE", "M")
     NUPAY_NEW_HEADED = os.environ.get("NUPAY_NEW_HEADED", "0")
     NUPAY_NEW_AUTH_REQUIRED = os.environ.get("NUPAY_NEW_AUTH_REQUIRED", "0227")
-    # Itensity member push still uses the sibling app's Playwright driver.
-    RADEPULSE_PATH = os.environ.get("RADEPULSE_PATH") or str(BASE_DIR.parent.parent / "radepulse")
+    # Itensity's Playwright driver ships with the app.
+    RADEPULSE_PATH = os.environ.get("RADEPULSE_PATH") or str(BASE_DIR / "itensity_driver")
+    # Which applications may write to the real Itensity: blank for none, a
+    # comma-separated list of application ids for a trial, or "all".
+    ITENSITY_PUSH_ALLOWED = os.environ.get("ITENSITY_PUSH_ALLOWED", "")
+    # Send documents and the reg fee by themselves after a successful push.
+    ITENSITY_AUTO_FOLLOWUPS = os.environ.get("ITENSITY_AUTO_FOLLOWUPS", "0") == "1"
+    # Load the fee as a once-off charge before paying it. Itensity didn't detect
+    # the fee from the payment alone in the Nov 2026 trial.
+    ITENSITY_REG_FEE_ADD_FEE_FIRST = os.environ.get("ITENSITY_REG_FEE_ADD_FEE_FIRST", "1") == "1"
+    # Push an application by itself once every requirement is in place. The
+    # account the push is recorded under: blank switches the automatic push off.
+    ITENSITY_AUTO_PUSH_USER_ID = os.environ.get("ITENSITY_AUTO_PUSH_USER_ID", "")
+    # Only applications created on or after this date. Blank also means off,
+    # so switching it on can't send older clients.
+    ITENSITY_AUTO_PUSH_FROM = os.environ.get("ITENSITY_AUTO_PUSH_FROM", "")
+    # The Itensity gym's reg fee, for members with no joining_fee of their own.
+    REGISTRATION_FEE_AMOUNT = float(os.environ.get("REGISTRATION_FEE_AMOUNT", "0"))
 
     # ── Background scheduler (onecpase/scheduler.py) ────────────────────────
     # In-process APScheduler — no broker/worker to run alongside a single-

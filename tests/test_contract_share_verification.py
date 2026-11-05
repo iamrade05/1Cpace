@@ -55,6 +55,8 @@ def _member(app, contact="0712345678", email=""):
 
 def _share_link(client, member_id):
     """The path a member is sent, made the way staff make it."""
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     with client.session_transaction() as sess:
         sess.update({"user_id": 1, "username": "u", "role": "admin"})
     page = client.post(

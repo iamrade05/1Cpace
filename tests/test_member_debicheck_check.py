@@ -14,6 +14,8 @@ def test_profile_checks_live_mandate_without_local_record(app,monkeypatch,state,
         return {'state':state,'status':'approved' if state=='active' else None,'contract_reference':'NU123' if state=='active' else None,'message':'Test NuPay result'}
     monkeypatch.setattr('onecpase.debicheck.check_member_on_nupay',check)
     with app.test_client() as client:
+        from test_staff_passwords import _make_admin
+        _make_admin(client)
         with client.session_transaction() as sess:
             sess.update(user_id=1,username='testuser',role='admin')
         page=client.get(f'/members/{mid}')
@@ -37,6 +39,8 @@ def test_check_requires_login_and_existing_member(app,monkeypatch):
     monkeypatch.setattr('onecpase.debicheck.check_member_on_nupay',unexpected)
     with app.test_client() as client:
         assert client.post('/members/999/check-debicheck').status_code==302
+        from test_staff_passwords import _make_admin
+        _make_admin(client)
         with client.session_transaction() as sess:
             sess.update(user_id=1,username='testuser',role='admin')
         assert client.post('/members/999/check-debicheck').status_code==404

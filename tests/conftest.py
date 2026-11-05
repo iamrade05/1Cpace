@@ -11,6 +11,8 @@ os.environ["WHATSAPP_WEB_ENABLED"] = "0"
 os.environ["RATELIMIT_STORAGE_URL"] = "memory://"
 
 import pytest
+import shutil
+import sqlite3
 from onecpase import create_app
 from onecpase.config import Config
 
@@ -28,12 +30,11 @@ def isolated_defaults(tmp_path, monkeypatch):
         monkeypatch.setattr(Config, key, value)
 
 
-@pytest.fixture
-def app(tmp_path):
-    db_path = tmp_path / "test.db"
-    app = create_app({
+def _test_config(tmp_path):
+    return {
         "TESTING": True,
-        "DATABASE_PATH": str(db_path),
+        "DATABASE_URL": "",
+        "DATABASE_PATH": str(tmp_path / "test.db"),
         # Keep the tenant registry isolated per test too — otherwise every
         # test run would share (and pollute) the real project-root platform.db.
         "PLATFORM_DATABASE_PATH": str(tmp_path / "platform.db"),
@@ -46,7 +47,38 @@ def app(tmp_path):
         # The suite exercises every area, including ones a phased launch keeps
         # closed. Phase gating is covered on its own in test_phases.py.
         "ACTIVE_PHASE": "all",
-    })
+        # Real browser work is faked in tests; the off switch has its own test.
+        "ITENSITY_PUSH_ALLOWED": "all",
+    }
+
+
+@pytest.fixture(scope='session')
+def database_baseline(tmp_path_factory):
+    """Migrate once; every ordinary test still gets independent database files."""
+    folder=tmp_path_factory.mktemp('schema-baseline')
+    config=_test_config(folder)
+    create_app(config)  # Real startup/migrations, with no operational data.
+    for key in ('DATABASE_PATH','PLATFORM_DATABASE_PATH'):
+        with sqlite3.connect(config[key]) as db:
+            assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+    return config
+
+
+@pytest.fixture
+def app(tmp_path, database_baseline, monkeypatch):
+    config=_test_config(tmp_path)
+    for key in ('DATABASE_PATH','PLATFORM_DATABASE_PATH'):
+        shutil.copy2(database_baseline[key],config[key])
+    with sqlite3.connect(config['PLATFORM_DATABASE_PATH']) as db:
+        db.execute('UPDATE tenants SET db_path=? WHERE slug=?',(config['DATABASE_PATH'],'elev8'))
+    # Only the cloned fixture's initial factory call skips repeated DDL. Tests
+    # calling create_app themselves (including migration/startup tests) retain
+    # the real initialization functions, restored before this fixture yields.
+    with monkeypatch.context() as factory_patch:
+        factory_patch.setattr('onecpase.init_db',lambda:None)
+        factory_patch.setattr('onecpase.add_onboarding_columns',lambda:None)
+        factory_patch.setattr('onecpase.init_platform_db',lambda:None)
+        app=create_app(config)
 
     yield app
 

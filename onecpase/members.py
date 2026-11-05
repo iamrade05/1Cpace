@@ -7,11 +7,11 @@ from pathlib import Path
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, session, url_for
 from werkzeug.utils import secure_filename
 from .auth import permission_required
-from .database import CUSTOM_TARIFF, current_tenant_name, get_db, member_activity, next_member_ref
+from .database import CUSTOM_TARIFF, audit_log, current_tenant_name, get_db, member_activity, next_member_ref
 from .employee_numbers import current_employee_number, employee_number_context
 from .debicheck_rules import account_holder_error, mandate_rules_context
 from .member_counts import get_member_counts
-from .elev8_data import get_elev8_member_count
+from .elev8_data import elev8_source_enabled, get_elev8_member_count
 from .communication import collection_care_message
 from .encryption import decrypt_member, encrypt_member, hash_for_lookup, encryption_enabled
 from .debicheck import (
@@ -163,7 +163,7 @@ def _get_last_gym_visit(db, member):
     """Return the latest known visit from local turnstile or Elev8 access data."""
     local = db.execute(
         """SELECT created_at AS last_visited, direction
-           FROM turnstile_events WHERE member_id=? AND decision='allowed'
+           FROM turnstile_events WHERE member_id=? AND decision IN ('allowed','granted')
            ORDER BY created_at DESC LIMIT 1""",
         (member["id"],),
     ).fetchone()
@@ -180,6 +180,8 @@ def _get_last_gym_visit(db, member):
             "source": "1Cpase turnstile",
         }
 
+    if not elev8_source_enabled():
+        return None
     try:
         import pyodbc as _pyodbc
         connection = _pyodbc.connect(
@@ -402,7 +404,7 @@ def members_index():
     # rather than a fabricated zero. It is deliberately skipped for a
     # consultant restricted to their own uploads: that total is theirs, and
     # the gym-wide roster count would silently replace it with everyone's.
-    authoritative_total_members = None if restrict_to_own else get_elev8_member_count()
+    authoritative_total_members = get_elev8_member_count() if not restrict_to_own and elev8_source_enabled() else None
     total_members = (
         authoritative_total_members
         if authoritative_total_members is not None
@@ -713,11 +715,12 @@ def members_add():
                 mandate_id = insert_mandate(db, encrypt_mandate(mandate), session.get("user_id"))
                 member_activity(db, mid, f"DebiCheck mandate #{mandate_id} created")
                 db.commit()
-                from .applications import nupay_submission_blockers, authorize_nupay_override
+                from .applications import nupay_override_note, nupay_submission_blockers, authorize_nupay_override
                 blockers = nupay_submission_blockers(db, mid)
                 if blockers and not authorize_nupay_override(db, mid, blockers):
                     flash("Member and mandate saved. NuPay submission blocked: " + "; ".join(blockers), "warning")
                     return redirect(url_for("applications.application_detail", aid=intake_aid, intake=1))
+                override_note = nupay_override_note(db, mid, blockers) if blockers else None
                 db.commit()  # Persist an explicit admin exception before external submission.
                 try:
                     pushed, message = push_mandate_to_nupay(mandate)
@@ -729,6 +732,8 @@ def members_add():
                     f"DebiCheck mandate #{mandate_id} "
                     f"{'submitted to NuPay' if pushed else 'push failed'}: {message}",
                 )
+                if pushed and override_note:
+                    member_activity(db, mid, override_note)
                 db.commit()
                 if pushed:
                     flash(
@@ -786,7 +791,7 @@ def member_detail(mid: int):
     # Itensity push readiness — reuses the same rules applications.py enforces
     # so the profile's shortcut button can never be more permissive than the
     # application page's own push button.
-    from .applications import MANAGER_ROLES, _is_ready_to_push, _missing_requirements
+    from .applications import MANAGER_ROLES, _is_ready_to_push, _missing_requirements, _push_analysis, can_override_push, needs_statement_check
     itensity_checklist = None
     itensity_ready = False
     itensity_missing = []
@@ -800,6 +805,7 @@ def member_detail(mid: int):
         ).fetchone()
         from .applications import _itensity_hard_blockers
         evidence_blockers = _itensity_hard_blockers(db, application["id"], mid)
+        latest_analysis = _push_analysis(db, mid, latest_analysis)
         itensity_ready = (
             _is_ready_to_push(itensity_checklist, latest_analysis)
             and not evidence_blockers
@@ -833,7 +839,8 @@ def member_detail(mid: int):
         documents.append(row)
 
     payment_profile   = _build_payment_profile(collections)
-    total_paid        = sum((r["amount_paid"] or 0) for r in collections if not _is_discount(r))
+    from .financial_reporting import totals as financial_totals
+    total_paid        = financial_totals(collections)['total_collected']
     total_outstanding = sum(r["balance"] for r in payment_profile)
 
     # ── PTP / Collection data ──────────────────────────────────────────────
@@ -950,6 +957,8 @@ def member_detail(mid: int):
         application=application,
         itensity_ready=itensity_ready,
         itensity_missing=itensity_missing,
+        itensity_can_override=can_override_push(session.get("role"), itensity_missing),
+        itensity_needs_statement_check=needs_statement_check(session.get("role"), itensity_missing),
         is_manager=session.get("role") in MANAGER_ROLES,
         notes=notes,
         documents=documents,
@@ -1125,6 +1134,9 @@ def member_download_doc(mid: int, doc_id: int):
     if not path.exists():
         abort(404)
     member_activity(db, mid, f"Downloaded {doc['document_type']}: {doc['original_name']}")
+    if doc["document_type"] == "Bank Statement":
+        from .applications import STATEMENT_OPENED_ACTION
+        audit_log(db, STATEMENT_OPENED_ACTION, new_value=str(doc_id), user_id=session.get("user_id"))
     db.commit()
     return send_file(str(path), as_attachment=True, download_name=doc["original_name"])
 

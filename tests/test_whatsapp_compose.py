@@ -7,6 +7,8 @@ def sign_in(app, client, permissions=None):
     with app.app_context():
         db = get_db()
         db.execute("INSERT INTO users(id,username,password_hash,full_name,role,active) VALUES(1,'compose','x','Sender','staff',1)")
+        for permission in permissions or ['reception_whatsapp']:
+            db.execute('INSERT INTO user_permissions(user_id,permission) VALUES(1,?)',(permission,))
         db.commit()
     with client.session_transaction() as session:
         session.update(user_id=1, role='staff', permissions=permissions or ['reception_whatsapp'])

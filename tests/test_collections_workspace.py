@@ -135,6 +135,8 @@ def test_member_profile_builds_one_timeline_across_everything(app):
 
 
 def test_member_profile_page_renders_and_unknown_member_redirects(app, client):
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     with app.app_context():
         db = get_db()
         mid = _member(db, 21)
@@ -155,6 +157,8 @@ def test_member_profile_page_renders_and_unknown_member_redirects(app, client):
 
 
 def test_member_profile_shows_the_collections_panel(app, client):
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     with app.app_context():
         db = get_db()
         mid = _member(db, 22)

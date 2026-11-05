@@ -118,7 +118,7 @@ def activity_rows(db,period,scope,user_id,*,allowed_ids=None):
         valid="COALESCE(ptp_status,'pending') NOT IN ('cancelled','canceled','rejected','declined','superseded') AND COALESCE(manager_approval_status,'not_required') NOT IN ('rejected','declined')"
         count('PTPs created','ptp_agreements','created_at',valid)
         count('Amount promised','ptp_agreements','created_at',valid,kind='money',expression='SUM(promise_amount)')
-    if scope in ('admin','reception','work','sales'):
+    if scope in ('admin','reception','work'):
         ids=allowed_ids if scope=='sales' else team_ids(db,'reception') if scope=='reception' else [user_id] if scope=='work' else None
         query_filter=actor_filter(ids,'logged_by') if ids is not None else '1=1'
         call_filter=actor_filter(ids,'user_id') if ids is not None else '1=1'
@@ -143,6 +143,17 @@ def activity_rows(db,period,scope,user_id,*,allowed_ids=None):
             rates=[round(connected/total*100,1) if total else None for total,connected in zip(*call_counts)]
             rows.append(comparison_row('Call connection rate',*rates,'percent'))
     if scope=='sales':
+        from .staff_kpi import sales_call_events, sales_show_events
+        calls = sales_call_events(db, period.previous_start, period.end, allowed_ids)
+        shows = sales_show_events(db, period.previous_start, period.end, allowed_ids)
+        for label, events in (
+            ('Calls made', calls),
+            ('Connected calls', [call for call in calls if call['connected']]),
+            ('Shows', shows),
+        ):
+            values = [sum(start <= event['day'].isoformat() <= end for event in events)
+                      for start, end in bounds]
+            rows.append(comparison_row(label, *values))
         owner_filter=actor_filter(allowed_ids,'assigned_to') if allowed_ids is not None else '1=1'
         params=tuple(allowed_ids or [])
         count('Leads assigned','leads',"COALESCE(NULLIF(CAST(assigned_at AS TEXT),''),CAST(created_at AS TEXT))",owner_filter,params,utc=True)

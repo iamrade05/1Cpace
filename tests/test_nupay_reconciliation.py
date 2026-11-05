@@ -33,6 +33,8 @@ def _group(db, mid):
 
 
 def _sign_in(client, role="manager", user_id=1, permissions=("all_collections", "all_members")):
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,role,user_id=user_id,permissions=permissions)
     with client.session_transaction() as s:
         s.update({"user_id": user_id, "username": "u", "role": role, "permissions": list(permissions)})
 
@@ -172,7 +174,7 @@ def test_a_manager_can_upload_and_the_pages_fill_in(app, client, monkeypatch):
 
 
 def test_only_managers_can_change_data(app, client):
-    _sign_in(client, role="reception")
+    _sign_in(client, role="staff")
     response = client.post(
         "/collections/reconciliation/upload",
         data={"reports": (io.BytesIO(_csv(FOUR_SUCCESSES)), "Success_1.csv")},
@@ -186,7 +188,7 @@ def test_only_managers_can_change_data(app, client):
 
 
 def test_people_without_collections_access_are_turned_away(app, client):
-    _sign_in(client, role="reception", permissions=())
+    _sign_in(client, role="staff", permissions=())
     assert client.get("/collections/reconciliation").status_code == 302
     assert client.get("/collections/reconciliation/members").status_code == 302
 

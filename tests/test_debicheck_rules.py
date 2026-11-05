@@ -62,6 +62,8 @@ def test_standalone_save_enforces_rules_server_side(client, monkeypatch, name, s
 
 
 def test_forms_show_minimum_and_warning_script(client,monkeypatch):
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     monkeypatch.setattr(rules,'minimum_debit_date',lambda:date(2026,10,28))
     monkeypatch.setattr(rules,'earliest_debit_date',lambda:date(2026,10,24))
     with client.session_transaction() as sess:

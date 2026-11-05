@@ -547,6 +547,116 @@ def test_reception_walk_ins_rotate_across_available_sales_consultants(app):
         assert b"Walk-In Details" in page.data
 
 
+def test_reception_sees_once_whose_enquiry_a_new_walk_in_is(app):
+    with app.app_context():
+        db = get_db()
+        db.execute(
+            """INSERT INTO users
+               (id, username, password_hash, full_name, role, department, active)
+               VALUES (10, 'reception', 'x', 'Reception User', 'reception', 'Reception', 1)"""
+        )
+        db.execute(
+            """INSERT INTO users
+               (id, username, password_hash, full_name, role, department, active,
+                is_sales_consultant, sales_available, sales_rotation_order)
+               VALUES (20, 'sales1', 'x', 'Sales Consultant One', 'staff', 'Sales', 1, 1, 1, 1)"""
+        )
+        db.commit()
+
+    with app.test_client() as client:
+        with client.session_transaction() as session:
+            session["user_id"] = 10
+            session["username"] = "reception"
+            session["role"] = "reception"
+            session["permissions"] = ["capture_leads", "view_leads"]
+
+        response = client.post(
+            "/leads/add",
+            data={"full_name": "Popup Walk In", "phone": "0820003000", "source": "Walk-In / Enquiry"},
+        )
+        page = client.get(response.headers["Location"]).get_data(as_text=True)
+        popup = page[page.index('<dialog id="walkInPopup"'):page.index("</dialog>")]
+        assert "New walk-in: Popup Walk In" in popup
+        assert "This enquiry belongs to" in popup and "Sales Consultant One" in popup
+
+        again = client.get(response.headers["Location"]).get_data(as_text=True)
+        assert "walkInPopup" not in again
+
+
+def _trial_prospect(app, client, status="show", came_in="2026-11-01 10:00:00"):
+    with app.app_context():
+        db = get_db()
+        db.execute(
+            """INSERT OR IGNORE INTO users (id, username, password_hash, full_name, role, department, active)
+               VALUES (10, 'reception', 'x', 'Reception User', 'reception', 'Reception', 1)"""
+        )
+        lid = db.execute(
+            "INSERT INTO leads (full_name, phone, lead_status, source) VALUES ('Trial Client', '0820004000', ?, 'Walk-In / Enquiry')",
+            (status,),
+        ).lastrowid
+        if came_in:
+            db.execute(
+                "INSERT INTO lead_activities (lead_id, activity_type, outcome, occurred_at) VALUES (?, 'visit', 'arrived', ?)",
+                (lid, came_in),
+            )
+        db.commit()
+    with client.session_transaction() as session:
+        session.update(user_id=10, username="reception", role="reception", permissions=["capture_leads", "view_leads"])
+    return lid
+
+
+def _trials(app, lid):
+    with app.app_context():
+        return get_db().execute(
+            "SELECT scheduled_for, notes FROM lead_activities WHERE lead_id=? AND activity_type='trial'", (lid,)
+        ).fetchall()
+
+
+def test_seven_day_trial_runs_consecutively_from_the_day_they_came(app, client, monkeypatch):
+    import onecpase.leads as leads
+
+    class Nov3(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 11, 3)
+
+    monkeypatch.setattr(leads, "date", Nov3)
+    lid = _trial_prospect(app, client)
+    assert b">7 Day Trial</button>" in client.get(f"/leads/{lid}").data
+
+    client.post(f"/leads/{lid}/seven-day-trial")
+    client.post(f"/leads/{lid}/seven-day-trial")
+
+    trials = _trials(app, lid)
+    assert len(trials) == 1 and trials[0]["scheduled_for"] == "2026-11-01"
+    page = client.get(f"/leads/{lid}").get_data(as_text=True)
+    assert "01 Nov 2026 to 07 Nov 2026" in page and "Day 3 of 7" in page
+    assert ">7 Day Trial</button>" not in page
+    with app.app_context():
+        lead = get_db().execute("SELECT lead_status, decision_date FROM leads WHERE id=?", (lid,)).fetchone()
+    assert lead["lead_status"] == "show" and lead["decision_date"] is None
+
+
+def test_no_seven_day_trial_before_they_come_in_or_after_the_seven_days(app, client, monkeypatch):
+    import onecpase.leads as leads
+
+    class Nov8(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 11, 8)
+
+    monkeypatch.setattr(leads, "date", Nov8)
+    booked = _trial_prospect(app, client, status="appointment_booked", came_in=None)
+    assert b"7 Day Trial" not in client.get(f"/leads/{booked}").data
+    client.post(f"/leads/{booked}/seven-day-trial")
+    assert not _trials(app, booked)
+
+    late = _trial_prospect(app, client)
+    assert b">7 Day Trial</button>" not in client.get(f"/leads/{late}").data
+    client.post(f"/leads/{late}/seven-day-trial")
+    assert not _trials(app, late)
+
+
 def test_category_one_skips_three_rotation_turns_then_restores_consultant(app):
     with app.app_context():
         db = get_db()
@@ -790,6 +900,7 @@ def test_pipeline_renders_as_a_vertical_accordion(client):
                 "INSERT INTO leads (full_name, phone, lead_status, source) VALUES (?,?,?,?)",
                 (name, "082 000 0000", status, "Walk-In / Enquiry"),
             )
+        db.execute("UPDATE leads SET assigned_to=1 WHERE full_name LIKE 'Accordion %'")
         db.commit()
 
     html = client.get("/leads/", follow_redirects=True).get_data(as_text=True)

@@ -139,12 +139,22 @@ def test_sales_period_events_use_sast_first_booking_and_consultant_scope(app):
                                       (2,'2026-10-28','2026-10-28',60)):
             db.execute("INSERT INTO pbx_call_logs(user_id,direction,start_time,created_at,talk_duration) VALUES(?,'outbound',?,?,?)",(uid,start,created,talk))
         p=resolve_period({'period':'cycle'},today=date(2026,10,28))
+        for lid, uid, outcome, stamp in (
+            (1,1,'appointment_booked','2026-10-27T22:30:00Z'),
+            (2,1,'no_response','2026-10-28T08:00:00Z'),
+            (3,2,'follow_up_required','2026-10-28T08:00:00Z'),
+            (1,1,'not_interested','2026-09-28T08:00:00Z'),
+        ):
+            db.execute("INSERT INTO lead_activities(lead_id,activity_type,outcome,created_by,occurred_at) VALUES(?,'call',?,?,?)",
+                       (lid,outcome,uid,stamp))
         rows={r['label']:r for r in activity_rows(db,p,'sales',1,allowed_ids=[1])}
         assert rows['Leads assigned']['current']==2
         assert rows['First contacts recorded']['current']==rows['First contacts recorded']['previous']==1
         assert rows['First appointments booked']['current']==rows['First appointments booked']['previous']==1
-        assert rows['Outbound calls']['current']==2
-        assert rows['Calls meeting connection target (≥60s)']['current']==1
+        assert rows['Calls made']['current']==2
+        assert rows['Connected calls']['current']==1
+        assert rows['Calls made']['previous']==rows['Connected calls']['previous']==1
+        assert not any('60s' in label for label in rows)
 
 
 def test_sales_dashboard_business_dates_preserve_legacy_report_option(app):

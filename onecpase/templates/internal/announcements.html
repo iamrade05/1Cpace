@@ -43,7 +43,7 @@
                    padding:1px 9px;font-size:.72rem;font-weight:700;">NEW</span>
       {% endif %}
       <span style="color:var(--t2);font-size:.76rem;">
-        {{ a.author or 'Management' }} · {{ (a.created_at or '')|string|truncate(16, true, '') }}
+        {{ a.author or 'Management' }} · {{ a.created_at|sast }}
       </span>
     </div>
 

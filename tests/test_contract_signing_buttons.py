@@ -21,6 +21,8 @@ class _SignButtons(HTMLParser):
 
 
 def _contract_page(app, client):
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     with app.app_context():
         db = get_db()
         member_id = db.execute(

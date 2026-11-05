@@ -435,6 +435,8 @@ def test_the_mandate_page_says_an_imported_mandate_is_live_and_offers_no_send_bu
 # ── The page ─────────────────────────────────────────────────────────────────
 
 def _sign_in(client, role="admin", permissions=()):
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,role,permissions=permissions)
     with client.session_transaction() as sess:
         sess.update({"user_id": 1, "username": "u", "role": role, "permissions": list(permissions)})
 
@@ -490,7 +492,7 @@ def test_a_failed_pull_changes_nothing_and_says_why(app, client):
 
 
 def test_staff_without_the_debicheck_permission_cannot_run_it(app, client):
-    _sign_in(client, role="reception", permissions=[])
+    _sign_in(client, role="staff", permissions=[])
 
     with patch("onecpase.nupay_driver.fetch_mandate_report_rows") as pull:
         response = client.post("/debicheck/sync", data={"action": "apply"})

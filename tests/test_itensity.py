@@ -6,6 +6,7 @@ from onecpase.integrations import push_member_to_itensity
 
 
 def _ready_application(db):
+    db.execute("INSERT OR IGNORE INTO users(id,username,password_hash,full_name,role,active) VALUES (1,'itensity-admin','x','Itensity Admin','admin',1)")
     member_id = db.execute(
         """INSERT INTO members
            (first_name, last_name, id_number, email, package, member_status)
@@ -51,11 +52,30 @@ def _ready_application(db):
     return application_id, member_id
 
 
+def _fully_ready_application(db):
+    """Every requirement in place: _ready_application plus the contract and paid reg fee."""
+    application_id, member_id = _ready_application(db)
+    db.execute(
+        "INSERT INTO member_documents (member_id, document_type, original_name, stored_name) VALUES (?, 'Signed Contract', 'contract.pdf', 'contract.pdf')",
+        (member_id,),
+    )
+    db.execute(
+        """INSERT INTO collections (member_id, amount_paid, outstanding_balance, collection_date, method, status, payment_purpose)
+           VALUES (?, 200, 0, '2026-10-30', 'card', 'paid', 'registration_fee')""",
+        (member_id,),
+    )
+    db.commit()
+    return application_id, member_id
+
+
 def _login(client):
+    from onecpase.tenants import TENANT_COOKIE_NAME
+    client.set_cookie(TENANT_COOKIE_NAME,'elev8')
     with client.session_transaction() as session:
         session["user_id"] = 1
         session["username"] = "testuser"
         session["role"] = "admin"
+        session['tenant_slug']='elev8'
 
 
 def test_push_rejects_third_party_debit_order(app):
@@ -78,6 +98,8 @@ def test_push_reports_missing_driver(app):
     app.config.update(RADEPULSE_PATH=str(app.config["DATABASE_PATH"]) + "-no-such-dir")
 
     with app.app_context():
+        from flask import g
+        g.tenant_slug='elev8'
         success, reference, error = push_member_to_itensity(
             {"first_name": "Ada", "last_name": "Lovelace", "payment_type": "Debit Order"}
         )
@@ -95,7 +117,7 @@ def test_push_application_starts_background_push(app):
     # mutate global state and break anything else in-process that also
     # constructs a Thread, e.g. Flask-Limiter's internal timer).
     with app.app_context():
-        application_id, member_id = _ready_application(get_db())
+        application_id, member_id = _fully_ready_application(get_db())
 
     with app.test_client() as client:
         _login(client)
@@ -118,7 +140,7 @@ def test_background_push_activates_application_on_success(app):
     # rather than through the route so the assertion isn't racing a real
     # background thread.
     with app.app_context():
-        application_id, member_id = _ready_application(get_db())
+        application_id, member_id = _fully_ready_application(get_db())
         db_path = get_db().execute("PRAGMA database_list").fetchone()["file"]
 
     with patch(
@@ -126,7 +148,7 @@ def test_background_push_activates_application_on_success(app):
         return_value=(True, "IT-99", None),
     ):
         _background_itensity_push(
-            app, db_path, application_id, member_id, None, False, [], None,
+            app, db_path, application_id, member_id, None, False, [], 1,
         )
 
     with app.app_context():
@@ -146,9 +168,9 @@ def test_background_push_activates_application_on_success(app):
         assert member["member_status"] == "Active"
 
 
-def test_background_push_marks_failed_and_stays_retryable(app):
+def test_background_push_requires_review_after_unconfirmed_external_failure(app):
     with app.app_context():
-        application_id, member_id = _ready_application(get_db())
+        application_id, member_id = _fully_ready_application(get_db())
         db_path = get_db().execute("PRAGMA database_list").fetchone()["file"]
 
     with patch(
@@ -156,7 +178,7 @@ def test_background_push_marks_failed_and_stays_retryable(app):
         return_value=(False, None, "service unavailable"),
     ):
         _background_itensity_push(
-            app, db_path, application_id, member_id, None, False, [], None,
+            app, db_path, application_id, member_id, None, False, [], 1,
         )
 
     with app.app_context():
@@ -169,11 +191,10 @@ def test_background_push_marks_failed_and_stays_retryable(app):
         member = db.execute(
             "SELECT itensity_ref, member_status FROM members WHERE id = ?", (member_id,)
         ).fetchone()
-        # push_status is 'push_failed' (not the pre-push 'not_pushed') so the
-        # UI can show what happened, but application_status never advanced —
-        # the push can simply be retried.
+        # An unconfirmed external failure cannot safely be retried as a create.
+        # Local activation stays unchanged while an administrator reviews it.
         assert application["application_status"] == "ready_to_push"
-        assert application["push_status"] == "push_failed"
+        assert application["push_status"] == "push_unknown"
         assert application["pushed_at"] is None
         assert member["itensity_ref"] is None
         assert member["member_status"] == "Unverified"

@@ -31,6 +31,8 @@ def _collection(db, member_id, day, status="failed", purpose="general"):
 
 
 def _login(client, user_id=1, role="admin"):
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,role,user_id)
     with client.session_transaction() as sess:
         sess.update({"user_id": user_id, "username": "u", "role": role})
 

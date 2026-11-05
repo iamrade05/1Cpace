@@ -71,7 +71,7 @@
           <span style="font-size:0.72rem;color:#b45309;">Not sent</span>
           {% endif %}
         </td>
-        <td style="font-size:0.78rem;color:#9ca3af;">{{ r.registered_at|string|truncate(16, true, '') }}</td>
+        <td style="font-size:0.78rem;color:#9ca3af;">{{ r.registered_at|sast }}</td>
       </tr>
       {% else %}
       <tr><td colspan="13" style="color:#9ca3af;text-align:center;padding:24px;">No registrations yet.</td></tr>

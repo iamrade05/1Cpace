@@ -19,6 +19,8 @@ def _member(db, mid):
 
 
 def _login(client):
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     with client.session_transaction() as session:
         session["user_id"] = 1
         session["role"] = "admin"

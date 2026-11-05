@@ -226,7 +226,9 @@ def test_itensity_push_requires_debicheck_and_id_evidence(app):
         analysis = {"verification_qualified": 1}
 
         assert not _is_ready_to_push(cl, analysis)
-        assert _missing_requirements(cl, analysis) == ["DebiCheck approval not confirmed", "ID copy not uploaded"]
+        assert _missing_requirements(cl, analysis) == [
+            "DebiCheck approval not confirmed", "ID copy not uploaded", "Registration fee not fully paid",
+        ]
 
 
 def test_itensity_push_still_requires_the_contract_and_statement_themselves(app):

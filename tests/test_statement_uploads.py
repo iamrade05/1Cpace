@@ -5,6 +5,7 @@ from flask import session
 from werkzeug.datastructures import FileStorage
 from onecpase.database import get_db
 from onecpase.statement_uploads import upload_statements
+from auth_helpers import ensure_staff_account
 
 
 def seed(db):
@@ -22,9 +23,10 @@ def test_member_and_application_upload_multiple_statements(app, monkeypatch, ret
     with app.app_context():
         mid = seed(get_db())
     with app.test_client() as client:
+        ensure_staff_account(client,'admin')
         with client.session_transaction() as sess:
             sess.update(user_id=1, username='testuser', role='admin')
-        data = {'document_type': 'Bank Statement', 'document': [(io.BytesIO(b'pdf'), 'jan.pdf'), (io.BytesIO(b'pdf'), 'feb.pdf')]}
+        data = {'document_type': 'Bank Statement', 'document': [(io.BytesIO(b'january'), 'jan.pdf'), (io.BytesIO(b'february'), 'feb.pdf')]}
         if return_to:
             data['return_to'] = return_to
         response = client.post(f'/members/{mid}/documents', data=data)
@@ -56,6 +58,7 @@ def test_debicheck_upload_stays_inline_and_uses_shared_analysis(app, monkeypatch
     with app.app_context():
         mid = seed(get_db())
     with app.test_client() as client:
+        ensure_staff_account(client,'admin')
         with client.session_transaction() as sess:
             sess.update(user_id=1, username='testuser', role='admin')
         page = client.get(f'/debicheck/add?member_id={mid}')
@@ -84,6 +87,7 @@ def test_debicheck_document_upload_requires_permission(app):
     with app.app_context():
         mid = seed(get_db())
     with app.test_client() as client:
+        ensure_staff_account(client,'staff',permissions=[])
         with client.session_transaction() as sess:
             sess.update(user_id=1, username='testuser', role='staff', permissions=[])
         response = client.post(f'/debicheck/members/{mid}/documents', data={
@@ -100,11 +104,13 @@ def test_collections_document_upload_keeps_task_ownership(app):
         task = db.execute("INSERT INTO collection_call_tasks(task_date,member_id,queue_type,assigned_to) VALUES('2026-10-13',?,'collections',1)", (mid,)).lastrowid
         db.commit()
     with app.test_client() as client:
+        ensure_staff_account(client,'admin')
         with client.session_transaction() as sess:
             sess.update(user_id=1, username='testuser', role='admin')
         response = client.post(f'/collections/call-queue/{task}/documents', data={
             'document_type': 'SA ID Copy', 'document': (io.BytesIO(b'jpg'), 'identity.jpg')})
         assert response.status_code == 200
+        ensure_staff_account(client,'staff',user_id=2,permissions=['collections_call_queue'])
         with client.session_transaction() as sess:
             sess.update(user_id=2, role='staff', permissions=['collections_call_queue'])
         response = client.post(f'/collections/call-queue/{task}/documents', data={
@@ -124,7 +130,7 @@ def test_failed_file_not_hidden_by_successful_file(app, monkeypatch):
         session['user_id'] = 1
         db = get_db()
         mid = seed(db)
-        result = upload_statements(db, mid, [FileStorage(io.BytesIO(b'pdf'), filename=name) for name in ['bad.pdf', 'ok.pdf']])
+        result = upload_statements(db, mid, [FileStorage(io.BytesIO(name.encode()), filename=name) for name in ['bad.pdf', 'ok.pdf']])
         assert 'Unreadable PDF' in result['error']
         assert not result['cashflow']['enough_months']
         assert db.execute('SELECT bank_statement_status FROM compliance_checklists').fetchone()[0] == 'uploaded'
@@ -138,6 +144,7 @@ def test_collections_uses_shared_upload_rules(app, monkeypatch):
         task = db.execute("INSERT INTO collection_call_tasks(task_date,member_id,queue_type,assigned_to) VALUES('2026-10-12',?,'collections',1)", (mid,)).lastrowid
         db.commit()
     with app.test_client() as client:
+        ensure_staff_account(client,'admin')
         with client.session_transaction() as sess:
             sess.update(user_id=1, username='testuser', role='admin')
         response = client.post(f'/collections/call-queue/{task}/bank-statement', data={'document': (io.BytesIO(b'pdf'), 'one.pdf')})
@@ -161,7 +168,7 @@ def test_failed_batch_cannot_qualify_through_last_successful_document(app, monke
         session['user_id']=1
         db=get_db()
         mid=seed(db)
-        result=upload_statements(db,mid,[FileStorage(io.BytesIO(b'pdf'),filename=name) for name in ['bad.pdf','good.pdf']])
+        result=upload_statements(db,mid,[FileStorage(io.BytesIO(name.encode()),filename=name) for name in ['bad.pdf','good.pdf']])
         assert result['cashflow']['enough_months']
         assert result['error']
         assert not statement_months_analysed(db,mid)

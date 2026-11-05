@@ -1,6 +1,6 @@
 {% if settlement and settlement.accepted %}
 <h2>Cancellation settlement</h2>
-<p>Signed request returned {{ settlement.signed_at }} · {{ 'Cash settlement' if settlement.option=='cash' else 'Six monthly instalments' }}</p>
+<p>Signed request returned {{ settlement.signed_at|sast }} · {{ 'Cash settlement' if settlement.option=='cash' else 'Six monthly instalments' }}</p>
 <p>Total R{{ settlement.total }} · received R{{ settlement.paid }} · outstanding R{{ settlement.balance }}</p>
 {% for refund in settlement.refunds %}<p>Refund deducted: R{{ refund.amount }} · refund query #{{ refund.query_id }}</p>{% endfor %}
 {% if settlement.instalments %}<p>{{ settlement.paid_count }} of 6 instalments paid{% if settlement.review_on %} · Reception review {{ settlement.review_on }}{% endif %}</p>

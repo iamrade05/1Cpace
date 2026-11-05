@@ -10,6 +10,8 @@ from onecpase.applications import nupay_submission_blockers
 
 @pytest.mark.parametrize("second_month,error,ready", [(2, None, True), (1, None, False), (2, "Unreadable PDF", False)])
 def test_batch_upload_updates_nupay_requirements(client, monkeypatch, second_month, error, ready):
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     with client.session_transaction() as session:
         session.update(user_id=1, username="testuser", role="admin")
     with client.application.app_context():
@@ -31,7 +33,7 @@ def test_batch_upload_updates_nupay_requirements(client, monkeypatch, second_mon
     monkeypatch.setattr("onecpase.statement_uploads.analyse_pdf", analyse)
     response = client.post(f"/debicheck/members/{mid}/documents", data={
         "document_type": "Bank Statement",
-        "document": [(io.BytesIO(b"pdf"), "first.pdf"), (io.BytesIO(b"pdf"), "second.pdf")],
+        "document": [(io.BytesIO(b"first"), "first.pdf"), (io.BytesIO(b"second"), "second.pdf")],
     })
     assert response.status_code == 200
     requirements = client.get(f"/debicheck/requirements/{mid}")

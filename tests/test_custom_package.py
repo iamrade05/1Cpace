@@ -21,6 +21,13 @@ ID_NUMBER = "9001015009087"
 
 
 def _sign_in(client, role):
+    with client.application.app_context():
+        db=get_db()
+        db.execute("INSERT OR IGNORE INTO users(id,username,password_hash,full_name,role,active) VALUES(1,'package-user','x','Package User',?,1)",(role,))
+        db.execute('UPDATE users SET role=? WHERE id=1',(role,))
+        for permission in ('add_member','all_members'):
+            db.execute('INSERT OR IGNORE INTO user_permissions(user_id,permission) VALUES (1,?)',(permission,))
+        db.commit()
     with client.session_transaction() as sess:
         sess.update({"user_id": 1, "username": "u", "role": role, "permissions": ["add_member", "all_members"]})
 

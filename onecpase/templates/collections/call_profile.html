@@ -23,6 +23,9 @@
   </div>
 </div>
 
+{% include 'collections/_call_script.html' %}
+{% include 'collections/_arrangement_confirmation.html' %}
+
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px;">
   <div class="form-card"><div class="kpi-label">Total Owing</div><div class="kpi-value" style="color:var(--err);">R{{ '%.2f'|format(arrears.total_arrears or 0) }}</div><div class="kpi-sub">From payment ledger</div></div>
   <div class="form-card"><div class="kpi-label">Months Owing</div><div class="kpi-value">{{ arrears.months_in_arrears or 0 }}</div><div class="kpi-sub">{{ arrears.category_label }}</div></div>
@@ -35,7 +38,7 @@
     <h3 style="margin-bottom:12px;">Payment &amp; Debit Profile</h3>
     <div class="table-wrap"><table style="width:100%;font-size:.82rem;" class="table">
       <tr><td style="color:var(--t2);padding:6px;">DebiCheck in place</td><td><strong>{% if mandate %}{{ mandate.status|title }}{% else %}No mandate recorded{% endif %}</strong></td></tr>
-      {% if mandate %}<tr><td style="color:var(--t2);padding:6px;">Mandate amount</td><td class="num">R{{ '%.2f'|format(mandate.instalment_amount or 0) }}</td></tr><tr><td style="color:var(--t2);padding:6px;">Submitted</td><td>{{ mandate.submitted_at or mandate.created_at }}</td></tr>{% endif %}
+      {% if mandate %}<tr><td style="color:var(--t2);padding:6px;">Mandate amount</td><td class="num">R{{ '%.2f'|format(mandate.instalment_amount or 0) }}</td></tr><tr><td style="color:var(--t2);padding:6px;">Submitted</td><td>{{ (mandate.submitted_at or mandate.created_at)|sast }}</td></tr>{% endif %}
       <tr><td style="color:var(--t2);padding:6px;">Last payment</td><td>{{ payment_stats.last_payment_date or 'No payment recorded' }}</td></tr>
       <tr><td style="color:var(--t2);padding:6px;vertical-align:top;">Payment methods</td><td>{% for method in payment_methods %}<div><strong>{{ ('Debit Order' if method.method == 'debicheck' else method.method|title) }}</strong>: {{ method.payments }} payment{{ 's' if method.payments != 1 }} · R{{ '%.2f'|format(method.amount or 0) }}</div>{% else %}No successful payment methods recorded{% endfor %}</td></tr>
     </table></div>
@@ -46,7 +49,7 @@
     <div style="padding:10px;background:var(--s2);border-radius:8px;margin-bottom:12px;">
       <div class="kpi-label">Last Gym Visit</div>
       {% if last_gym_visit %}<strong>{{ last_gym_visit.last_visited }}</strong><div style="color:var(--t2);font-size:.78rem;">{{ last_gym_visit.days_ago }} days ago · {{ last_gym_visit.shift }} · {{ last_gym_visit.source }}</div>{% else %}<strong>No visit found</strong>{% endif %}
-      <div class="u-d02a9dfb"><span class="badge {{ {'active':'badge-success','recent':'badge-success','slipping':'badge-warning','inactive':'badge-danger'}.get(visit_approach.band,'badge-gray') }}">{{ visit_approach.label }}</span> {{ visit_approach.approach }}</div>
+      <div class="u-d02a9dfb"><span class="badge {{ {'active':'badge-success','recent':'badge-success','slipping':'badge-warning','inactive':'badge-danger'}.get(visit_approach.band,'badge-gray') }}">{{ visit_approach.label }}</span> Use the conversation guide to discuss training and any account concerns.</div>
     </div>
     <div><strong>{{ queries|length }} recent quer{{ 'y' if queries|length == 1 else 'ies' }}</strong></div>
     {% for query in queries %}<div style="border-top:1px solid var(--b1);padding:8px 0;font-size:.8rem;"><span class="badge badge-gray">{{ query.status|replace('_',' ')|title }}</span> <strong>{{ query.category|replace('_',' ')|title }}</strong> — {{ query.query_type or query.description }}<br><small style="color:var(--t2);">{{ query.reference or ('Query #' ~ query.id) }} · {{ query.created_at }}</small></div>{% else %}<p style="color:var(--t2);font-size:.82rem;">No query has been logged for this client.</p>{% endfor %}
@@ -86,7 +89,7 @@
   </section>
   <section class="form-card">
     <h3 style="margin-bottom:12px;">Previous Collections Calls</h3>
-    {% for call in previous_calls %}<div style="padding:8px 0;border-bottom:1px solid var(--b1);font-size:.82rem;"><strong>{{ call.outcome|replace('_',' ')|title }}</strong> · {{ call.caller_name }}<br><small style="color:var(--t2);">{{ call.called_at }}{% if call.notes %} · {{ call.notes }}{% endif %}</small></div>{% else %}<p style="color:var(--t2);">No previous Collections call recorded.</p>{% endfor %}
+    {% for call in previous_calls %}<div style="padding:8px 0;border-bottom:1px solid var(--b1);font-size:.82rem;"><strong>{{ call.outcome|replace('_',' ')|title }}</strong> · {{ call.caller_name }}<br><small style="color:var(--t2);">{{ call.called_at|sast }}{% if call.notes %} · {{ call.notes }}{% endif %}</small></div>{% else %}<p style="color:var(--t2);">No previous Collections call recorded.</p>{% endfor %}
   </section>
 </div>
 
@@ -104,7 +107,7 @@
 
 <section class="form-card" style="border-left:4px solid var(--info);">
   <h3 style="margin-bottom:6px;">Record Today’s Call</h3>
-  <div class="u-9b7ee8be"><span class="badge {{ {'active':'badge-success','recent':'badge-success','slipping':'badge-warning','inactive':'badge-danger'}.get(visit_approach.band,'badge-gray') }}">{{ visit_approach.label }}</span> {{ visit_approach.approach }}</div>
+  <div class="u-9b7ee8be"><span class="badge {{ {'active':'badge-success','recent':'badge-success','slipping':'badge-warning','inactive':'badge-danger'}.get(visit_approach.band,'badge-gray') }}">{{ visit_approach.label }}</span> Record the client’s response and any agreed next step.</div>
   {% if task.status == 'completed' %}
   <div class="alert alert-success"><strong>Completed:</strong> {{ task.outcome|replace('_',' ')|title }}{% if task.notes %} — {{ task.notes }}{% endif %}</div>
   {% if task.outcome in ('no_answer', 'busy', 'voicemail', 'wrong_number') %}
@@ -144,7 +147,7 @@
   </div>
   {% endif %}
   {% else %}
-  <form method="post" action="{{ url_for('collections.record_call_result', task_id=task.id) }}">
+  <form id="collection-call-result-form" method="post" action="{{ url_for('collections.record_call_result', task_id=task.id) }}">
     <div class="form-group"><label class="form-label">Call outcome *</label><select name="outcome" id="outcome-select" class="form-control" required onchange="outcomeChanged()"><option value="">Select result…</option>{% for key,label,successful in call_outcomes %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select></div>
     <div class="form-group" id="detail-group" style="display:none;">
       <label class="form-label" id="detail-label"></label>
@@ -165,14 +168,15 @@
     </div>
     <div id="offer-panel" class="form-card" style="display:none;margin-bottom:14px;border-left:4px solid var(--red);">
       <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
-        <strong>Promise to Pay — offer decision</strong>
+        <strong>Negotiation — payment options</strong>
         <span class="badge badge-gray" id="offer-decision">Calculating…</span>
       </div>
+      <div id="offer-figures" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;"></div>
       <div class="form-grid-2">
         <div class="form-group"><label class="form-label">Client wants to</label>
           <select name="intention" id="offer-intention" class="form-control"><option value="instalments">Pay upfront, then instalments</option><option value="settle">Settle in full</option><option value="instalments_only">Instalments only (no upfront)</option></select></div>
-        <div class="form-group" id="offer-upfront-group"><label class="form-label">Upfront paid by the client (R)</label>
-          <input type="number" min="0" step="0.01" name="upfront_offered" id="offer-upfront" class="form-control" placeholder="0.00"><div class="u-4573ea24">Only enter this once the client has actually paid it.</div></div>
+        <div class="form-group" id="offer-upfront-group"><label class="form-label">Upfront the client can offer (R)</label>
+          <input type="number" min="0" step="0.01" name="upfront_offered" id="offer-upfront" class="form-control" placeholder="0.00"><div class="u-4573ea24">A proposed amount is not a received payment. Mark it verified only after the payment is confirmed.</div></div>
       </div>
       <div class="form-grid-2">
         <div class="form-group"><label class="form-label">How much can the client afford to pay above the normal instalment (R)</label>
@@ -192,7 +196,6 @@
       <label style="display:flex;gap:8px;align-items:center;font-size:.85rem;margin-bottom:8px;"><input type="checkbox" name="returning_member" id="offer-returning" value="1"> Client wants to return as a member</label>
       <div class="form-group" id="offer-bank-group" style="display:none;"><label class="form-label">Bank statement review</label>
         <select name="bank_statement_status" id="offer-bank" class="form-control"><option value="">Not reviewed</option><option value="pending">Sent for review</option><option value="reviewed">Reviewed</option></select></div>
-      <div id="offer-figures" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:10px 0;"></div>
       <div id="offer-arrangement"></div>
       <div id="offer-copy" class="u-41d48e79">
         <button type="button" class="btn btn-secondary btn-sm" onclick="copyOffer('whatsapp', this)">Copy WhatsApp</button>
@@ -203,13 +206,14 @@
       <div style="color:var(--t2);font-size:.78rem;margin-top:8px;">
         Attendance: {% if last_gym_visit %}last visit {{ last_gym_visit.last_visited }} ({{ last_gym_visit.days_ago }} days ago, {{ last_gym_visit.source }}){% else %}no recorded visit found — history unknown, not proof of non-attendance{% endif %}.
       </div>
-      <div style="color:var(--t2);font-size:.74rem;margin-top:6px;">Preview only: the promise records this offer in the call notes. No discount is applied and no balance changes until the agreed conditions are met.</div>
+      <div style="color:var(--t2);font-size:.74rem;margin-top:6px;">Explore first. Select Promise to Pay as the call outcome only when the client accepts the terms. No discount is applied and no balance changes until the agreed conditions are met.</div>
     </div>
     <div class="form-group"><label class="form-label" id="notes-label">Notes</label><textarea name="notes" id="notes-input" class="form-control" rows="3" placeholder="Record what the client said"></textarea></div>
     <button class="btn btn-primary" type="submit" id="save-result-btn">Save Call Result</button>
   </form>
   <script>
   var OUTCOME_FOLLOW_UPS = {{ outcome_follow_ups|tojson }};
+  var negotiationPreviewOpen = false;
   var OWED = {{ (arrears.total_arrears if arrears else 0)|tojson }};
   function updateReactivation() {
     var owing = document.getElementById('outcome-select').value === 'want_to_reactivate'
@@ -249,8 +253,8 @@
       });
     }
     var showOffer = outcome === 'promised_to_pay';
-    document.getElementById('offer-panel').style.display = showOffer ? 'block' : 'none';
-    if (showOffer) { renderOffer(INITIAL_OFFER); refreshOffer(); }
+    document.getElementById('offer-panel').style.display = showOffer || negotiationPreviewOpen ? 'block' : 'none';
+    if (showOffer || negotiationPreviewOpen) { renderOffer(INITIAL_OFFER); refreshOffer(); }
     syncOfferForm();
     var showCallback = outcome === 'asked_callback';
     document.getElementById('callback-group').style.display = showCallback ? 'grid' : 'none';
@@ -372,6 +376,7 @@
         monthly_affordable: document.getElementById('offer-affordable').value || '0',
         upfront_verified: document.getElementById('offer-verified').checked ? '1' : '',
         returning_member: returning ? '1' : '',
+        conversation_intention: document.getElementById('conversation-intention') ? document.getElementById('conversation-intention').value : '',
         bank_statement_status: document.getElementById('offer-bank').value
       });
       fetch(OFFER_URL + '?' + params.toString(), {credentials: 'same-origin'})

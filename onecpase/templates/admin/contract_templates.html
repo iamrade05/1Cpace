@@ -17,7 +17,7 @@
         <td>{{ template.gym_name }}<br><small style="color:var(--t2);">{{ template.agreement_title }}</small></td>
         <td>{{ template.terms_text.split('\n')|length }} terms</td>
         <td><span class="badge {{ 'badge-success' if template.active else 'badge-gray' }}">{{ 'Active' if template.active else 'Inactive' }}</span></td>
-        <td style="color:var(--t2);">{{ (template.updated_at or template.created_at)|string|truncate(19, True, '') }}</td>
+        <td style="color:var(--t2);">{{ (template.updated_at or template.created_at)|sast('%Y-%m-%d %H:%M:%S') }}</td>
         <td><div style="display:flex;gap:7px;flex-wrap:wrap;">
           <a href="{{ url_for('admin.contract_template_edit', template_id=template.id) }}" class="btn btn-ghost btn-sm">Edit</a>
           {% if not template.is_default %}

@@ -63,7 +63,7 @@
 <div id="ov-collections" class="report-section active">
   <div class="card"><div class="card-header"><h3 class="card-title">Collections — Last 6 Months</h3></div>
   <div class="card-body" style="padding:0;"><div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
-    <thead><tr><th>Month</th><th class="text-right">Collected</th><th class="text-right">Outstanding</th><th class="text-right">Records</th></tr></thead>
+    <thead><tr><th>Cycle</th><th class="text-right">Cash Collected</th><th class="text-right">Net Unsettled in Cycle</th><th class="text-right">Records</th></tr></thead>
     <tbody>{% for r in monthly %}<tr><td>{{ r['month'] }}</td><td class="text-right" style="color:#28a745;">R {{ '{:,.2f}'.format(r['collected']|float) }}</td><td class="text-right" style="color:#dc3545;">R {{ '{:,.2f}'.format(r['outstanding']|float) }}</td><td class="text-right">{{ r['cnt'] }}</td></tr>{% else %}<tr><td colspan="4" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
   </table></div></div></div>
 </div>
@@ -182,10 +182,12 @@
 <div class="kpi-grid" style="grid-template-columns:repeat(auto-fill,minmax(175px,1fr));margin-bottom:20px;">
   <div class="kpi-card" style="border-left-color:#28a745;"><div class="kpi-label">Total Collected</div><div class="kpi-value" style="color:#28a745;">R {{ '{:,.2f}'.format(totals['total_collected']|float) }}</div></div>
   <div class="kpi-card" style="border-left-color:#007bff;"><div class="kpi-label">Total Billed</div><div class="kpi-value">R {{ '{:,.2f}'.format(totals['total_billed']|float) }}</div></div>
-  <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Outstanding</div><div class="kpi-value" style="color:#dc3545;">R {{ '{:,.2f}'.format((totals['total_billed']|float)-(totals['total_collected']|float)) }}</div></div>
+  <div class="kpi-card" style="border-left-color:#dc3545;"><div class="kpi-label">Net Unsettled in Period</div><div class="kpi-value" style="color:#dc3545;">R {{ '{:,.2f}'.format(totals['total_outstanding']|float) }}</div></div>
+  <div class="kpi-card"><div class="kpi-label">Discount Credits</div><div class="kpi-value">R {{ '{:,.2f}'.format(totals['total_credits']|float) }}</div></div>
   <div class="kpi-card" style="border-left-color:#6c757d;"><div class="kpi-label">Collection Rate</div>{% if totals['total_billed'] and totals['total_billed']>0 %}<div class="kpi-value">{{ '{:.1f}'.format(totals['total_collected']/totals['total_billed']*100) }}%</div>{% else %}<div class="kpi-value">—</div>{% endif %}</div>
   <div class="kpi-card" style="border-left-color:#17a2b8;"><div class="kpi-label">Records</div><div class="kpi-value">{{ totals['total_records'] }}</div></div>
 </div>
+<p>Cash collected excludes discount credits. Net unsettled uses charges, cash and credits recorded in the selected period, calculated separately for each member. It is not the current account arrears balance.</p>
 
 {{ chip_bar([
   ('fi-monthly',    'Monthly Collections'),
@@ -198,7 +200,7 @@
 <div id="fi-monthly" class="report-section active">
   <div class="card"><div class="card-header"><h3 class="card-title">Monthly Collections</h3><span style="font-size:.78rem;color:#6b7280;">{{ period_label }}</span></div>
   <div class="card-body" style="padding:0;"><div class="table-wrap"><table class="data-table table" style="font-size:.83rem;">
-    <thead><tr><th>Month</th><th class="text-right">Collected</th><th class="text-right">Outstanding</th><th class="text-right">Records</th><th class="text-right">Paid</th><th class="text-right">Partial</th><th class="text-right">Failed</th></tr></thead>
+    <thead><tr><th>Cycle</th><th class="text-right">Cash Collected</th><th class="text-right">Net Unsettled in Cycle</th><th class="text-right">Records</th><th class="text-right">Paid</th><th class="text-right">Partial</th><th class="text-right">Failed</th></tr></thead>
     <tbody>{% for r in monthly_collections %}<tr><td>{{ r['month'] }}</td><td class="text-right" style="color:#28a745;"><strong>R {{ '{:,.2f}'.format(r['collected']|float) }}</strong></td><td class="text-right" style="color:#dc3545;">R {{ '{:,.2f}'.format(r['outstanding']|float) }}</td><td class="text-right">{{ r['cnt'] }}</td><td class="text-right">{{ r['paid_cnt'] }}</td><td class="text-right">{{ r['partial_cnt'] }}</td><td class="text-right" style="color:#dc3545;">{{ r['failed_cnt'] }}</td></tr>{% else %}<tr><td colspan="7" class="text-center text-muted">No data</td></tr>{% endfor %}</tbody>
   </table></div></div></div>
 </div>

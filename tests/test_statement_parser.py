@@ -43,6 +43,8 @@ To Date: 30/09/2026 Closing Balance: R200.00
 
 
 def _login(client):
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,'admin')
     with client.session_transaction() as session:
         session["user_id"] = 1
         session["username"] = "testuser"

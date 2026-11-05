@@ -10,6 +10,7 @@ from onecpase import fitness_allocation as allocation
 def setup(db):
     db.execute("INSERT INTO users(id,username,password_hash,full_name,role,active) VALUES(1,'offer-test','x','Instructor','trainer',1)")
     db.execute("INSERT INTO users(id,username,password_hash,full_name,role,active) VALUES(2,'manager-test','x','Manager','manager',1)")
+    db.execute("INSERT INTO user_permissions(user_id,permission) VALUES(2,'fitness_module')")
     mid = db.execute("INSERT INTO members(first_name,last_name,id_number,contact,outcome,join_date) VALUES('New','Member','offers-id','0821234567','joined','2026-10-25')").lastrowid
     ensure_journey(db)
     db.execute("UPDATE fitness_intake SET goal_category='muscle_gain',allocation_state='awaiting_allocation' WHERE member_id=?",(mid,))
@@ -51,6 +52,7 @@ def test_fourth_management_counted_skip_raises_review_without_auto_restriction(a
 def test_review_page_requires_management(app,client):
     with app.app_context():
         setup(get_db())
+        get_db().commit()
     with client.session_transaction() as state:
         state.update(user_id=1,role='trainer',permissions=['fitness_module'])
     assert client.get('/fitness/intake/allocation-reviews').status_code==403
@@ -194,7 +196,9 @@ def test_overlapping_reservation_is_not_double_booked_and_rotation_persists(app)
 
 
 def test_manager_can_configure_roster_but_instructor_cannot(app,client):
-    with app.app_context():setup(get_db())
+    with app.app_context():
+        setup(get_db())
+        get_db().commit()
     with client.session_transaction() as state:
         state.update(user_id=1,role='trainer',permissions=['fitness_module'])
     assert client.get('/fitness/intake/allocation-roster').status_code==403

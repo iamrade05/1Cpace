@@ -6,6 +6,13 @@ must not silently become stale when that copy has not been synchronised.
 """
 
 import os
+from flask import current_app, g, has_request_context
+
+
+def elev8_source_enabled() -> bool:
+    """The shared SQL source belongs to one explicitly bound gym only."""
+    return bool(has_request_context() and g.get('tenant_slug') and
+                g.tenant_slug == current_app.config.get('ACCESS_REPORT_TENANT_SLUG', 'elev8'))
 
 
 def _connection_string() -> str:
@@ -26,6 +33,8 @@ def get_elev8_member_count() -> int | None:
     Returns None when the external database is unavailable so callers can
     retain a safe local-data fallback rather than displaying a fabricated 0.
     """
+    if not elev8_source_enabled():
+        return None
     try:
         import pyodbc
         conn = pyodbc.connect(_connection_string(), timeout=8)

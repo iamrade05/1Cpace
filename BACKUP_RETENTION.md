@@ -1,11 +1,11 @@
 # Backup retention
 
-The user selected **five backups per type** on 18 October 2026:
+The user selected **five backups per type** on 18 October 2026, then lowered database snapshots to **three** on 5 November 2026 to save disk space:
 
-- Five valid scheduled database snapshots in `/opt/onecpase/backups`.
+- Three valid scheduled database snapshots in `/opt/onecpase/backups`. Three are made each morning, so this is about one day of history.
 - Five dated deployment rollback sets in `/opt/onecpase-backups`. Code/data archives with the same timestamp count as one set; a rollback directory can contain several related files.
 
-`onecpase/backup_retention.py` enforces this policy. Scheduled database snapshots are written to a temporary file, checked with SQLite `quick_check`, and published atomically before older backups are pruned. Failed snapshots do not replace complete ones. A database with a nonempty rollback journal is not counted as a complete backup. Pruning requires five valid snapshots before removing anything in that category.
+`onecpase/backup_retention.py` enforces this policy. Scheduled database snapshots are written to a temporary file, checked with SQLite `quick_check`, and published atomically before older backups are pruned. Failed snapshots do not replace complete ones. A database with a nonempty rollback journal is not counted as a complete backup. Pruning requires three valid snapshots before removing anything in that category.
 
 The deployment tool invokes the same policy after completing its backup. The `onecpase-backup-retention.timer` systemd timer also enforces it hourly for ad hoc backups. Its fifteen-minute grace period protects backups that may still be written; a sixth in-progress/recent set can temporarily remain until completion or the next check. Unrecognized files and top-level symlinks are preserved. Deletion targets must resolve inside the explicitly selected backup directory.
 

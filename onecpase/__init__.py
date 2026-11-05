@@ -6,6 +6,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from . import phases
 from .permissions import MODULE_PERMISSIONS
 from .config import Config
+from .local_time import sast
 from .database import close_db, init_db
 from .extensions import cache, mail, csrf, limiter
 from .platform_db import get_platform_db, close_platform_db, init_platform_db
@@ -50,6 +51,7 @@ from .mobile_api import mobile_bp
 def create_app(test_config: dict | None = None) -> Flask:
     app = Flask(__name__, instance_relative_config=False)
     app.config.from_object(Config)
+    app.add_template_filter(sast)
     if test_config:
         app.config.update(test_config)
 
@@ -73,7 +75,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         enable_inspect_mode(app)
 
     # ── Structured logging ────────────────────────────────────────────────────
-    if not app.debug:
+    if not app.debug and not app.testing and not any(isinstance(item, RotatingFileHandler) for item in app.logger.handlers):
         handler = RotatingFileHandler("1cpase.log", maxBytes=1_000_000, backupCount=5)
         handler.setLevel(logging.WARNING)
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
@@ -207,50 +209,33 @@ def create_app(test_config: dict | None = None) -> Flask:
         if not slug:
             return
 
-        cache_key = f"tenant:{slug}"
-        tenant = cache.get(cache_key)
-        if tenant is None:
-            row = get_platform_db().execute(
-                "SELECT * FROM tenants WHERE slug = ? AND active = 1", (slug,)
-            ).fetchone()
-            tenant = dict(row) if row else False
-            cache.set(cache_key, tenant, timeout=90)
+        # Tenant deactivation must revoke access on the next request.
+        row = get_platform_db().execute(
+            "SELECT * FROM tenants WHERE slug = ? AND active = 1", (slug,)
+        ).fetchone()
+        tenant = dict(row) if row else None
         if tenant:
             g.tenant = tenant
             g.tenant_slug = tenant["slug"]
 
     @app.before_request
     def _enforce_staff_access():
-        if request.endpoint == 'queries.member_form':
+        if request.endpoint in {'queries.member_form', 'contracts.public_share'}:
             return None  # The expiring link binds the tenant; browser staff cookies do not.
         if request.blueprint == 'mobile':
             return None  # Native API uses tenant-bound bearer identity, never browser cookies.
-        from .auth import _load_permissions, session_tenant_ok
-        from .database import get_db
-        from .permissions import staff_access_profile
+        from .auth import refresh_staff_session
 
-        if not session.get('user_id') or not session_tenant_ok() or request.blueprint in {'platform', 'auth', 'tenants', 'health', 'comms_webhooks', 'join'} or request.endpoint in {None, 'static'}:
+        if not session.get('user_id') or request.blueprint in {'platform', 'tenants', 'health', 'comms_webhooks', 'join'} or request.endpoint in {None, 'static'}:
             return None
-        if request.blueprint=='dashboard':
-            # Each dashboard enforces its own department boundary, including
-            # managers. Keep the operational-module profile rules separate.
-            from .dashboard_access import actor
-            dashboard_user=actor()
-            if dashboard_user:
-                session['role']=dashboard_user['role']
-                session['permissions']=sorted(_load_permissions(dashboard_user['id']))
-                session['access_profile']=staff_access_profile(dashboard_user['role'],dashboard_user['department'],dashboard_user['is_sales_consultant'])
+        if request.blueprint == 'auth' and request.endpoint != 'auth.change_password':
             return None
-        user = get_db().execute(
-            'SELECT role, department, is_sales_consultant FROM users WHERE id=?',
-            (session['user_id'],),
-        ).fetchone()
-        profile = staff_access_profile(user['role'], user['department'], user['is_sales_consultant']) if user else None
-        session['access_profile'] = profile
-        if not profile:
+        denied = refresh_staff_session()
+        if denied is not None:
+            return denied
+        profile = session['access_profile']
+        if not profile or request.blueprint in {'dashboard', 'auth'}:
             return None
-        session['role'] = user['role']
-        session['permissions'] = sorted(_load_permissions(session['user_id']))
         common = {'dashboard', 'members', 'queries', 'turnstile', 'hr', 'workforce', 'contracts', 'screen_recordings', 'notifications', 'training'}
         allowed = common | ({'fitness', 'onboarding', 'fitness_journey'} if profile == 'fitness' else {'leads', 'sales_pipeline', 'applications', 'call_list', 'first_month_collections', 'comms', 'internal_comms', 'pbx', 'debicheck'})
         if profile == 'reception':

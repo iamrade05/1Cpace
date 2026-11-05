@@ -187,12 +187,12 @@
 
         <div class="q-info-row">
           <div class="q-info-label">Logged By</div>
-          <div style="font-size:.82rem;">{{ qry.logged_by_name or '—' }} &bull; {{ qry.created_at[:16] }}</div>
+          <div style="font-size:.82rem;">{{ qry.logged_by_name or '—' }} &bull; {{ qry.created_at|sast }}</div>
         </div>
         {% if qry.closed_by_name %}
         <div class="q-info-row">
           <div class="q-info-label">Closed By</div>
-          <div style="font-size:.82rem;">{{ qry.closed_by_name }} &bull; {{ (qry.closed_at or '')[:16] }}</div>
+          <div style="font-size:.82rem;">{{ qry.closed_by_name }} &bull; {{ qry.closed_at|sast }}</div>
         </div>
         {% endif %}
       </div>
@@ -238,7 +238,7 @@
         <div class="cq-meta">
           Payment option: <strong>{{ method_labels.get(cq.payment_method, 'Not chosen yet') }}</strong>
           · agreed first payment <strong>{{ cq.first_payment_date or 'not set' }}</strong>
-          · saved by {{ cq.created_by_name or 'system' }} {{ (cq.created_at|string)[:16] }} · policy {{ cq.policy_version }}
+          · saved by {{ cq.created_by_name or 'system' }} {{ cq.created_at|sast }} · policy {{ cq.policy_version }}
         </div>
         {% if cancellation_quotes|length > 1 %}
         <details class="cq-history">
@@ -249,7 +249,7 @@
               {% for old in cancellation_quotes[1:] %}
               <tr>
                 <td>v{{ old.version }}</td>
-                <td>{{ (old.created_at|string)[:16] }} · {{ old.created_by_name or 'system' }}</td>
+                <td>{{ old.created_at|sast }} · {{ old.created_by_name or 'system' }}</td>
                 <td>R{{ '%.2f'|format(old.gross_total) }}</td>
                 <td>R{{ '%.2f'|format(old.cash_total) }}</td>
                 <td>R{{ '%.2f'|format(old.instalment_total) }}</td>
@@ -365,10 +365,10 @@
             {% if qry.outstanding_snapshot %} of R{{ '%.2f'|format(qry.outstanding_snapshot) }} at capture{% endif %}</div></div>
         {% endif %}
         <div class="q-info-row"><div class="q-info-label">Requested by</div>
-          <div style="font-size:.82rem;">{{ qry.approval_requested_by_name or '—' }}{% if qry.approval_requested_at %} &bull; {{ qry.approval_requested_at[:16] }}{% endif %}</div></div>
+          <div style="font-size:.82rem;">{{ qry.approval_requested_by_name or '—' }}{% if qry.approval_requested_at %} &bull; {{ qry.approval_requested_at|sast }}{% endif %}</div></div>
         {% if qry.approval_status in ('approved','rejected') %}
         <div class="q-info-row"><div class="q-info-label">Decided by</div>
-          <div style="font-size:.82rem;">{{ qry.manager_approved_by_name or '—' }}{% if qry.manager_approved_at %} &bull; {{ qry.manager_approved_at[:16] }}{% endif %}
+          <div style="font-size:.82rem;">{{ qry.manager_approved_by_name or '—' }}{% if qry.manager_approved_at %} &bull; {{ qry.manager_approved_at|sast }}{% endif %}
             {% if qry.approval_notes %}<div style="white-space:pre-wrap;color:#374151;margin-top:4px;">{{ qry.approval_notes }}</div>{% endif %}</div></div>
         {% endif %}
         {% if qry.approval_status == 'pending' %}
@@ -775,7 +775,7 @@
             <div class="tl-body">
               <div style="font-size:.83rem;color:#374151;">{{ n.note }}</div>
               <div class="tl-meta">
-                {{ n.author or 'System' }} &bull; {{ n.created_at[:16] }}
+                {{ n.author or 'System' }} &bull; {{ n.created_at|sast }}
               </div>
             </div>
           </div>

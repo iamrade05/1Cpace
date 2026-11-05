@@ -6,7 +6,7 @@
 <p>Reception verifies the returned request. The assigned manager records the final action before the original query is completed.</p>
 {% if session.get('role') in ['admin','manager'] and case.stage in ['intake','awaiting_member','awaiting_information','verification','awaiting_settlement','settlement_verification'] %}<details><summary>Assign a Reception verifier</summary><form method="post"><input type="hidden" name="action" value="assign_reception"><label>Reception reviewer<select name="reception_id" required>{% for person in reception_staff %}<option value="{{ person.id }}">{{ person.full_name }}</option>{% endfor %}</select></label><label>Assignment reason<textarea name="notes" required></textarea></label><button class="btn">Assign Reception reviewer</button></form></details>{% endif %}
 {% if overdue %}<p class="callout callout-danger" role="alert"><strong>Overdue — seven days since manager handoff.</strong> Debit-order cancellation remains incomplete. Due {{ qry.due_date }}.</p>{% endif %}
-{% if details.manager_handoff_at %}<p>Handed to the reception manager: {{ details.manager_handoff_at }} · deadline: {{ qry.due_date }}</p>{% endif %}
+{% if details.manager_handoff_at %}<p>Handed to the reception manager: {{ details.manager_handoff_at|sast }} · deadline: {{ qry.due_date }}</p>{% endif %}
 {% include 'queries/_funnel_evidence.html' %}
 {% if signed_fields %}<h2>Latest signed member details</h2><dl>{% for key,value in signed_fields.items() %}<dt>{{ key|replace('_',' ')|title }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
 {% if case.stage=='intake' %}
@@ -38,6 +38,6 @@
 {% if case.stage=='manager_cancel_old_mandate' %}<p>The replacement is approved. A manager must cancel the old order with the provider and confirm the actual provider outcome.</p><form method="post"><input type="hidden" name="action" value="old_mandate_cancelled"><label>Provider confirmation reference<input name="reference" required></label><label>Outcome notes<textarea name="notes" required></textarea></label><button class="btn">Record confirmed old-order cancellation</button></form>{% endif %}
 {% if case.stage=='payment_made' or (case.stage=='approved_awaiting_execution' and case.kind in ['complaint','proof_of_payment']) %}<form method="post"><input type="hidden" name="action" value="complete"><label>Outcome / communication notes<textarea name="notes" required></textarea></label><label><input type="checkbox" name="communicated" value="yes" required> Outcome communicated to the member</label><button class="btn">Record completion</button></form>{% endif %}
 </div>
-<h2>Retained submissions</h2>{% for submission in submissions %}<p>Version {{ loop.revindex }} · {{ submission.submitted_at }}</p>{% else %}<p>No signed submission received.</p>{% endfor %}
-<h2>Documents shared with the member profile</h2>{% for doc in documents %}<p><a href="{{ url_for('queries.query_evidence',qid=qry.id,doc_id=doc.document_id) }}">{{ doc.original_name }}</a> · {{ doc.uploaded_at }}</p>{% else %}<p>No documents yet.</p>{% endfor %}
+<h2>Retained submissions</h2>{% for submission in submissions %}<p>Version {{ loop.revindex }} · {{ submission.submitted_at|sast }}</p>{% else %}<p>No signed submission received.</p>{% endfor %}
+<h2>Documents shared with the member profile</h2>{% for doc in documents %}<p><a href="{{ url_for('queries.query_evidence',qid=qry.id,doc_id=doc.document_id) }}">{{ doc.original_name }}</a> · {{ doc.uploaded_at|sast }}</p>{% else %}<p>No documents yet.</p>{% endfor %}
 {% endblock %}

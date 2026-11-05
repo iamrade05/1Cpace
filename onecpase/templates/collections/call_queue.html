@@ -94,7 +94,7 @@
         </td>
         <td><a href="{{ url_for('members.member_detail', mid=task.member_id) }}"><strong>{{ task.first_name }} {{ task.last_name }}</strong></a><br><small style="color:var(--t2);">{{ task.member_ref }}</small></td>
         <td>{{ task.caller_name }}</td>
-        <td>{% if task.status == 'completed' %}<span class="badge {{ 'badge-success' if task.successful_contact else 'badge-warning' }}">{{ task.outcome|replace('_',' ')|title }}</span><br><small style="color:var(--t2);">{{ task.called_at|string|truncate(16,true,'') }}</small>{% else %}<span class="badge badge-info">Pending call</span>{% endif %}</td>
+        <td>{% if task.status == 'completed' %}<span class="badge {{ 'badge-success' if task.successful_contact else 'badge-warning' }}">{{ task.outcome|replace('_',' ')|title }}</span><br><small style="color:var(--t2);">{{ task.called_at|sast }}</small>{% else %}<span class="badge badge-info">Pending call</span>{% endif %}</td>
         <td><a href="{{ url_for('collections.call_profile', task_id=task.id) }}" class="btn btn-primary btn-sm">Open Client Profile</a></td>
       </tr>
       {% else %}<tr><td colspan="6" style="padding:28px;text-align:center;color:var(--t2);">No calls assigned for today.</td></tr>{% endfor %}

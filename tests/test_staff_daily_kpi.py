@@ -61,7 +61,7 @@ def test_first_authentication_counts_once_and_credits_submitter_not_checker(app)
             record_authentication(db, mid, status, at=datetime(2026, 10, 27, tzinfo=timezone.utc))
         assert actuals(build_daily_scorecard(db, "reception", "2026-10-26"))[uid]["debicheck"] == 1
         assert actuals(build_daily_scorecard(db, "reception", "2026-10-27"))[uid]["debicheck"] == 0
-        assert actuals(build_daily_scorecard(db, "sales", "2026-10-26"))[other]["joined"] == 0
+        assert not any(actuals(build_daily_scorecard(db, "sales", "2026-10-26"))[other].values())
 
 
 def test_migration_does_not_fabricate_historical_authentication_or_reset_custom_targets():
@@ -137,7 +137,7 @@ def test_ptps_have_separate_channels_and_unknown_history_is_not_guessed(app):
             record_ptp_channel(db,pid,"made-up")
 
 
-def test_sales_counts_creator_first_booking_and_compliance_credit(app, monkeypatch):
+def test_sales_counts_creator_and_first_booking(app):
     with app.app_context():
         db = get_db()
         uid = staff(db,"Consultant A","Sales")
@@ -148,17 +148,11 @@ def test_sales_counts_creator_first_booking_and_compliance_credit(app, monkeypat
             VALUES('Duplicate',?,'Referral',?,'2026-10-26 09:00:00')""",(uid,lead))
         for when in ("2026-10-25 23:30:00","2026-10-26 12:00:00","2026-10-27 09:00:00"):
             db.execute("INSERT INTO sales_stage_history(lead_id,to_stage,changed_by,changed_at) VALUES(?,'APPOINTMENT_BOOKED',?,?)",(lead,uid,when))
-        complete = db.execute("INSERT INTO membership_applications(lead_id,created_by) VALUES(?,?)",(lead,uid)).lastrowid
-        blocked = db.execute("INSERT INTO membership_applications(created_by) VALUES(?)",(uid,)).lastrowid
-        for appid in (complete,blocked,complete):
-            db.execute("""INSERT INTO stage_events(entity_type,entity_id,application_id,field,to_value,owner_id,occurred_at)
-                VALUES('compliance',?,?,'overall_status','complete',?,'2026-10-25 23:00:00')""",(appid,appid,uid))
-        monkeypatch.setattr("onecpase.applications.compliance_completion_blockers",lambda db,aid: ["Unsigned"] if aid==blocked else [])
         report = build_daily_scorecard(db,"sales","2026-10-26")
-        assert actuals(report)[uid] == {"connects":0,"referrals":1,"appointments":1,"joined":1}
-        assert actuals(report)[other] == {"connects":0,"referrals":0,"appointments":0,"joined":0}
+        assert actuals(report)[uid] == {"calls":0,"connects":0,"referrals":1,"appointments":1,"shows":0}
+        assert actuals(report)[other] == {"calls":0,"connects":0,"referrals":0,"appointments":0,"shows":0}
         assert actuals(build_daily_scorecard(db,"sales","2026-10-27"))[uid]["appointments"] == 0
-        assert [t[2] for t in report["targets"]] == [30,30,10,3]
+        assert [t[2] for t in report["targets"]] == [None,30,30,10,None]
 
 
 def test_dashboard_shows_daily_targets_and_preserves_department_boundaries(app, client):
@@ -221,3 +215,56 @@ def test_kpi_templates_follow_existing_style_budget():
         source=(root/"onecpase/templates"/name).read_text(encoding="utf-8")
         for metric,pattern in patterns.items():
             assert len(re.findall(pattern,source))<=baseline.get(name,{}).get(metric,0),(name,metric)
+
+
+def test_sales_call_outcomes_count_without_pbx_duration(app):
+    from onecpase.dashboard_reporting import activity_rows, resolve_period
+    with app.app_context():
+        db = get_db()
+        uid = staff(db, 'Call recorder', 'Sales')
+        owner = staff(db, 'Assigned owner', 'Sales')
+        lead = db.execute("INSERT INTO leads(full_name,assigned_to) VALUES('Contact prospect',?)", (owner,)).lastrowid
+        def record(kind, outcome, actor=uid, stamp='2026-10-26T08:00:00Z', status='completed'):
+            db.execute("""INSERT INTO lead_activities(lead_id,activity_type,outcome,created_by,occurred_at,status)
+                          VALUES(?,?,?,?,?,?)""", (lead, kind, outcome, actor, stamp, status))
+        for outcome in ('appointment_booked', 'follow_up_required', 'not_interested', 'no_response'):
+            record('call', outcome)
+        record('whatsapp', 'appointment_booked')
+        record('email', 'not_interested')
+        record('call', 'follow_up_required', stamp='2026-10-26T22:00:00Z')  # Next SA day.
+        record('call', 'not_interested', status='scheduled')
+        db.execute("INSERT INTO pbx_call_logs(user_id,direction,start_time,talk_duration) VALUES(?,'outbound','2026-10-26',3600)", (uid,))
+        report = build_daily_scorecard(db, 'sales', '2026-10-26')
+        assert actuals(report)[uid]['calls'] == 4
+        assert actuals(report)[uid]['connects'] == 3
+        assert actuals(report)[owner]['calls'] == actuals(report)[owner]['connects'] == 0
+        assert [t[1] for t in report['targets']] == ['Calls made', 'Connected calls', 'Referrals', 'Appointments', 'Shows']
+        assert report['rows'][0]['cells'][0]['percent'] is None
+        p = resolve_period({'period':'day', 'on':'2026-10-26'}, today=date(2026,10,26))
+        rows = {r['label']:r for r in activity_rows(db, p, 'sales', uid, allowed_ids=[uid])}
+        assert rows['Calls made']['current'] == 4 and rows['Connected calls']['current'] == 3
+        for outcome in ('no_answer', 'voicemail', 'call_dropped', 'does_not_exist', 'unreachable', None):
+            record('call', outcome)
+        assert actuals(build_daily_scorecard(db, 'sales', '2026-10-26'))[uid]['connects'] == 3
+
+
+def test_sales_shows_use_first_attendance_and_exclude_no_shows_and_duplicates(app):
+    with app.app_context():
+        db = get_db()
+        uid = staff(db, 'Attendance recorder', 'Sales')
+        ids = [db.execute("INSERT INTO leads(full_name) VALUES(?)", (f'Attendee {i}',)).lastrowid for i in range(5)]
+        db.execute('UPDATE leads SET duplicate_of_lead_id=? WHERE id=?', (ids[0], ids[3]))
+        for lead, kind, outcome, stamp in (
+            (ids[0], 'visit', 'arrived', '2026-10-25T22:30:00Z'),
+            (ids[0], 'appointment', 'showed', '2026-10-26T10:00:00Z'),
+            (ids[0], 'visit', 'joined', '2026-10-26T11:00:00Z'),
+            (ids[1], 'appointment', 'showed', '2026-10-26T10:00:00Z'),
+            (ids[2], 'appointment', 'no_show', '2026-10-26T10:00:00Z'),
+            (ids[3], 'visit', 'arrived', '2026-10-26T10:00:00Z'),
+            (ids[4], 'visit', 'arrived', '2026-10-24T10:00:00Z'),
+            (ids[4], 'visit', 'joined', '2026-10-26T10:00:00Z'),
+        ):
+            db.execute("INSERT INTO lead_activities(lead_id,activity_type,outcome,created_by,occurred_at) VALUES(?,?,?,?,?)", (lead,kind,outcome,uid,stamp))
+        counts = actuals(build_daily_scorecard(db, 'sales', '2026-10-26'))[uid]
+        assert counts['shows'] == 2
+        assert counts['appointments'] == 0  # Attendance alone does not imply a booking.

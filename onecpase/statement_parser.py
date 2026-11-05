@@ -39,6 +39,27 @@ _RISK_KW = re.compile(
     re.IGNORECASE,
 )
 
+# A debit order the client reversed at the bank.
+_DISPUTE_KW = re.compile(r'\bdispute\b', re.IGNORECASE)
+
+# A debit order or DebiCheck the bank could not collect. Its fee line is not a second failure.
+_FAILED_DEBIT_KW = re.compile(
+    r'\b(?:debicheck|debit\s*order)\b.*\b(?:insufficient|unpaid|returned|dishonou?red)\b',
+    re.IGNORECASE,
+)
+_FEE_KW = re.compile(r'\bfee\b', re.IGNORECASE)
+
+# Money in: a client passes with this much coming in during each of this many
+# months, wherever it came from, when the instalment is no more than this share
+# of the lower of those months.
+MONEY_IN_PER_MONTH = 3000.0
+MONEY_IN_MONTHS_NEEDED = 2
+MONEY_IN_INSTALMENT_SHARE = 0.30
+
+# A statement covers two months from about 55 days, so short months still count.
+_COVERAGE_GRACE_DAYS = 6
+_DAYS_PER_MONTH = 30.5
+
 _MONTH_MAP = {m: i+1 for i, m in enumerate(
     ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
 )}
@@ -90,7 +111,15 @@ _ROW_RE = re.compile(
 _BAL_CRDR_RE = re.compile(r'(\d{1,3}(?:,\d{3})*\.\d{2})\s*(Cr|Dr)\b', re.IGNORECASE)
 _PERIOD_END_RE = re.compile(r'Statement\s+(?:Period|Date)[^\n]*?(\d{1,2})\s+([A-Za-z]+)\s+(20\d{2})')
 _NUMERIC_ROW_RE = re.compile(r'^(\d{1,2})/(\d{1,2})/(20\d{2})\s+')
-_SIGNED_AMOUNT_RE = re.compile(r'(?<![\d.])[-+]?(?:R\s*)?\d+(?:[ ,]\d{3})*\.\d{2}(?!\d)')
+_SIGNED_AMOUNT_RE = re.compile(r'(?<![\d.])[-+]?(?:R\s*)?\d+(?:[ ,]\d{3})*\.\d{2}(?!\d)-?')
+_OPENING_HEADER_RE = re.compile(
+    r'From\s+Date:\s*(\d{1,2})/(\d{1,2})/(20\d{2})\s+Opening\s+Balance:\s*([-+]?R?\s*\d[\d ,]*\.\d{2}-?)',
+    re.IGNORECASE,
+)
+_OPENING_ROW_RE = re.compile(
+    r'^(\d{1,2})/(\d{1,2})/(20\d{2})\s+Bal(?:ance)?\s+Brought\s+Forward\s+([-+]?R?\s*\d[\d ,]*\.\d{2}-?)',
+    re.IGNORECASE,
+)
 
 
 def _statement_end(text: str):
@@ -101,6 +130,61 @@ def _statement_end(text: str):
     _, mon, year = found[-1]
     month = _MONTH_MAP.get(mon[:3].lower())
     return (int(year), month) if month else None
+
+
+def _signed_amount(text: str) -> float:
+    """Absa writes an overdrawn balance as 9.88-, others as -9.88."""
+    text = text.strip()
+    value = float(re.sub(r'[^\d.]', '', text))
+    return -value if text.startswith('-') or text.endswith('-') else value
+
+
+def _parse_opening(line: str):
+    """(year, month, day, balance) where the statement states its opening balance."""
+    found = _OPENING_HEADER_RE.search(line) or _OPENING_ROW_RE.match(line)
+    if not found:
+        return None
+    day, month, year = map(int, found.groups()[:3])
+    try:
+        date(year, month, day)
+    except ValueError:
+        return None
+    return (year, month, day, _signed_amount(found.group(4)))
+
+
+def _money_in_rows(rows: list[tuple]) -> list[tuple]:
+    """(year, month, day, balance, amount) for each credit, from the change in balance."""
+    counted = []
+    for previous, row in zip(rows, rows[1:]):
+        amount = round(row[3] - previous[3], 2)
+        if amount > 0:
+            counted.append((row[0], row[1], row[2], row[3], amount))
+    return counted
+
+
+def money_in_summary(counted: list, monthly_installment: float = 0.0) -> dict:
+    """The money-in rule over credits from one statement or several."""
+    per_month: dict[str, float] = {}
+    for year, month, _day, _balance, amount in counted:
+        key = f"{year}-{month:02d}"
+        per_month[key] = round(per_month.get(key, 0.0) + amount, 2)
+    good = [value for value in per_month.values() if value >= MONEY_IN_PER_MONTH]
+    enough = len(good) >= MONEY_IN_MONTHS_NEEDED
+    return {
+        'monthly_money_in': per_month,
+        'money_in_months': len(good),
+        'money_in_qualified': enough and (
+            monthly_installment <= 0 or monthly_installment <= min(good) * MONEY_IN_INSTALMENT_SHARE
+        ),
+    }
+
+
+def money_in_rating(monthly_money_in: dict, monthly_installment: float) -> str:
+    """Rate a client who passed on money in, using the lower qualifying month as income."""
+    good = [value for value in monthly_money_in.values() if value >= MONEY_IN_PER_MONTH]
+    if monthly_installment > 0 and good and monthly_installment / min(good) <= 0.15:
+        return 'good'
+    return 'moderate'
 
 
 def _parse_tx_row(line: str, end):
@@ -124,8 +208,7 @@ def _parse_tx_row(line: str, end):
         amounts = _SIGNED_AMOUNT_RE.findall(rest)
         if len(amounts) < 2:
             return None
-        balance = float(amounts[-1].replace('R', '').replace(' ', '').replace(',', ''))
-        return (year, month, day, balance)
+        return (year, month, day, _signed_amount(amounts[-1]))
     m = _ROW_RE.match(line)
     if not m:
         return None
@@ -142,11 +225,28 @@ def _parse_tx_row(line: str, end):
         balance = float(amount.replace(',', ''))
         balance = -balance if side.lower() == 'dr' else balance
     else:
-        amts = _parse_amounts(line[m.end():])
-        if not amts:
+        amounts = _SIGNED_AMOUNT_RE.findall(line[m.end():])
+        if not amounts:
             return None
-        balance = amts[-1]
+        balance = _signed_amount(amounts[-1])
     return (year, mon, day, balance)
+
+def _months_covered(rows: list[tuple]) -> int:
+    """Whole months between the first and last dated row, not calendar months touched."""
+    dates = [date(row[0], row[1], row[2]) for row in rows]
+    return max(1, int(((max(dates) - min(dates)).days + _COVERAGE_GRACE_DAYS) // _DAYS_PER_MONTH))
+
+
+def _money_arrival_day(big: list[tuple]):
+    """The day of the month money usually lands by, counting 30 Sep and 1 Oct as near each other."""
+    best_day, best_score = None, (0, 0.0)
+    for candidate in range(1, 29):
+        near = [credit for credit in big if (candidate - credit[1]) % 31 <= 2]
+        score = (len({credit[0] for credit in near}), sum(credit[2] for credit in near))
+        if score > best_score:
+            best_day, best_score = candidate, score
+    return best_day
+
 
 def analyse_cashflow(rows: list[tuple]) -> dict:
     """Work out income pattern, affordability and a debit day from dated rows.
@@ -174,12 +274,12 @@ def analyse_cashflow(rows: list[tuple]) -> dict:
         elif delta < 0:
             m['out'] += -delta
     keys = sorted(per_month)
-    out['months'] = len(keys)
-    out['enough_months'] = len(keys) >= 2
     if not keys:
         return out
-    out['avg_money_in'] = round(sum(per_month[k]['in'] for k in keys) / len(keys), 2)
-    out['avg_money_out'] = round(sum(per_month[k]['out'] for k in keys) / len(keys), 2)
+    out['months'] = _months_covered(rows)
+    out['enough_months'] = out['months'] >= 2
+    out['avg_money_in'] = round(sum(per_month[k]['in'] for k in keys) / out['months'], 2)
+    out['avg_money_out'] = round(sum(per_month[k]['out'] for k in keys) / out['months'], 2)
     out['avg_surplus'] = round(out['avg_money_in'] - out['avg_money_out'], 2)
 
     # Constant income: a large credit in several months, on about the same day.
@@ -196,14 +296,17 @@ def analyse_cashflow(rows: list[tuple]) -> dict:
         out['note'] = f"Income arrives around day {out['income_day']} each month."
     else:
         out['income_pattern'] = 'lump_sum' if len(days) >= 1 else 'irregular'
-        # Pick the day of the month where the balance is highest on average.
-        by_day: dict[int, list[float]] = {}
-        for _, _, day, bal in rows:
-            if day <= 28:
-                by_day.setdefault(day, []).append(bal)
-        if by_day:
-            out['suggested_debit_day'] = max(by_day, key=lambda d: sum(by_day[d]) / len(by_day[d]))
-        out['note'] = ('Income is not regular. Debit day is based on money in versus money spent.')
+        if big:
+            out['suggested_debit_day'] = _money_arrival_day(big)
+        else:
+            # No large credits to follow: pick the day the balance is highest on average.
+            by_day: dict[int, list[float]] = {}
+            for _, _, day, bal in rows:
+                if day <= 28:
+                    by_day.setdefault(day, []).append(bal)
+            if by_day:
+                out['suggested_debit_day'] = max(by_day, key=lambda d: sum(by_day[d]) / len(by_day[d]))
+        out['note'] = 'Income is not regular. Debit day is set to when money usually arrives.'
     if not out['enough_months']:
         out['note'] = 'Only 1 month of statement. At least 2 months are needed. ' + out['note']
     return out
@@ -227,6 +330,12 @@ def analyse_pdf(pdf_path: str, monthly_installment: float = 0.0, pdf_password: s
         'avg_balance':      0.0,
         'closing_balance':  0.0,
         'returned_debits':  0,
+        'disputed_debits':  0,
+        'failed_debits':    0,
+        'monthly_money_in': {},
+        'money_in_months':  0,
+        'money_in_qualified': False,
+        'money_in_rows':    [],
         'months_seen':      0,
         'monthly_balances': {},
         'verification_qualified': False,
@@ -312,6 +421,17 @@ def analyse_pdf(pdf_path: str, monthly_installment: float = 0.0, pdf_password: s
             if not is_pure_fee or has_decline_keyword:
                 risk_lines_seen.add(i)
 
+        # ── Balance column tracking ───────────────────────────────────────────
+        # Standard Bank: the final amount on a DATED transaction row is the
+        # running balance. Requiring the date prevents page headers, account
+        # numbers and legal/footer text from becoming fake balances. The opening
+        # balance comes first, so the first transaction has something to compare with.
+        row = (_parse_opening(ln) if not tx_rows else None) or _parse_tx_row(ln, stmt_end)
+        if row and abs(row[3]) < _MAX_SANE_BALANCE:
+            balance_amounts.append(row[3])
+            monthly_balances.setdefault(row[1], []).append(row[3])
+            tx_rows.append(row)
+
         amts = _parse_amounts(ln)
         if not amts:
             # Still check for "Salary" keyword even on amount-less lines
@@ -341,16 +461,6 @@ def analyse_pdf(pdf_path: str, monthly_installment: float = 0.0, pdf_password: s
             big = [a for a in amts if a >= 500]
             if big:
                 income_amounts.append(big[0])
-
-        # ── Balance column tracking ───────────────────────────────────────────
-        # Standard Bank: the final amount on a DATED transaction row is the
-        # running balance. Requiring the date prevents page headers, account
-        # numbers and legal/footer text from becoming fake balances.
-        row = _parse_tx_row(ln, stmt_end)
-        if row and abs(row[3]) < _MAX_SANE_BALANCE:
-            balance_amounts.append(row[3])
-            monthly_balances.setdefault(row[1], []).append(row[3])
-            tx_rows.append(row)
     # ── 3. Balance stats ──────────────────────────────────────────────────────
     sane_balances = [b for b in balance_amounts if b < _MAX_SANE_BALANCE]
     if sane_balances:
@@ -377,7 +487,13 @@ def analyse_pdf(pdf_path: str, monthly_installment: float = 0.0, pdf_password: s
     result['cashflow'] = analyse_cashflow(tx_rows)
     result['tx_rows'] = tx_rows
     result['returned_debits'] = len(risk_lines_seen)
-    result['months_seen']     = len(months_seen)
+    result['disputed_debits'] = sum(bool(_DISPUTE_KW.search(ln)) for ln in lines)
+    result['failed_debits'] = sum(
+        bool(_FAILED_DEBIT_KW.search(ln)) and not _FEE_KW.search(ln) for ln in lines
+    )
+    result['months_seen']     = result['cashflow']['months'] or len(months_seen)
+    result['money_in_rows'] = _money_in_rows(tx_rows)
+    result.update(money_in_summary(result['money_in_rows'], monthly_installment))
     result['monthly_balances'] = {
         str(month): round(min(values), 2)
         for month, values in monthly_balances.items()
@@ -414,14 +530,15 @@ def analyse_pdf(pdf_path: str, monthly_installment: float = 0.0, pdf_password: s
         result['rating']     = 'moderate'
         result['can_afford'] = True
 
-    balance_months = list(result['monthly_balances'].values())
-    balance_qualified = (
-        mi > 0 and bool(balance_months)
-        and all(mi <= balance * 0.30 for balance in balance_months)
+    elif result['money_in_qualified']:
+        result['rating']     = money_in_rating(result['monthly_money_in'], mi)
+        result['can_afford'] = True
+
+    # The balance no longer decides anything, and failed or disputed debit orders
+    # are shown for a manager but don't stop a pass.
+    result['verification_qualified'] = bool(
+        (result['income_detected'] and result['income_months'] >= 2) or result['money_in_qualified']
     )
-    result['verification_qualified'] = (
-        result['income_detected'] and result['income_months'] >= 2
-    ) or balance_qualified
 
     # ── 6. Human-readable summary ─────────────────────────────────────────────
     parts = []
@@ -448,6 +565,23 @@ def analyse_pdf(pdf_path: str, monthly_installment: float = 0.0, pdf_password: s
         )
     else:
         parts.append("No declined or returned debits detected.")
+
+    if result['disputed_debits'] > 0:
+        parts.append(
+            f"<span style='color:#ef4444;'>"
+            f"⚠ {result['disputed_debits']} disputed debit order(s) detected — review cash-flow.</span>"
+        )
+
+    if result['failed_debits'] > 0:
+        parts.append(
+            f"<span style='color:#ef4444;'>"
+            f"⚠ {result['failed_debits']} failed debit order(s) detected — review cash-flow.</span>"
+        )
+
+    if result['money_in_months']:
+        parts.append(
+            f"R{MONEY_IN_PER_MONTH:,.0f} or more came in during {result['money_in_months']} month(s)."
+        )
 
     parts.append(
         f"Statement covers <strong>{result['months_seen']} month(s)</strong>."

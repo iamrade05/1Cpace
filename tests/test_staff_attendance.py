@@ -103,11 +103,14 @@ def test_preview_uses_snapshot_and_never_writes_timesheets(app,client,tmp_path,h
 
 
 def test_snapshot_cannot_be_viewed_in_a_different_tenant(app,client,tmp_path,hr_admin):
-    from flask import g
+    from onecpase.platform_db import get_platform_db
     path=tmp_path/'access.json';path.write_text(json.dumps(snapshot()))
     app.config['STAFF_ACCESS_SNAPSHOT']=str(path)
-    @app.before_request
-    def other_tenant():g.tenant_slug='another-gym'
+    with app.app_context():
+        registry=get_platform_db()
+        registry.execute("INSERT INTO tenants(slug,name,db_path,active) VALUES('another-gym','Another Gym',?,1)",(app.config['DATABASE_PATH'],))
+        registry.commit()
+    client.set_cookie('onecpase_tenant','another-gym')
     with client.session_transaction() as sess:sess.update(user_id=1,username='testuser',role='admin',tenant_slug='another-gym')
     assert client.get('/hr/access-attendance').status_code==404
 

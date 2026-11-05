@@ -1,24 +1,57 @@
 """External service integrations (Itensity, etc.).
 
 Itensity has no supported public API — membership is entered through a legacy
-PHP web form. Pushes are automated with the proven Playwright driver from the
-sibling 1Cpace app (RADEPULSE_PATH) instead of a REST client, the same way
-debicheck.py hands DebiCheck mandates off to the NuPay driver.
+PHP web form. Pushes are automated with the Playwright driver in itensity_driver/
+(RADEPULSE_PATH) instead of a REST client, the same way debicheck.py hands
+DebiCheck mandates off to the NuPay driver.
 """
 import sys
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
-from flask import current_app
+from flask import current_app, g, has_app_context
 
 from .playwright_lock import PLAYWRIGHT_LOCK
 
 
+def itensity_tenant_enabled():
+    return bool(has_app_context() and g.get('tenant_slug') and
+                g.tenant_slug == current_app.config.get('ITENSITY_TENANT_SLUG', 'elev8'))
+
+
+def bind_itensity_tenant(db_path):
+    """Bind background work to its database's registered integration owner."""
+    from .platform_db import get_platform_db
+    target = Path(db_path).resolve()
+    owners = [dict(row) for row in get_platform_db().execute('SELECT * FROM tenants WHERE active=1')
+              if Path(row['db_path']).resolve() == target]
+    if len(owners) != 1:
+        raise PermissionError('The integration database has no unique active tenant owner.')
+    g.tenant, g.tenant_slug = owners[0], owners[0]['slug']
+    if not itensity_tenant_enabled():
+        raise PermissionError('The shared Itensity integration is not configured for this gym.')
+
+
+class ItensityNotSubmitted(str):
+    """A push failure from before Submit: no member can exist, so a retry is safe."""
+
+
+def itensity_writes_allowed(application_id) -> bool:
+    """Whether this application may write to the real Itensity."""
+    allowed = str(current_app.config.get("ITENSITY_PUSH_ALLOWED") or "").strip().lower()
+    if allowed == "all":
+        return True
+    return str(application_id) in {part.strip() for part in allowed.split(",") if part.strip()}
+
+
 def _load_driver(module_name: str, filename: str):
-    """Dynamically import one of the sibling 1Cpace push drivers and load its
-    .env for credentials — mirrors debicheck.py's NuPay driver hand-off."""
+    """Dynamically import one of the Itensity push drivers and load its .env
+    for credentials — mirrors debicheck.py's NuPay driver hand-off."""
     import importlib.util
+
+    if not itensity_tenant_enabled():
+        return None, 'The shared Itensity integration is not configured for this gym.'
 
     driver_root = Path(current_app.config["RADEPULSE_PATH"])
     driver_path = driver_root / filename
@@ -83,23 +116,22 @@ def push_member_to_itensity(member_data: Dict) -> Tuple[bool, Optional[str], Opt
         Tuple of (success: bool, itensity_ref: Optional[str], error_message: Optional[str])
     """
     if member_data.get("payment_type") == "Third-Party Debit Order":
-        return False, None, (
+        return False, None, ItensityNotSubmitted(
             "Itensity push isn't supported yet for third-party payer mandates — "
             "the driver assumes the payer is always the member. Push manually in Itensity."
         )
 
     module, err = _load_driver("onecpase_itensity_push", "push_to_itensity.py")
     if module is None:
-        return False, None, err
+        return False, None, ItensityNotSubmitted(err)
 
     data = _prepare_member_for_itensity(member_data)
     validation_errors = module.validate_member(data)
     if validation_errors:
-        return False, None, "; ".join(validation_errors)
+        return False, None, ItensityNotSubmitted("; ".join(validation_errors))
 
-    # push() saves the Itensity ref into the *reference app's own* database
-    # (1Cpace.db) via _save_itensity_ref — not ours. Intercept that call
-    # instead of letting it write to the wrong database.
+    # The driver hands the new reference to _save_itensity_ref; capture it here
+    # so the caller records it in this tenant's database.
     captured: Dict[str, str] = {}
     PLAYWRIGHT_LOCK.acquire()
     original_save = module._save_itensity_ref
@@ -107,7 +139,9 @@ def push_member_to_itensity(member_data: Dict) -> Tuple[bool, Optional[str], Opt
     try:
         module.push(data, headless=True, submit=True)
     except module.ItensityPushError as exc:
-        return False, None, str(exc)
+        if getattr(exc, "submitted", True):
+            return False, None, str(exc)
+        return False, None, ItensityNotSubmitted(str(exc))
     except Exception as exc:
         return False, None, f"Itensity push failed: {exc}"
     finally:
@@ -118,6 +152,119 @@ def push_member_to_itensity(member_data: Dict) -> Tuple[bool, Optional[str], Opt
     if not ref:
         return False, None, "Itensity did not confirm a member reference after submission."
     return True, str(ref), None
+
+
+def preview_member_push(member_data: Dict) -> Tuple[Optional[Dict], Optional[str]]:
+    """Fill Add Member without pressing Submit; nothing is saved in Itensity.
+
+    Returns (report of field names and problems, error message).
+    """
+    module, err = _load_driver("onecpase_itensity_push", "push_to_itensity.py")
+    if module is None:
+        return None, err
+
+    data = _prepare_member_for_itensity(member_data)
+    validation_errors = module.validate_member(data)
+    if validation_errors:
+        return None, "; ".join(validation_errors)
+
+    PLAYWRIGHT_LOCK.acquire()
+    try:
+        return module.push(data, headless=True, submit=False), None
+    except module.ItensityPushError as exc:
+        return None, str(exc)
+    finally:
+        PLAYWRIGHT_LOCK.release()
+
+
+def attach_member_documents_to_itensity(itensity_ref: str, surname: str, documents: List[Dict]) -> List[Dict]:
+    """Upload files to an Itensity profile, one at a time.
+
+    `documents` hold document_id, path, title and kind ('contract' or
+    'compliance'). Every document gets a result with status 'sent',
+    'already_attached', 'failed' (nothing reached Itensity) or 'unknown' (it may
+    have), so one bad file never loses the others.
+    """
+    module, err = _load_driver("onecpase_itensity_push", "push_to_itensity.py")
+    if module is None:
+        return [{"document_id": doc["document_id"], "status": "failed", "error": err} for doc in documents]
+
+    results = []
+    PLAYWRIGHT_LOCK.acquire()
+    try:
+        with module.itensity_session(headless=True) as page:
+            for doc in documents:
+                try:
+                    status = module.attach_document(
+                        page, itensity_ref, surname, doc["path"], doc["title"], doc["kind"]
+                    )
+                    results.append({"document_id": doc["document_id"], "status": status, "error": None})
+                except module.ItensityPushError as exc:
+                    results.append({
+                        "document_id": doc["document_id"],
+                        "status": "unknown" if exc.submitted else "failed",
+                        "error": str(exc),
+                    })
+                except Exception as exc:
+                    results.append({
+                        "document_id": doc["document_id"], "status": "unknown",
+                        "error": f"Upload stopped: {type(exc).__name__}",
+                    })
+    except module.ItensityPushError as exc:
+        done = {result["document_id"] for result in results}
+        results += [{"document_id": doc["document_id"], "status": "failed", "error": str(exc)}
+                    for doc in documents if doc["document_id"] not in done]
+    except Exception as exc:
+        done = {result["document_id"] for result in results}
+        results += [{"document_id": doc["document_id"], "status": "unknown",
+                     "error": f"Upload stopped: {type(exc).__name__}"}
+                    for doc in documents if doc["document_id"] not in done]
+    finally:
+        PLAYWRIGHT_LOCK.release()
+    return results
+
+
+def record_reg_fee_in_itensity(itensity_ref: str, surname: str, collection: Dict) -> Dict:
+    """Record a paid reg fee on the Itensity Payment Profile, once.
+
+    `collection` holds amount, receipt, paid_on and payment_type. Returns status
+    'sent', 'already_in_itensity', 'failed' (nothing written) or 'unknown' (it
+    may have been written: never resend without checking Itensity).
+    """
+    module, err = _load_driver("onecpase_itensity_push", "push_to_itensity.py")
+    if module is None:
+        return {"status": "failed", "fee_detected": False, "error": err}
+
+    PLAYWRIGHT_LOCK.acquire()
+    try:
+        with module.itensity_session(headless=True) as page:
+            result = module.record_reg_fee(
+                page, itensity_ref, surname, collection["amount"], collection["receipt"],
+                collection["paid_on"], collection["payment_type"],
+                add_fee_first=bool(current_app.config.get("ITENSITY_REG_FEE_ADD_FEE_FIRST")),
+            )
+            return {**result, "error": None}
+    except module.ItensityPushError as exc:
+        return {"status": "unknown" if exc.submitted else "failed", "fee_detected": False, "error": str(exc)}
+    except Exception as exc:
+        return {"status": "unknown", "fee_detected": False, "error": f"Payment stopped: {type(exc).__name__}"}
+    finally:
+        PLAYWRIGHT_LOCK.release()
+
+
+def html_to_pdf(html: str, output_path: str) -> Optional[str]:
+    """Render HTML to a PDF file. Returns an error message, or None."""
+    module, err = _load_driver("onecpase_itensity_push", "push_to_itensity.py")
+    if module is None:
+        return err
+    PLAYWRIGHT_LOCK.acquire()
+    try:
+        module.html_to_pdf(html, output_path)
+        return None
+    except Exception as exc:
+        return f"Could not make a PDF: {type(exc).__name__}"
+    finally:
+        PLAYWRIGHT_LOCK.release()
 
 
 def update_member_in_itensity(itensity_ref: str, member_data: Dict) -> Tuple[bool, Optional[str]]:

@@ -21,7 +21,7 @@
     {% if registration.checked_in %}
     <div class="checked-in">
        You're Checked In
-      <small>{{ registration.checked_in_at[:16].replace('T', ' ') if registration.checked_in_at else '' }}</small>
+      <small>{{ registration.checked_in_at|sast }}</small>
     </div>
     {% else %}
     <form method="POST" action="{{ url_for('events.ticket_checkin', slug=event.slug, token=registration.ticket_token) }}">

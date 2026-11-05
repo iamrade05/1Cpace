@@ -37,6 +37,8 @@ def test_wrong_channel_and_wrong_caller_do_not_send(app,client,monkeypatch):
     assert client.post(f'/collections/whatsapp/task/{tid}',data={'message':'Hello'}).status_code==302
     with app.app_context():
         db=get_db();db.execute("UPDATE collection_call_tasks SET next_channel='WHATSAPP' WHERE id=?",(tid,));db.commit()
+        db.execute("INSERT INTO users(id,username,password_hash,full_name,role,department,is_collections_caller) VALUES(999,'other-caller','x','Other Caller','reception','Reception',1)")
+        db.commit()
     with client.session_transaction() as session:
         session.update(user_id=999,role='staff',permissions=['collections_call_queue'])
     assert client.post(f'/collections/whatsapp/task/{tid}',data={'message':'Hello'}).status_code==403

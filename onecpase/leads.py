@@ -142,6 +142,9 @@ RECYCLE_RETURN_DAYS = {
     "legacy_unreachable": 14,
 }
 
+TRIAL_DAYS = 7
+TRIAL_STATUSES = {"show", "hot_prospect_7day", "joined"}
+
 ACTIVITY_TYPES = [
     ("call", "Call"),
     ("whatsapp", "WhatsApp"),
@@ -365,6 +368,36 @@ def _journey_step(db, lead) -> str:
     if lead["lead_status"] == "recall_queue" and latest_appointment and latest_appointment["outcome"] == "no_show":
         return "appointment_follow_up"
     return "contact"
+
+
+def _trial_days(start: date, today: date | None = None) -> dict:
+    """The trial's consecutive days: the first day counts, so it ends six days later."""
+    today = today or date.today()
+    end = start + timedelta(days=TRIAL_DAYS - 1)
+    return {"start": start, "end": end, "day": (today - start).days + 1, "ended": today > end}
+
+
+def _trial_offer(db, lid: int, today: date | None = None) -> dict:
+    """What a trial would be if started now, counted from the day the client first came in."""
+    first_visit = db.execute(
+        """SELECT MIN(occurred_at) FROM lead_activities
+           WHERE lead_id=? AND (activity_type='visit'
+                 OR (activity_type='appointment' AND outcome IN ('showed', 'joined')))""",
+        (lid,),
+    ).fetchone()[0]
+    try:
+        start = date.fromisoformat(str(first_visit)[:10])
+    except ValueError:
+        start = today or date.today()
+    return _trial_days(start, today)
+
+
+def _current_trial(db, lid: int, today: date | None = None) -> dict | None:
+    row = db.execute(
+        "SELECT scheduled_for FROM lead_activities WHERE lead_id=? AND activity_type='trial' ORDER BY id LIMIT 1",
+        (lid,),
+    ).fetchone()
+    return _trial_days(date.fromisoformat(row["scheduled_for"]), today) if row else None
 
 
 def _find_duplicate(db, phone: str, exclude_id: int | None = None):
@@ -754,6 +787,7 @@ def leads_add():
                         f"Walk-in '{full_name}' assigned to {consultant['full_name']} — "
                         "record the walk-in outcome below.", "success",
                     )
+                    session["walk_in_popup_lead"] = lid
                 else:
                     flash(
                         f"Prospect '{full_name}' assigned to {consultant['full_name']} "
@@ -806,6 +840,8 @@ def lead_detail(lid: int):
     from .sales_pipeline import pipeline_context, membership_progress
     sales_pipeline = pipeline_context(db, lid)
     journey_step = _journey_step(db, lead)
+    trial = _current_trial(db, lid)
+    trial_offer = _trial_offer(db, lid) if not trial and lead["lead_status"] in TRIAL_STATUSES else None
 
     decision_days_remaining = None
     if lead["decision_date"]:
@@ -817,6 +853,9 @@ def lead_detail(lid: int):
     return render_template(
         "leads/detail.html",
         lead=lead,
+        walk_in_popup=session.pop("walk_in_popup_lead", None) == lid,
+        trial=trial,
+        trial_offer=trial_offer,
         application=application,
         journey_step=journey_step,
         membership_progress=membership_progress(
@@ -991,6 +1030,36 @@ def update_status(lid: int):
             flash("The duplicate prospect reference is invalid.", "error")
 
     return redirect(url_for("leads.lead_detail", lid=lid))
+
+
+@leads_bp.post("/<int:lid>/seven-day-trial")
+@permission_required("capture_leads")
+def start_seven_day_trial(lid: int):
+    db = get_db()
+    lead = db.execute("SELECT id, lead_status FROM leads WHERE id=?", (lid,)).fetchone()
+    if lead is None:
+        flash("Prospect not found.", "warning")
+        return redirect(url_for("leads.leads_index"))
+    back = redirect(url_for("leads.lead_detail", lid=lid))
+    if lead["lead_status"] not in TRIAL_STATUSES:
+        flash("A 7 Day Trial can only start once the client has come to the gym.", "error")
+        return back
+    if _current_trial(db, lid):
+        flash("This client already has a 7 Day Trial.", "warning")
+        return back
+    offer = _trial_offer(db, lid)
+    if offer["ended"]:
+        flash(f"The client came in on {offer['start']:%d %b %Y}, so 7 days from then ended on {offer['end']:%d %b %Y}.", "error")
+        return back
+    period = f"{offer['start']:%d %b %Y} to {offer['end']:%d %b %Y}"
+    _add_activity(
+        db, lid, "trial", outcome="started", scheduled_for=offer["start"].isoformat(),
+        notes=f"7 Day Trial: {period}, consecutive days from the day the client came in.",
+    )
+    audit_log(db, "seven_day_trial_started", lead_id=lid, new_value=period)
+    db.commit()
+    flash(f"7 Day Trial started: {period}.", "success")
+    return back
 
 
 @leads_bp.post("/<int:lid>/activities")

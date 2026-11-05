@@ -83,6 +83,8 @@ def evaluate_grant(db, ptp_id) -> str | None:
     elif (not links and not (ptp["existing_mandate_ok"] or has_approved_mandate(db, ptp["member_id"]))) \
             or any(s != "approved" for s in states):
         status = AWAITING_DEBICHECK
+    elif requires_statement_evidence(ptp) and not statement_evidence_ready(db, ptp['member_id']):
+        status = AWAITING_PREREQUISITES
     elif ptp["manager_approval_status"] not in ("not_required", "approved"):
         status = AWAITING_PREREQUISITES
     elif float(ptp["upfront_amount"] or 0) > 0 and not ptp["upfront_verified"]:
@@ -103,6 +105,23 @@ def evaluate_grant(db, ptp_id) -> str | None:
     else:
         db.execute("UPDATE ptp_agreements SET grant_status=? WHERE id=?", (status, ptp_id))
     return status
+
+
+def requires_statement_evidence(ptp):
+    row = dict(ptp)
+    return row.get('kpi_contact_channel') == 'call' or float(row.get('discount_amount') or 0) > 0 or float(row.get('discount_pct') or 0) > 0
+
+
+def statement_evidence_ready(db, member_id):
+    from .applications import statement_months_analysed
+    return statement_months_analysed(db, member_id)
+
+
+def refresh_member_grants(db, member_id):
+    """Statement uploads can satisfy the last prerequisite without another mandate push."""
+    for row in db.execute("SELECT id FROM ptp_agreements WHERE member_id=? AND grant_status IN (?,?)",
+                          (member_id, AWAITING_PREREQUISITES, AWAITING_DEBICHECK)).fetchall():
+        evaluate_grant(db, row['id'])
 
 
 def manager_review_reasons(db, member_id, monthly_installment, payment_count) -> list[str]:

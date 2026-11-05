@@ -18,6 +18,9 @@ def _login(client, role="staff"):
                VALUES (1, 'debicheck-actor', 'x', 'DebiCheck Actor', ?, 1)""",
             (role,),
         )
+        db.execute('UPDATE users SET role=? WHERE id=1',(role,))
+        for permission in ('new_debicheck','debicheck_mandates'):
+            db.execute('INSERT OR IGNORE INTO user_permissions(user_id,permission) VALUES(1,?)',(permission,))
         db.commit()
 
 
@@ -130,6 +133,8 @@ def test_only_managers_see_review_and_submit_on_nupay(client):
 
     def sign_in(role):
         _login(client, role=role)
+        from auth_helpers import ensure_staff_account
+        ensure_staff_account(client,role,permissions=['new_debicheck','debicheck_mandates','all_members'])
         with client.session_transaction() as session:
             session["permissions"] = session["permissions"] + ["all_members"]
 
@@ -230,6 +235,8 @@ def test_coverage_search_filters_by_name(client):
 
 def test_coverage_requires_the_debicheck_permission(client):
     _login(client)
+    from auth_helpers import ensure_staff_account
+    ensure_staff_account(client,'staff',permissions=[])
     with client.session_transaction() as session:
         session["user_id"] = 1
         session["role"] = "staff"

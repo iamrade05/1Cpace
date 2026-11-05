@@ -3,6 +3,20 @@
 {% block page_title %}Prospect: {{ lead.full_name }}{% endblock %}
 
 {% block content %}
+{% if walk_in_popup %}
+<dialog id="walkInPopup" aria-labelledby="walkInPopupTitle" class="intake-statement-dialog">
+  <p>New walk-in: {{ lead.full_name }}</p>
+  <p>This enquiry belongs to</p>
+  <h2 id="walkInPopupTitle" style="margin:8px 0 16px;line-height:1.3;"><strong>{{ lead.salesperson_name }}</strong></h2>
+  <form method="dialog"><button class="btn funnel-btn funnel-btn--ok" autofocus>OK</button></form>
+</dialog>
+<script>
+(function(){
+  const dialog=document.getElementById('walkInPopup');
+  if(dialog.showModal)dialog.showModal();else dialog.setAttribute('open','');
+})();
+</script>
+{% endif %}
 <header class="page-header"><div><h1>Prospect: {{ lead.full_name }}</h1></div></header>
 {% set color = status_colors.get(lead.lead_status, '#6b7280') %}
 <div style="margin-bottom:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -96,6 +110,20 @@
     </div>
     {% endif %}
 
+    {% if trial or (trial_offer and has_perm('capture_leads')) %}
+    <div class="form-card" style="margin-bottom:16px;border-left:4px solid var(--warn);">
+      <h3 style="font-size:.9rem;color:var(--warn);text-transform:uppercase;margin-bottom:6px;">7 Day Trial</h3>
+      {% if trial %}
+      <p><strong>{{ trial.start.strftime('%d %b %Y') }} to {{ trial.end.strftime('%d %b %Y') }}</strong> &middot; {% if trial.ended %}Trial ended{% else %}Day {{ trial.day }} of 7{% endif %}</p>
+      {% elif trial_offer.ended %}
+      <p style="color:var(--t2);font-size:.8rem;">The client came in on {{ trial_offer.start.strftime('%d %b %Y') }}, so 7 days from then ended on {{ trial_offer.end.strftime('%d %b %Y') }}.</p>
+      {% else %}
+      <p style="color:var(--t2);font-size:.8rem;margin-bottom:14px;">7 consecutive days from the day the client came in: <strong>{{ trial_offer.start.strftime('%d %b %Y') }} to {{ trial_offer.end.strftime('%d %b %Y') }}</strong>.</p>
+      <form method="POST" action="{{ url_for('leads.start_seven_day_trial', lid=lead.id) }}"><button type="submit" class="btn funnel-btn funnel-btn--warn">7 Day Trial</button></form>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <div class="form-card" style="margin-bottom:16px;">
       <h3 style="font-size:.82rem;color:#e94560;text-transform:uppercase;margin-bottom:12px;">Permanent Prospect Profile</h3>
       <div class="table-wrap"><table style="width:100%;font-size:.83rem;" class="table">
@@ -108,7 +136,7 @@
         <tr><td style="color:#6b7280;padding:4px;">Consultant</td><td>{{ lead.salesperson_name or 'Unassigned' }}</td></tr>
         <tr><td style="color:#6b7280;padding:4px;">Package</td><td>{{ lead.interested_package or '—' }}</td></tr>
         <tr><td style="color:#6b7280;padding:4px;">Consent</td><td>{{ 'Marketing permitted' if lead.marketing_consent and not lead.do_not_contact else 'No marketing' }}</td></tr>
-        <tr><td style="color:#6b7280;padding:4px;">Captured</td><td>{{ lead.created_at|string|truncate(16, true, '') }}</td></tr>
+        <tr><td style="color:#6b7280;padding:4px;">Captured</td><td>{{ lead.created_at|sast }}</td></tr>
       </table></div>
       {% if lead.notes %}<div style="border-top:1px solid #eee;margin-top:10px;padding-top:10px;font-size:.82rem;color:#4b5563;">{{ lead.notes }}</div>{% endif %}
       {% if lead.closure_reason %}<div class="alert alert-warning" style="margin-top:12px;"><strong>Closure:</strong> {{ lead.closure_reason }}{% if lead.objection_reason %}<br><strong>Objection:</strong> {{ lead.objection_reason }}{% endif %}{% if lead.recycle_reason %}<br><strong>Recycle Reason:</strong> {{ recycle_reason_labels.get(lead.recycle_reason, lead.recycle_reason) }}{% endif %}{% if lead.recycle_due_at %}<br><strong>Automatic Recall:</strong> {{ lead.recycle_due_at }}{% endif %}</div>{% endif %}

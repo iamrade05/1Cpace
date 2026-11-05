@@ -260,7 +260,7 @@ def _ptp_arrangement(db, member_id):
         "WHERE ptp_id=? AND verification_status='verified'", (ptp["id"],)).fetchone()["t"])
     next_action = {
         "awaiting_debicheck": "Prepare or obtain approval for the DebiCheck mandate(s).",
-        "awaiting_prerequisites": "Clear manager review or verify the upfront payment.",
+        "awaiting_prerequisites": "Provide two months of bank statements, clear manager review and verify any upfront payment.",
         "declined": "A required mandate was declined. Agree a new arrangement.",
         "granted": "Monitor repayments.",
         "legacy": "Recorded before the approval gate; review for DebiCheck evidence.",
@@ -402,13 +402,12 @@ def report_month(value=None):
 def financial_report(db, month):
     """Money in and out of collections for one 15th?14th cycle, plus where it stands now.
     There is no opening balance: balances are not snapshotted, so one would be invented."""
+    from .financial_reporting import cash_received
     return {
         "month": month, "cycle_start": cycle_bounds(month)[0].isoformat(), "cycle_end": cycle_bounds(month)[1].isoformat(),
         "new_arrears": float(_scalar(
             db, "SELECT SUM(arrears_amount) FROM collections_cases WHERE strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month'))=?", (month,))),
-        "collected": float(_scalar(
-            db, """SELECT SUM(amount_paid) FROM collections
-                   WHERE strftime('%Y-%m', date(collection_date,'-14 days','start of month','+1 month'))=? AND status IN ('paid','partial')""", (month,))),
+        "collected": cash_received(db, *cycle_bounds(month)),
         "discounts_approved": float(_scalar(
             db, """SELECT SUM(discount_amount) FROM ptp_agreements
                    WHERE strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month'))=? AND COALESCE(discount_amount,0) > 0
@@ -483,6 +482,7 @@ def sales_quality_report(db, month):
 
 
 def performance_report(db, month):
+    from .financial_reporting import cash_received
     """Reception and collections activity for one 15th?14th cycle."""
     from .collections_engine import reached_sql
 
@@ -505,9 +505,7 @@ def performance_report(db, month):
                    WHERE strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month'))=? AND COALESCE(arrangement_type,'full') <> 'full'""", (month,)),
         "debichecks": _scalar(
             db, "SELECT COUNT(*) FROM debicheck_mandates WHERE strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month'))=?", (month,)),
-        "amount_collected": float(_scalar(
-            db, """SELECT SUM(amount_paid) FROM collections
-                   WHERE strftime('%Y-%m', date(collection_date,'-14 days','start of month','+1 month'))=? AND status IN ('paid','partial')""", (month,))),
+        "amount_collected": cash_received(db, *cycle_bounds(month)),
         "discount_requests": _scalar(
             db, """SELECT COUNT(*) FROM ptp_agreements
                    WHERE strftime('%Y-%m', date(created_at,'-14 days','start of month','+1 month'))=? AND COALESCE(discount_pct,0) > 0""", (month,)),

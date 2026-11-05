@@ -13,7 +13,7 @@
     {% elif status.logged_in %}
     <div class="alert alert-success" style="margin-bottom:16px;">
        Connected — a WhatsApp number is linked and sending.
-      {% if status.last_sent_at %}<br><small>Last message sent: {{ status.last_sent_at[:19].replace('T', ' ') }}</small>{% endif %}
+      {% if status.last_sent_at %}<br><small>Last message sent: {{ status.last_sent_at|sast('%Y-%m-%d %H:%M:%S') }}</small>{% endif %}
     </div>
     {% elif status.syncing %}
     <div class="alert alert-info"><strong>Phone linked. Loading your chats.</strong><p>WhatsApp is downloading messages. Keep this connection open; the status changes to Connected when it finishes.</p></div>
@@ -79,8 +79,8 @@
     <div class="table-wrap"><table style="width:100%;font-size:0.83rem;" class="table">
       <tr><td style="color:#6b7280;padding:4px;">Background session running</td><td>{{ 'Yes' if status.started else 'No' }}</td></tr>
       <tr><td style="color:#6b7280;padding:4px;">Messages waiting to send</td><td>{{ status.queue_length }}</td></tr>
-      <tr><td>Last inbox check</td><td>{{ status.last_receive_poll_at or 'Waiting for a linked session' }}</td></tr>
-      <tr><td>Last received message</td><td>{{ status.last_received_at or 'None synced yet' }}</td></tr>
+      <tr><td>Last inbox check</td><td>{{ status.last_receive_poll_at|sast or 'Waiting for a linked session' }}</td></tr>
+      <tr><td>Last received message</td><td>{{ status.last_received_at|sast or 'None synced yet' }}</td></tr>
     </table></div>
     {% if status.receive_error %}<div class="alert alert-warning">{{ status.receive_error }}</div>{% endif %}
     {% if status.welcome_error %}<div class="alert alert-warning">{{ status.welcome_error }}</div>{% endif %}

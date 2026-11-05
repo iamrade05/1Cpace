@@ -10,6 +10,8 @@ session["user_id"], so the two never collide.
 import re
 import secrets
 import sqlite3
+import hashlib
+import hmac
 from functools import wraps
 from pathlib import Path
 
@@ -29,10 +31,22 @@ _LOGO_EXTENSIONS = {"png", "jpg", "jpeg", "svg", "webp"}
 _SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 
+def _platform_fingerprint(admin):
+    return hashlib.sha256(admin['password_hash'].encode()).hexdigest()
+
+
+def platform_session_valid():
+    admin = get_platform_db().execute('SELECT * FROM platform_admins WHERE id=?',
+                                     (session.get('platform_admin_id'),)).fetchone()
+    return bool(admin and hmac.compare_digest(str(session.get('platform_auth_fingerprint') or ''),
+                                              _platform_fingerprint(admin)))
+
+
 def _platform_login_required(view):
     @wraps(view)
     def wrapped(**kwargs):
-        if not session.get("platform_admin_id"):
+        if not platform_session_valid():
+            session.clear()
             return redirect(url_for("platform.login"))
         return view(**kwargs)
     return wrapped
@@ -72,10 +86,12 @@ def _leave_tenant_session() -> None:
     """Remove tenant authority while keeping the platform principal signed in."""
     admin_id = session.get("platform_admin_id")
     username = session.get("platform_admin_username", "")
+    fingerprint = session.get('platform_auth_fingerprint')
     session.clear()
     if admin_id:
         session["platform_admin_id"] = admin_id
         session["platform_admin_username"] = username
+        session['platform_auth_fingerprint'] = fingerprint
 
 
 def _power_user_for_tenant(tenant, admin):
@@ -147,6 +163,7 @@ def login():
             session.clear()
             session["platform_admin_id"] = admin["id"]
             session["platform_admin_username"] = admin["username"]
+            session['platform_auth_fingerprint'] = _platform_fingerprint(admin)
             _audit("platform_login")
             return redirect(url_for("platform.tenants_index"))
         flash("Invalid username or password.", "error")
@@ -218,6 +235,7 @@ def tenant_enter(tenant_id):
     session.update({
         "platform_admin_id":       admin["id"],
         "platform_admin_username": admin["username"],
+        "platform_auth_fingerprint": _platform_fingerprint(admin),
         "is_power_user":           True,
         "power_user_tenant_slug":  tenant["slug"],
         "power_user_tenant_name":  tenant["name"],

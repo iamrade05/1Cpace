@@ -21,6 +21,13 @@ checks on 3.12. CI results must still be observed after this change is pushed.
 
 ## Local command
 
+Ordinary tests clone a fully migrated, empty SQLite baseline into unique database
+files and rebind their tenant registry to those files. Their factory setup skips
+repeating the same DDL; the patch is restored before the test runs. Tests that
+call `create_app()` themselves still exercise real startup and migrations. This
+reduces Windows disk/memory pressure without sharing operational rows or changing
+production initialization or SQLite transaction settings.
+
 `pytest` is intentionally absent from `requirements.txt` — production installs
 no test tooling. Install the dev set instead:
 

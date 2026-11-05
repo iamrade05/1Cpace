@@ -9,6 +9,8 @@ from onecpase.database import get_db
 
 
 def _login_as_admin(client):
+    from test_staff_passwords import _make_admin
+    _make_admin(client)
     with client.session_transaction() as sess:
         sess["user_id"] = 1
         sess["role"] = "admin"

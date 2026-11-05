@@ -51,7 +51,7 @@
             <span class="badge badge-inactive">Inactive</span>
             {% endif %}
           </td>
-          <td>{{ t.created_at }}</td>
+          <td>{{ t.created_at|sast }}</td>
           <td class="row-actions">
             {% if t.active %}
             <form method="POST" action="{{ url_for('platform.tenant_enter', tenant_id=t.id) }}" class="u-cccfa456">

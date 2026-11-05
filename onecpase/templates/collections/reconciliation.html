@@ -81,7 +81,7 @@
     <thead><tr><th>Uploaded</th><th>By</th><th>Files</th><th style="text-align:right;">Rows</th><th style="text-align:right;">New</th></tr></thead>
     <tbody>
       {% for r in data.runs %}
-      <tr><td>{{ r.uploaded_at }}</td><td>{{ r.uploader or '—' }}</td><td style="max-width:360px;word-break:break-word;">{{ r.filenames }}</td><td style="text-align:right;">{{ '{:,}'.format(r.rows_read or 0) }}</td><td style="text-align:right;">{{ '{:,}'.format(r.rows_new or 0) }}</td></tr>
+      <tr><td>{{ r.uploaded_at|sast }}</td><td>{{ r.uploader or '—' }}</td><td style="max-width:360px;word-break:break-word;">{{ r.filenames }}</td><td style="text-align:right;">{{ '{:,}'.format(r.rows_read or 0) }}</td><td style="text-align:right;">{{ '{:,}'.format(r.rows_new or 0) }}</td></tr>
       {% endfor %}
     </tbody>
   </table></div>

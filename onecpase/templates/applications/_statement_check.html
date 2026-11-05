@@ -1,0 +1,32 @@
+{% set read = statement_check.analysis %}
+{% set cash = read.cashflow or {} %}
+<div class="callout callout-warning statement-check">
+  <strong>Check the statement before overriding</strong>
+  <p>
+    <a href="{{ url_for('members.member_download_doc', mid=statement_check.document.member_id, doc_id=statement_check.document.id) }}" target="_blank" rel="noopener">Open {{ statement_check.document.original_name }}</a>.
+    You must open it yourself. This is recorded under your name.
+  </p>
+  <p>What the system read. Compare this with the file:</p>
+  <ul>
+    <li>Regular income found: {{ 'Yes' if read.income_detected else 'No' }}{% if read.income_detected %} (R{{ '%.2f'|format(read.estimated_income or 0) }} a month){% endif %}</li>
+    <li>Months covered by the statement: {{ cash.months or 'Not read' }}</li>
+    <li>Money in by month: {% for month, amount in (read.monthly_money_in or {}).items() %}{{ month }} R{{ '%.2f'|format(amount) }}{% if not loop.last %}, {% endif %}{% else %}Not read{% endfor %}. This counts all money in, wherever it came from.</li>
+    <li>Average money in: R{{ '%.2f'|format(cash.avg_money_in or 0) }}, money out: R{{ '%.2f'|format(cash.avg_money_out or 0) }}</li>
+    <li>Lowest balance in each month: {% for month, balance in (read.monthly_balances or {}).items() %}R{{ '%.2f'|format(balance) }}{% if not loop.last %}, {% endif %}{% else %}Not read{% endfor %}</li>
+    <li>Declined or returned payments: {{ read.returned_debits or 0 }}</li>
+    <li>Failed debit orders: {{ read.failed_debits if read.failed_debits is defined else 'Not read, check the file' }}</li>
+    <li>Disputed debit orders: {{ read.disputed_debits if read.disputed_debits is defined else 'Not read, check the file' }}</li>
+    <li>Suggested debit day: {{ cash.suggested_debit_day or 'None' }}</li>
+  </ul>
+  <p>Check for yourself:</p>
+  <ul>
+    <li>Is the account in the client's name, and is the statement complete?</li>
+    <li>Is the money real income, or transfers from their own accounts, loans or betting wins?</li>
+    <li>Would the instalment be covered on the debit day, not only just after one large deposit?</li>
+    <li>Has the client disputed or bounced a debit order before?</li>
+  </ul>
+  <label><input type="checkbox" name="statement_checked" value="1" required> I opened this statement and checked it for errors</label>
+  <label>What you found
+    <textarea name="statement_note" rows="2" class="form-control" required></textarea>
+  </label>
+</div>

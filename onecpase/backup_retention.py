@@ -1,4 +1,4 @@
-"""Keep five complete database snapshots and five deployment rollback sets."""
+"""Keep three complete database snapshots and five deployment rollback sets."""
 import argparse
 import errno
 from datetime import datetime, timezone
@@ -11,6 +11,7 @@ import sqlite3
 import time
 import tempfile
 
+KEEP_DATABASE_BACKUPS = 3
 KEEP_BACKUPS = 5
 BACKUP_RESERVE_BYTES = 512 * 1024 * 1024
 _STAMP = re.compile(r'(\d{8})(?:[T_](\d{6}))?')
@@ -62,7 +63,7 @@ def _valid_database(path):
         return False
 
 
-def prune_databases(directory, keep=KEEP_BACKUPS, apply=False, minimum_age_seconds=900):
+def prune_databases(directory, keep=KEEP_DATABASE_BACKUPS, apply=False, minimum_age_seconds=900):
     root = _root(directory)
     candidates = [p for p in root.iterdir() if p.is_file() and not p.is_symlink()
                   and p.suffix in {'.db', '.sqlite3'} and _stamp(p) is not None]
@@ -132,7 +133,7 @@ def ensure_backup_capacity(db_path, backup_dir, reserve_bytes=BACKUP_RESERVE_BYT
 
 
 def snapshot_database(db_path, backup_dir, filename):
-    """Publish only a complete, checked snapshot, then retain the newest five."""
+    """Publish only a complete, checked snapshot, then retain the newest three."""
     backup_dir = Path(backup_dir)
     backup_dir.mkdir(exist_ok=True)
     root = _root(backup_dir)

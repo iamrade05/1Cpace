@@ -46,7 +46,7 @@
               <span class="pbadge" style="background:#f1f5f9;color:#94a3b8;">Processing</span>
               {% endif %}
             </td>
-            <td style="font-size:.75rem;color:#9ca3af;white-space:nowrap;">{{ (u.created_at or '')[:16] }}</td>
+            <td style="font-size:.75rem;color:#9ca3af;white-space:nowrap;">{{ u.created_at|sast }}</td>
             <td>
               {% if u.status != 'failed' %}
               <a href="{{ url_for('call_list.review', upload_id=u.id) }}" class="btn btn-ghost btn-sm">Review →</a>

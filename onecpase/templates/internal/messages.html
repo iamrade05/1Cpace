@@ -31,7 +31,7 @@
                    padding:2px 9px;font-size:.74rem;font-weight:700;">{{ t.unread }}</span>
       {% endif %}
       <span style="color:var(--t2);font-size:.74rem;white-space:nowrap;">
-        {{ (t.last_message_at or '')|string|truncate(16, true, '') }}
+        {{ t.last_message_at|sast }}
       </span>
     </a>
     {% else %}

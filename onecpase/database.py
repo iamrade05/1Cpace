@@ -98,6 +98,9 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
     from .sales_kpi import ensure_sales_kpi_schema
     ensure_sales_kpi_schema(db, backend)
 
+    from .sales_board import ensure_schema as ensure_sales_board_schema
+    ensure_sales_board_schema(db)
+
     from .mobile_api import ensure_schema as ensure_mobile_schema
     ensure_mobile_schema(db)
     from .query_forms import ensure_schema as ensure_query_forms_schema
@@ -111,6 +114,10 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
     from .notifications import ensure_schema as ensure_notification_schema
     ensure_notification_schema(db, backend)
     _ensure_column(db, backend, "users", "is_platform_user", "INTEGER DEFAULT 0")
+    _ensure_column(db, backend, "users", "session_version", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, backend, "login_otp_challenges", "session_version", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, backend, "membership_applications", "itensity_confirmed_ref", "TEXT")
+    _ensure_column(db, backend, "membership_applications", "push_started_at", "TEXT")
     _ensure_column(db, backend, "users", "platform_admin_id", "INTEGER")
     _ensure_column(db, backend, "users", "is_sales_consultant", "INTEGER DEFAULT 0")
     _ensure_column(db, backend, "users", "sales_available", "INTEGER DEFAULT 0")

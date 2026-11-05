@@ -20,6 +20,7 @@ from .auth import permission_required
 from .query_funnel import local_today
 from .database import get_db, member_activity
 from .encryption import encrypt, decrypt, decrypt_member
+from .financial_reporting import cash_amount
 from .queries import queries_bp, QUERY_PERMISSION
 
 NOTICE = ('Submitting this form does not mean that your application has been approved. '
@@ -361,7 +362,7 @@ def signed_workflow(qid):
                 if not ids or (reason=='double_debit' and len(ids)!=2):abort(400,description='Identify the actual collected payments.')
                 rows=db.execute('SELECT * FROM collections WHERE member_id=? AND id IN ('+','.join('?' for _ in ids)+')',
                                 (qry['member_id'],*ids)).fetchall()
-                if len(rows)!=len(ids) or any(r['status'] not in ('paid','partial') or float(r['amount_paid'] or 0)<=0 for r in rows):
+                if len(rows)!=len(ids) or any(cash_amount(r)<=0 for r in rows):
                     abort(400,description='Every selected payment must be a successful collection for this member.')
                 if Decimal(details['verified_amount'])>sum(Decimal(str(r['amount_paid'])) for r in rows):abort(400,description='The refund exceeds the selected collected payments.')
                 if reason=='double_debit':
@@ -501,7 +502,7 @@ def signed_workflow(qid):
             if amount(request.form.get('amount'))!=details['approved_amount']:abort(400,description='A changed amount needs a new approval.')
             ids=details.get('collection_ids',[])
             rows=db.execute('SELECT * FROM collections WHERE member_id=? AND id IN ('+','.join('?' for _ in ids)+')',(qry['member_id'],*ids)).fetchall() if ids else []
-            if len(rows)!=len(ids) or not rows or any(r['status'] not in ('paid','partial') for r in rows) or sum(Decimal(str(r['amount_paid'] or 0)) for r in rows)<Decimal(details['approved_amount']):
+            if len(rows)!=len(ids) or not rows or any(cash_amount(r)<=0 for r in rows) or sum(cash_amount(r) for r in rows)<Decimal(details['approved_amount']):
                 abort(409,description='The collected payments changed after approval. Recheck the refund before recording payment.')
             evidence=uploads()
             if not request.form.get('reference','').strip() or not evidence:abort(400,description='Record the payment reference and confirmation evidence.')
