@@ -1053,6 +1053,11 @@ def _background_itensity_push(
                 conn.commit()
                 return
             member_data = decrypt_member(member)
+            # Itensity has one shared login, so its sales rep field is where the
+            # person who loaded the client shows.
+            loader = conn.execute("SELECT full_name FROM users WHERE id=?", (_loaded_by(conn, aid),)).fetchone()
+            if loader and loader["full_name"]:
+                member_data["sales_person"] = loader["full_name"]
             if reconcile_only or (saved and saved['itensity_confirmed_ref']):
                 confirmed_ref = saved['itensity_confirmed_ref'] if saved else None
                 if not confirmed_ref:
@@ -1294,8 +1299,19 @@ def push_application(aid: int):
     return redirect(url_for("applications.application_detail", aid=aid))
 
 
-def push_ready_applications(app, db_path: str, actor_id: int, from_date: str) -> list[int]:
-    """Push each new application that meets every requirement, one at a time.
+def _loaded_by(conn, application_id: int) -> int | None:
+    """The staff member who loaded this client on the app."""
+    row = conn.execute(
+        """SELECT COALESCE(ma.created_by, m.uploaded_by_id) AS loaded_by FROM membership_applications ma
+           JOIN members m ON m.id = ma.member_id WHERE ma.id = ?""",
+        (application_id,),
+    ).fetchone()
+    return row["loaded_by"] if row else None
+
+
+def push_ready_applications(app, db_path: str, from_date: str) -> list[int]:
+    """Push each new application that meets every requirement, one at a time,
+    each under the person who loaded the client.
 
     Only an application that has never been tried is picked up: a stopped push
     needs a person to look at why, and from_date keeps older clients out.
@@ -1307,11 +1323,6 @@ def push_ready_applications(app, db_path: str, actor_id: int, from_date: str) ->
         with app.app_context():
             from .integrations import bind_itensity_tenant, itensity_writes_allowed
             bind_itensity_tenant(db_path)
-            try:
-                _push_actor(conn, actor_id, None)
-            except ValueError:
-                app.logger.error("Automatic Itensity push skipped: user %s can't activate members", actor_id)
-                return pushed
             candidates = conn.execute(
                 """SELECT ma.id, ma.member_id FROM membership_applications ma
                    JOIN members m ON m.id = ma.member_id
@@ -1333,6 +1344,13 @@ def push_ready_applications(app, db_path: str, actor_id: int, from_date: str) ->
                     (aid,),
                 ).fetchone()
                 if not cl or not _is_ready_to_push(cl, _push_analysis(conn, member_id, analysis)) or _itensity_hard_blockers(conn, aid, member_id):
+                    continue
+                actor_id = _loaded_by(conn, aid)
+                try:
+                    _push_actor(conn, actor_id, None)
+                except ValueError:
+                    app.logger.warning("Automatic Itensity push waiting on application %s: "
+                                       "the person who loaded it can't activate members", aid)
                     continue
                 if not _mark_itensity_push_started(conn, aid):
                     conn.rollback()

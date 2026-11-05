@@ -10,6 +10,7 @@ from tests.test_itensity import _fully_ready_application, _login
 
 def _ready(app, **changes):
     app.config["ITENSITY_PUSH_ALLOWED"] = "all"
+    changes.setdefault("created_by", 1)
     with app.app_context():
         db = get_db()
         application_id, member_id = _fully_ready_application(db)
@@ -19,9 +20,9 @@ def _ready(app, **changes):
         return application_id, member_id, db.execute("PRAGMA database_list").fetchone()["file"]
 
 
-def _sweep(app, db_path, from_date="2000-01-01", actor_id=1, result=(True, "IT-99", None)):
+def _sweep(app, db_path, from_date="2000-01-01", result=(True, "IT-99", None)):
     with patch("onecpase.applications.push_member_to_itensity", return_value=result) as pushed:
-        started = push_ready_applications(app, db_path, actor_id, from_date)
+        started = push_ready_applications(app, db_path, from_date)
     return started, pushed
 
 
@@ -230,20 +231,81 @@ def test_the_write_switch_still_applies(app):
     assert _statuses(app, application_id)[1] == "not_pushed"
 
 
-def test_an_account_that_cant_activate_members_stops_the_sweep_without_marking_anyone(app):
-    application_id, _, db_path = _ready(app)
+def _staff_member(app, user_id, name, active=1):
+    with app.app_context():
+        db = get_db()
+        db.execute("INSERT INTO users(id,username,password_hash,full_name,role,department,active) VALUES (?,?,'x',?,'staff','Sales',?)",
+                   (user_id, f"loader{user_id}", name, active))
+        db.commit()
 
-    started, pushed = _sweep(app, db_path, actor_id=99999)
+
+@pytest.mark.parametrize("created_by", [99999, None])
+def test_a_client_with_nobody_able_to_push_waits_without_being_marked(app, created_by):
+    application_id, _, db_path = _ready(app, created_by=created_by)
+
+    started, pushed = _sweep(app, db_path)
 
     assert started == []
     pushed.assert_not_called()
     assert _statuses(app, application_id)[1] == "not_pushed"
 
 
-@pytest.mark.parametrize("actor_id, from_date", [("", "2000-01-01"), ("1", ""), ("", "")])
-def test_the_job_is_off_until_both_settings_are_given(app, actor_id, from_date):
+def test_someone_who_left_only_holds_back_their_own_client(app):
+    _staff_member(app, 40, "Left Already", active=0)
+    held, _, db_path = _ready(app, created_by=40)
+    with app.app_context():
+        db = get_db()
+        second = db.execute("INSERT INTO members(first_name,last_name,id_number,member_status) VALUES('Other','Client','AUTO-2','Unverified')").lastrowid
+        db.commit()
+        for table, column in (("member_documents", "member_id"), ("debicheck_mandates", "member_id"), ("collections", "member_id")):
+            columns = [row[1] for row in db.execute(f"PRAGMA table_info({table})") if row[1] != "id"]
+            names = ",".join(columns)
+            picks = ",".join("?" if name == column else name for name in columns)
+            db.execute(f"INSERT INTO {table}({names}) SELECT {picks} FROM {table} WHERE {column}=(SELECT member_id FROM membership_applications WHERE id=?)",
+                       (second, held))
+        other = db.execute("INSERT INTO membership_applications(member_id,package,application_status,push_status,created_by) VALUES(?,'Premium','ready_to_push','not_pushed',1)", (second,)).lastrowid
+        for table in ("compliance_checklists", "statement_analyses"):
+            columns = [row[1] for row in db.execute(f"PRAGMA table_info({table})") if row[1] != "id"]
+            names = ",".join(columns)
+            picks = ",".join("?" if name == "application_id" else name for name in columns)
+            db.execute(f"INSERT INTO {table}({names}) SELECT {picks} FROM {table} WHERE application_id=?", (other, held))
+        db.commit()
+
+    started, _ = _sweep(app, db_path)
+
+    assert started == [other]
+    assert _statuses(app, held)[1] == "not_pushed"
+
+
+def test_it_is_recorded_under_and_shows_the_person_who_loaded_the_client(app):
+    _staff_member(app, 41, "Terry Loader")
+    application_id, member_id, db_path = _ready(app, created_by=41)
+
+    _, pushed = _sweep(app, db_path)
+
+    assert pushed.call_args.args[0]["sales_person"] == "Terry Loader"
+    with app.app_context():
+        row = get_db().execute("SELECT user_id FROM audit_logs WHERE application_id=? AND action='itensity_auto_push_started'",
+                               (application_id,)).fetchone()
+        assert row["user_id"] == 41
+
+
+def test_the_member_record_names_the_loader_when_the_application_does_not(app):
+    _staff_member(app, 42, "Member Loader")
+    application_id, member_id, db_path = _ready(app, created_by=None)
+    with app.app_context():
+        db = get_db()
+        db.execute("UPDATE members SET uploaded_by_id=42 WHERE id=?", (member_id,))
+        db.commit()
+
+    _, pushed = _sweep(app, db_path)
+
+    assert pushed.call_args.args[0]["sales_person"] == "Member Loader"
+
+
+def test_the_job_is_off_until_a_start_date_is_given(app):
     application_id, _, _ = _ready(app)
-    app.config.update(ITENSITY_AUTO_PUSH_USER_ID=actor_id, ITENSITY_AUTO_PUSH_FROM=from_date)
+    app.config.update(ITENSITY_AUTO_PUSH_FROM="")
 
     with patch("onecpase.applications.push_member_to_itensity") as pushed:
         _job_itensity_auto_push(app)
@@ -254,7 +316,7 @@ def test_the_job_is_off_until_both_settings_are_given(app, actor_id, from_date):
 
 def test_the_job_pushes_when_switched_on(app):
     application_id, _, _ = _ready(app)
-    app.config.update(ITENSITY_AUTO_PUSH_USER_ID="1", ITENSITY_AUTO_PUSH_FROM="2000-01-01")
+    app.config.update(ITENSITY_AUTO_PUSH_FROM="2000-01-01")
 
     with patch("onecpase.applications.push_member_to_itensity", return_value=(True, "IT-99", None)):
         _job_itensity_auto_push(app)

@@ -447,12 +447,11 @@ def _job_query_funnel(app):
 def _job_itensity_auto_push(app) -> None:
     from .applications import push_ready_applications
 
-    actor_id = app.config.get("ITENSITY_AUTO_PUSH_USER_ID")
     from_date = app.config.get("ITENSITY_AUTO_PUSH_FROM")
     tenant = _find_tenant(app, app.config.get("ITENSITY_TENANT_SLUG", "elev8"))
-    if not (actor_id and from_date and tenant):
+    if not (from_date and tenant):
         return
-    pushed = push_ready_applications(app, tenant["db_path"], int(actor_id), from_date)
+    pushed = push_ready_applications(app, tenant["db_path"], from_date)
     if pushed:
         logger.info("Automatic Itensity push ran for applications %s", pushed)
 

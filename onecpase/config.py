@@ -68,11 +68,9 @@ class Config:
     # Load the fee as a once-off charge before paying it. Itensity didn't detect
     # the fee from the payment alone in the Nov 2026 trial.
     ITENSITY_REG_FEE_ADD_FEE_FIRST = os.environ.get("ITENSITY_REG_FEE_ADD_FEE_FIRST", "1") == "1"
-    # Push an application by itself once every requirement is in place. The
-    # account the push is recorded under: blank switches the automatic push off.
-    ITENSITY_AUTO_PUSH_USER_ID = os.environ.get("ITENSITY_AUTO_PUSH_USER_ID", "")
-    # Only applications created on or after this date. Blank also means off,
-    # so switching it on can't send older clients.
+    # Push an application by itself once every requirement is in place, under
+    # the person who loaded the client. Only applications created on or after
+    # this date; blank switches the automatic push off.
     ITENSITY_AUTO_PUSH_FROM = os.environ.get("ITENSITY_AUTO_PUSH_FROM", "")
     # The Itensity gym's reg fee, for members with no joining_fee of their own.
     REGISTRATION_FEE_AMOUNT = float(os.environ.get("REGISTRATION_FEE_AMOUNT", "0"))
