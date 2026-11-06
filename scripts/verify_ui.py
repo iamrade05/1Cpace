@@ -14,7 +14,7 @@ from onecpase.database import get_db
 from onecpase.permissions import default_permissions_for
 from flask import render_template
 
-out=Path(__file__).resolve().parents[1]/'artifacts/ui-review'
+out=Path(os.environ.get('UI_REVIEW_OUTPUT_DIR') or Path(__file__).resolve().parents[1]/'artifacts/ui-review')
 out.mkdir(parents=True,exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='onecpace-ui-') as tmp:
     app=create_app({'TESTING':True,'ENVIRONMENT':'testing','DATABASE_URL':'','DATABASE_PATH':str(Path(tmp)/'test.db'),'PLATFORM_DATABASE_PATH':str(Path(tmp)/'platform.db'),'TENANTS_DIR':str(Path(tmp)/'tenants'),'UPLOAD_FOLDER':str(Path(tmp)/'uploads'),'SECRET_KEY':'ui-preview-only','ENCRYPTION_KEY':'kRWWWElbDm6KCdoe_UpkzAT4BnCrXq4msN8btwUXIS8=','WTF_CSRF_ENABLED':False,'TURNSTILE_ENABLED':False,'ACTIVE_PHASE':'all'})
@@ -92,8 +92,9 @@ with tempfile.TemporaryDirectory(prefix='onecpace-ui-') as tmp:
             page.locator('.inline-confirmation').get_by_role('button',name='Cancel').click()
             assert not sent
             page.get_by_role('button',name='Preview action').click()
-            with page.expect_request('**/ui-confirmation-test'):
-                page.locator('.inline-confirmation').get_by_role('button',name='Confirm',exact=True).click()
+            with page.expect_response('**/ui-confirmation-test') as confirmation_response:
+                page.locator('.inline-confirmation').get_by_role('button',name='Confirm',exact=True).click(no_wait_after=True)
+            assert confirmation_response.value.status == 204
             assert len(sent)==1 and 'action=apply' in sent[0]
             browser.close()
         (out/'results.json').write_text(json.dumps({'pages':results,'javascript_errors':errors},indent=2),encoding='utf-8')
