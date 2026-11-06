@@ -1300,9 +1300,9 @@ def push_application(aid: int):
 
 
 def _loaded_by(conn, application_id: int) -> int | None:
-    """The staff member who loaded this client on the app."""
+    """Use the original member loader, falling back for older unowned records."""
     row = conn.execute(
-        """SELECT COALESCE(ma.created_by, m.uploaded_by_id) AS loaded_by FROM membership_applications ma
+        """SELECT COALESCE(m.uploaded_by_id, ma.created_by) AS loaded_by FROM membership_applications ma
            JOIN members m ON m.id = ma.member_id WHERE ma.id = ?""",
         (application_id,),
     ).fetchone()

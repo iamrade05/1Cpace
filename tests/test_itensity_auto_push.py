@@ -303,6 +303,36 @@ def test_the_member_record_names_the_loader_when_the_application_does_not(app):
     assert pushed.call_args.args[0]["sales_person"] == "Member Loader"
 
 
+@pytest.mark.parametrize("loader_active", [1, 0])
+def test_later_application_creator_does_not_replace_the_original_loader(app, loader_active):
+    _staff_member(app, 41, "Original Loader", active=loader_active)
+    _staff_member(app, 42, "Later Document Uploader")
+    application_id, member_id, db_path = _ready(app, created_by=42)
+    with app.app_context():
+        db = get_db()
+        db.execute("UPDATE members SET uploaded_by_id=41 WHERE id=?", (member_id,))
+        db.commit()
+
+    started, pushed = _sweep(app, db_path)
+
+    if not loader_active:
+        assert started == []
+        pushed.assert_not_called()
+        assert _statuses(app, application_id)[1] == "not_pushed"
+        return
+
+    assert started == [application_id]
+    assert pushed.call_args.args[0]["sales_person"] == "Original Loader"
+    with app.app_context():
+        rows = get_db().execute(
+            "SELECT user_id FROM audit_logs WHERE application_id=? "
+            "AND action IN ('itensity_auto_push_started', 'application_activated')",
+            (application_id,),
+        ).fetchall()
+        assert len(rows) == 2
+        assert all(row["user_id"] == 41 for row in rows)
+
+
 def test_the_job_is_off_until_a_start_date_is_given(app):
     application_id, _, _ = _ready(app)
     app.config.update(ITENSITY_AUTO_PUSH_FROM="")
