@@ -187,7 +187,13 @@ def test_import_requires_at_least_one_selected_row(client, app):
     assert b"select at least one row" in resp.data.lower()
 
 
-def test_uploading_the_same_file_twice_reuses_the_existing_upload(client, tmp_path):
+def test_uploading_the_same_file_twice_reuses_the_existing_upload(client, app, tmp_path, monkeypatch):
+    from unittest.mock import Mock
+    from onecpase.call_list_parser import ExtractionResult
+
+    # Duplicate detection must work independently of the installed OCR engine.
+    extract = Mock(return_value=ExtractionResult(rows=[], page_count=1, message="No rows found"))
+    monkeypatch.setattr("onecpase.call_list.extract_call_list", extract)
     _login(client)
     from PIL import Image
     image_path = tmp_path / "dup.png"
@@ -205,3 +211,7 @@ def test_uploading_the_same_file_twice_reuses_the_existing_upload(client, tmp_pa
         "/calls/upload", data={"document": (io.BytesIO(content), "dup.png")}, content_type="multipart/form-data"
     )
     assert second.headers["Location"] == first_location
+    assert first_location.endswith("/review")
+    extract.assert_called_once()
+    with app.app_context():
+        assert get_db().execute("SELECT COUNT(*) FROM call_list_uploads").fetchone()[0] == 1

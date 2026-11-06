@@ -31,11 +31,10 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
       - name: Compile Python
         run: python -m compileall -q onecpase
+      - name: Install browser for tests and UI checks
+        run: python -m playwright install --with-deps chromium
       - name: Run tests
         run: python -m pytest -q
-      - name: Install browser for UI release checks
-        if: matrix.python-version == '3.12'
-        run: python -m playwright install --with-deps chromium
       - name: Check desktop and mobile UI
         if: matrix.python-version == '3.12'
         run: python -m scripts.verify_ui
