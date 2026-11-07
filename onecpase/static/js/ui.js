@@ -93,3 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
   refreshNotifications();
   setInterval(refreshNotifications, 60000);
 });
+document.addEventListener('DOMContentLoaded', () => {
+  const dialog = document.querySelector('dialog[data-open-on-load]');
+  if (dialog && typeof dialog.showModal === 'function') dialog.showModal();
+});

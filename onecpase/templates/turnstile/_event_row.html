@@ -1,0 +1,16 @@
+<tr>
+  <td>{{ event.created_at|sast }}</td>
+  <td><code>{{ event.credential or event.raw_report_hex }}</code></td>
+  <td>{% if event.member_id %}<a href="{{ url_for('members.member_detail', mid=event.member_id) }}">#{{ event.member_id }} {{ event.first_name }} {{ event.last_name }}</a>{% else %}Unmatched{% endif %}</td>
+  <td><span class="badge {% if event.decision == 'granted' %}badge-success{% elif event.decision == 'denied' %}badge-danger{% else %}badge-warning{% endif %}">{{ event.decision|title }}</span></td>
+  <td>{{ event.reason or '—' }}</td>
+  <td>
+    {% if not event.member_id and event.credential and has_perm('add_member') %}
+    <form method="POST" action="{{ url_for('turnstile.assign_credential', event_id=event.id) }}" style="display:flex;gap:6px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="number" min="1" name="member_id" class="form-control" style="width:95px;" placeholder="Member ID" required>
+      <button class="btn btn-primary btn-sm">Link</button>
+    </form>
+    {% else %}—{% endif %}
+  </td>
+</tr>

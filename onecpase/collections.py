@@ -781,7 +781,9 @@ def _offer_from_request(db, member_id: int, form) -> dict:
     local_status = normalise_debicheck_status(mandate["status"]) if mandate else None
     # Is there a working mandate? Ours first; otherwise what the NuPay check found.
     mandate_state = mandate_state_for(db, member_id, local_status)
-    member_row = db.execute("SELECT monthly_installment FROM members WHERE id=?", (member_id,)).fetchone()
+    from .collection_membership import membership_payment_context
+    membership_context = membership_payment_context(db, member_id)
+    normal_instalment = membership_context['normal_instalment']
     paid_dates = [r["collection_date"] for r in rows if (r["amount_paid"] or 0) > 0 and r["collection_date"]]
     last_payment = max(paid_dates)[:10] if paid_dates else None
     result = decide_offer(
@@ -791,9 +793,9 @@ def _offer_from_request(db, member_id: int, form) -> dict:
         debicheck_status="approved" if mandate_state == "active" else local_status,
         debicheck_submitted_at=mandate["submitted_at"] if mandate else None,
         # The caller enters only what the client can pay above the normal instalment.
-        monthly_affordable=(amount("monthly_affordable") + float(member_row["monthly_installment"] or 0))
-        if amount("monthly_affordable") > 0 and member_row else 0,
-        normal_instalment=float(member_row["monthly_installment"] or 0) if member_row else 0,
+        monthly_affordable=(amount("monthly_affordable") + normal_instalment)
+        if amount("monthly_affordable") > 0 else 0,
+        normal_instalment=normal_instalment,
         mandate_state=mandate_state,
         upfront_offered=offered,
         upfront_received=offered if verified else 0,
@@ -805,6 +807,27 @@ def _offer_from_request(db, member_id: int, form) -> dict:
         last_payment_date=last_payment,
     )
     result["last_payment_date"] = last_payment
+    result['membership_context'] = membership_context
+    # Read back the same schedule creation will use, before closing the call.
+    from .ptp_grant import arrangement_payment_terms
+    from .collections_engine import repayment_schedule
+    debit_day = db.execute('SELECT debit_order_date FROM members WHERE id=?', (member_id,)).fetchone()
+    plan = result.get('arrangement')
+    result['payment_terms_error'] = None
+    try:
+        first_date, method = (None, None) if intention == INTENT_SETTLE else arrangement_payment_terms(
+            form.get('first_collection_date'), form.get('arrangement_payment_method'), debit_day=debit_day['debit_order_date'])
+    except ValueError as exc:
+        first_date, method = None, None
+        result['payment_terms_error'] = str(exc)
+    result['first_collection_date'], result['payment_method'] = first_date, method
+    result['proposed_schedule'] = [dict(date=day, amount=float(value)) for day, value in
+        repayment_schedule(result['ptp_balance'], plan['payments'], first_date)] if plan and first_date else []
+    from .collection_call_script import build_return_guidance
+    from .collections_engine import evaluate_member_access
+    result['return_guidance'] = build_return_guidance(
+        db.execute('SELECT member_status,gym_access_status FROM members WHERE id=?',(member_id,)).fetchone(),
+        arrears, evaluate_member_access(db,member_id,today=_collections_today()))
     # Where each next step happens. Items with no link are waiting on someone else.
     links = {
         "Set up DebiCheck": url_for("debicheck.add", member_id=member_id),
@@ -963,10 +986,12 @@ def call_profile(task_id: int):
     arrears = compute_arrears_from_profile(payment_profile)
     from .financial_reporting import cash_amount, totals as financial_totals
     receipts = [row for row in collections if cash_amount(row)>0]
+    latest_receipt = max(receipts, key=lambda row: (row['collection_date'] or '', row['id']), default=None)
     payment_stats = dict(payments_made=len(receipts),
                          payments_failed=sum(row['status']=='failed' for row in collections),
                          last_payment_date=max((row['collection_date'] or '' for row in receipts),default=None),
                          total_paid=financial_totals(collections)['total_collected'])
+    payment_stats['last_payment_amount'] = float(cash_amount(latest_receipt)) if latest_receipt else None
     methods = {}
     for row in receipts:
         entry=methods.setdefault(row['method'],dict(method=row['method'],payments=0,amount=0))
@@ -1004,6 +1029,7 @@ def call_profile(task_id: int):
     from .collection_call_script import build_call_script
     from .collection_arrangement import arrangement_confirmation
     tenant_name = g.tenant["name"] if g.get("tenant") else "1Cpace"
+    initial_offer = _offer_from_request(db, task['member_id'], {})
     return render_template(
         "collections/call_profile.html",
         task=task,
@@ -1016,10 +1042,14 @@ def call_profile(task_id: int):
         queries=queries,
         previous_calls=previous_calls,
         last_gym_visit=last_visit,
-        call_script=build_call_script(task, current_user, last_visit, arrears),
+        call_script=build_call_script(task, current_user, last_visit, arrears,
+                                      payment_stats=payment_stats, arrangements=arrangements,
+                                      queries=queries, previous_calls=previous_calls,
+                                      return_guidance=initial_offer['return_guidance'],
+                                      membership_context=initial_offer['membership_context']),
         arrangement_confirmation=arrangement_confirmation(db, task['member_id']),
         visit_approach=visit_call_approach(last_visit["days_ago"] if last_visit else None),
-        initial_offer=_offer_from_request(db, task["member_id"], {}),
+        initial_offer=initial_offer,
         call_outcomes=CALL_OUTCOMES,
         outcome_follow_ups=OUTCOME_FOLLOW_UPS,
         whatsapp_message=collection_care_message(task["first_name"], tenant_name),
@@ -1148,10 +1178,13 @@ def record_call_result(task_id: int):
         notes = f"Reactivation: R{paid:,.2f} upfront on R{owed:,.2f} owed, {terms}{', sales campaign' if campaign else ''}. {notes}".strip()
     arrangement_offer = None
     if outcome == "promised_to_pay" and request.form.get("intention"):
-        from .collections_decision import DECISION_NO_BALANCE, INTENT_INSTALMENTS
+        from .collections_decision import DECISION_NO_BALANCE, INTENT_INSTALMENTS, INTENT_SETTLE
         # Record the conditional offer exactly as the shared calculation sees it.
         # The promise itself changes no balance and applies no discount.
         offer = _offer_from_request(db, task["member_id"], request.form)
+        if request.form.get('intention') != INTENT_SETTLE and offer.get('payment_terms_error'):
+            flash(offer['payment_terms_error'], 'error')
+            return redirect(url_for('collections.call_profile', task_id=task_id))
         summary = (
             f"Conditional offer [{offer['policy_version']}]: {offer['decision_label']}. "
             f"Owing R{offer['original_arrears']:,.2f} ({offer['months_owing']} mo), "
@@ -1165,7 +1198,8 @@ def record_call_result(task_id: int):
         if offer.get("arrangement"):
             plan = offer["arrangement"]
             summary += (f" Arrangement: {plan['payments']} x R{plan['monthly_arrears']:,.2f} "
-                        f"plus the normal instalment of R{plan['normal_instalment']:,.2f}.")
+                        f"plus the normal instalment of R{plan['normal_instalment']:,.2f}. "
+                        f"First arrears collection {offer['first_collection_date']} by {offer['payment_method']}.")
         notes = f"{summary} {notes}".strip()
         if request.form.get("intention") in (INTENT_INSTALMENTS, "instalments_only") and offer["decision"] != DECISION_NO_BALANCE:
             # Every arrangement is backed by DebiCheck, so the existing mandate

@@ -415,6 +415,8 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
         ("imported_from_nupay", "INTEGER DEFAULT 0"),
     ]:
         _ensure_column(db, backend, "debicheck_mandates", col, defn)
+    from .debicheck_limits import ensure_schema as ensure_debicheck_send_log
+    ensure_debicheck_send_log(db, backend)
 
     for col, defn in [
         ("reg_no", "TEXT"),

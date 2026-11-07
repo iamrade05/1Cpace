@@ -48,7 +48,7 @@
     <h3 style="margin-bottom:12px;">Gym Activity &amp; Queries</h3>
     <div style="padding:10px;background:var(--s2);border-radius:8px;margin-bottom:12px;">
       <div class="kpi-label">Last Gym Visit</div>
-      {% if last_gym_visit %}<strong>{{ last_gym_visit.last_visited }}</strong><div style="color:var(--t2);font-size:.78rem;">{{ last_gym_visit.days_ago }} days ago · {{ last_gym_visit.shift }} · {{ last_gym_visit.source }}</div>{% else %}<strong>No visit found</strong>{% endif %}
+      {% if last_gym_visit %}<strong>{{ last_gym_visit.last_visited }}</strong><div style="color:var(--t2);font-size:.78rem;">{{ last_gym_visit.days_ago }} days ago · {{ last_gym_visit.shift }} · {{ last_gym_visit.source }}{% if last_gym_visit.checked_at %} · Checked {{ last_gym_visit.checked_at|sast }}{% endif %}</div>{% else %}<strong>No confirmed visit available</strong>{% endif %}
       <div class="u-d02a9dfb"><span class="badge {{ {'active':'badge-success','recent':'badge-success','slipping':'badge-warning','inactive':'badge-danger'}.get(visit_approach.band,'badge-gray') }}">{{ visit_approach.label }}</span> Use the conversation guide to discuss training and any account concerns.</div>
     </div>
     <div><strong>{{ queries|length }} recent quer{{ 'y' if queries|length == 1 else 'ies' }}</strong></div>
@@ -190,6 +190,15 @@
           <input type="text" id="offer-last-payment" class="form-control" readonly placeholder="No payment on record"></div>
       </div>
       {% set upload_member_id = task.member_id %}
+      <div class="form-grid-2" id="offer-payment-terms">
+        <div class="form-group"><label class="form-label" for="offer-first-date">Agreed first arrears repayment date</label>
+          <input type="date" id="offer-first-date" name="first_collection_date" class="form-control" min="{{ debicheck_earliest_date }}" value="{{ initial_offer.first_collection_date }}">
+          <div class="card-note">Confirm this date with the client. Dates from today onward are allowed for collections.</div></div>
+        <div class="form-group"><label class="form-label" for="offer-payment-method">Monthly arrears repayment method</label>
+          <select id="offer-payment-method" name="arrangement_payment_method" class="form-control"><option value="debicheck">DebiCheck</option></select>
+          <div class="card-note">The current instalment rules require DebiCheck. Upfront payments are recorded separately.</div></div>
+      </div>
+      <p id="offer-payment-error" class="call-script-cue" role="alert" hidden></p>
       {% set upload_url = url_for('collections.upload_documents', task_id=task.id) %}
       {% include 'debicheck/_document_upload.html' %}
       <label style="display:flex;gap:8px;align-items:center;font-size:.85rem;margin-bottom:8px;"><input type="checkbox" name="upfront_verified" id="offer-verified" value="1"> Upfront payment received and verified</label>
@@ -197,6 +206,9 @@
       <div class="form-group" id="offer-bank-group" style="display:none;"><label class="form-label">Bank statement review</label>
         <select name="bank_statement_status" id="offer-bank" class="form-control"><option value="">Not reviewed</option><option value="pending">Sent for review</option><option value="reviewed">Reviewed</option></select></div>
       <div id="offer-arrangement"></div>
+      <div id="offer-return-access" class="call-script-cue" hidden></div>
+      <div id="offer-membership-context" class="call-script-cue" hidden></div>
+      <div id="offer-readback" class="call-script-cue" role="status" aria-live="polite" hidden></div>
       <div id="offer-copy" class="u-41d48e79">
         <button type="button" class="btn btn-secondary btn-sm" onclick="copyOffer('whatsapp', this)">Copy WhatsApp</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="copyOffer('sms', this)">Copy SMS</button>
@@ -278,6 +290,17 @@
   }
   function renderOffer(o) {
     lastOffer = o;
+    var accessGuide = document.getElementById('offer-return-access');
+    var returnSelected = document.getElementById('conversation-intention') && document.getElementById('conversation-intention').value === 'return';
+    accessGuide.hidden = !returnSelected || !o.return_guidance;
+    if (!accessGuide.hidden) accessGuide.textContent = o.return_guidance.say + ' ' + o.return_guidance.conditions.join(' ') + ' ' + o.return_guidance.cue;
+    var settlementGuide = document.getElementById('offer-membership-context');
+    var intention = document.getElementById('conversation-intention');
+    settlementGuide.hidden = !intention || !['moved', 'not_returning'].includes(intention.value) || !o.membership_context;
+    if (!settlementGuide.hidden) settlementGuide.textContent = o.membership_context.say;
+    var paymentError = document.getElementById('offer-payment-error');
+    paymentError.hidden = !o.payment_terms_error;
+    paymentError.textContent = o.payment_terms_error || '';
     document.getElementById('offer-copy').style.display = o.messages ? 'flex' : 'none';
     var tone = {eligible: 'badge-success', conditions_outstanding: 'badge-warning', manager_review: 'badge-danger', no_discount: 'badge-gray', no_balance: 'badge-gray'}[o.decision] || 'badge-gray';
     var badge = document.getElementById('offer-decision');
@@ -330,9 +353,9 @@
     } else if (o.ptp_balance === 0) {
       parts.push('<strong>Arrangement:</strong> nothing left to pay after the upfront.');
     }
-    var states = {active: 'Active mandate found: only the arrangement mandate is loaded.',
-      none: 'No mandate on NuPay: load 2 mandates (normal instalment and arrangement).',
-      inactive: 'A mandate exists but is not active: load 2 mandates (normal instalment and arrangement).',
+    var states = {active: 'Active mandate found. Review the required arrears mandate below.',
+      none: 'No active mandate found. Review the required mandate(s) below.',
+      inactive: 'A mandate exists but is not active. Review the required mandate(s) below.',
       unknown: 'Run the NuPay check to see whether the client already has a mandate.'};
     document.getElementById('offer-mandate-line').textContent = states[o.mandate_state] || '';
     if (o.mandates_to_load && o.mandates_to_load.length && o.mandate_state !== 'unknown') {
@@ -340,6 +363,20 @@
     }
     parts.push('The client must send a bank statement for the arrangement.');
     document.getElementById('offer-arrangement').innerHTML = parts.map(function (p) { return '<div>' + p + '</div>'; }).join('');
+    var readback = document.getElementById('offer-readback');
+    var schedule = o.proposed_schedule || [];
+    readback.hidden = !plan || !schedule.length;
+    if (!readback.hidden) {
+      readback.textContent = 'Read back before saving: The original arrears are ' + rand(o.original_arrears) +
+        ', the proposed discount is ' + rand(o.discount_amount) + ', and the total arrears to repay are ' + rand(o.total_to_collect) +
+        '. The proposed upfront payment is ' + rand(o.upfront_offered) +
+        '. The arrears schedule is ' + schedule.length + ' monthly payment(s), starting on ' + schedule[0].date +
+        ', with a regular arrears payment of ' + rand(schedule[0].amount) +
+        ' and a final payment of ' + rand(schedule[schedule.length - 1].amount) + ' on ' + schedule[schedule.length - 1].date +
+        '. The scheduled arrears repayments are by DebiCheck. The normal membership instalment is separate: ' + rand(plan.normal_instalment) +
+        '. These terms and any discount remain conditional on the outstanding requirements shown below; this proposal does not itself restore gym access.' +
+        ' Do you agree to these proposed amounts and dates and understand the conditions? Record the client’s response in the call notes before saving.';
+    }
   }
   function runNupayCheck() {
     var btn = document.getElementById('offer-nupay-btn');
@@ -361,6 +398,10 @@
   function syncOfferForm() {
     var mode = document.getElementById("offer-intention").value;
     var ptp = document.getElementById("outcome-select").value === "promised_to_pay";
+    document.getElementById('offer-payment-terms').hidden = mode === 'settle';
+    document.getElementById('offer-first-date').required = ptp && mode !== 'settle';
+    document.getElementById('offer-first-date').disabled = mode === 'settle';
+    document.getElementById('offer-payment-method').disabled = mode === 'settle';
     document.getElementById("offer-upfront-group").style.display = mode === "instalments" ? "block" : "none";
     document.getElementById("save-result-btn").textContent = ptp && mode !== "settle" ? "Save call and open DebiCheck" : "Save Call Result";
   }
@@ -377,13 +418,15 @@
         upfront_verified: document.getElementById('offer-verified').checked ? '1' : '',
         returning_member: returning ? '1' : '',
         conversation_intention: document.getElementById('conversation-intention') ? document.getElementById('conversation-intention').value : '',
-        bank_statement_status: document.getElementById('offer-bank').value
+        bank_statement_status: document.getElementById('offer-bank').value,
+        first_collection_date: document.getElementById('offer-first-date').value,
+        arrangement_payment_method: document.getElementById('offer-payment-method').value
       });
       fetch(OFFER_URL + '?' + params.toString(), {credentials: 'same-origin'})
         .then(function (r) { return r.json(); }).then(renderOffer).catch(function () {});
     }, 250);
   }
-  ['offer-intention', 'offer-upfront', 'offer-affordable', 'offer-verified', 'offer-returning', 'offer-bank'].forEach(function (id) {
+  ['offer-intention', 'offer-upfront', 'offer-affordable', 'offer-verified', 'offer-returning', 'offer-bank', 'offer-first-date', 'offer-payment-method'].forEach(function (id) {
     var el = document.getElementById(id);
     el.addEventListener(el.type === 'number' ? 'input' : 'change', refreshOffer);
   });

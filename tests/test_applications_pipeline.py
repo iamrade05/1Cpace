@@ -282,3 +282,35 @@ def test_outstanding_followups_track_debicheck_id_and_reg_fee_separately(app):
         cl = db.execute("SELECT * FROM compliance_checklists WHERE application_id=?", (aid,)).fetchone()
         followups = {f["label"]: f["done"] for f in _outstanding_followups(cl)}
         assert all(followups.values())
+
+
+def test_automatic_push_activation_walks_a_started_lead_to_joined(app):
+    """The automatic push goes from verification straight to active (application 2153)."""
+    with app.app_context():
+        db = get_db()
+        user_id = db.execute(
+            "INSERT INTO users (username, password_hash, full_name) VALUES ('auto-push-user', 'hash', 'Auto Push User')"
+        ).lastrowid
+        lead_id = db.execute(
+            "INSERT INTO leads (full_name, assigned_to, lead_status) VALUES ('Auto Push Lead', ?, 'captured')", (user_id,)
+        ).lastrowid
+        for stage in ("ASSIGNED", "CONTACT_ATTEMPTED", "CONTACTED"):
+            transition_sales_stage(db, lead_id, stage, user_id)
+        db.execute("""INSERT INTO lead_qualifications (lead_id, interested, needs_identified, ready_to_join,
+                      qualified_by, qualified_at) VALUES (?, 1, 1, 1, ?, '2026-09-01 10:00:00')""", (lead_id, user_id))
+        db.commit()
+        transition_sales_stage(db, lead_id, "QUALIFIED", user_id)
+        transition_sales_stage(db, lead_id, "INVITED", user_id)
+        db.execute("INSERT INTO sales_appointments (lead_id, appointment_at, status) VALUES (?, '2026-09-02 10:00:00', 'BOOKED')",
+                   (lead_id,))
+        db.commit()
+        for stage in ("APPOINTMENT_BOOKED", "SHOW", "CONSULTATION", "APPLICATION_INVITED", "APPLICATION_STARTED"):
+            transition_sales_stage(db, lead_id, stage, user_id)
+        aid = db.execute("INSERT INTO membership_applications (lead_id, application_status, created_by) VALUES (?, 'active', ?)",
+                         (lead_id, user_id)).lastrowid
+        db.commit()
+
+        assert _sync_sales_stage_for_application(db, aid, "active", actor_id=user_id, strict=True)
+        lead = db.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone()
+        assert current_sales_stage(lead) == "JOINED"
+        assert lead["application_submitted_at"] and lead["joined_at"]

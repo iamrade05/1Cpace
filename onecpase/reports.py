@@ -1,6 +1,6 @@
 import json
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, abort, render_template, request
 from datetime import date, timedelta
 from werkzeug.datastructures import MultiDict
 from .auth import permission_required
@@ -650,6 +650,95 @@ def membership_report():
         return Response(buf.getvalue(), mimetype='text/csv',
                         headers={'Content-Disposition': 'attachment; filename=membership-report.csv'})
     return render_template('reports/membership_register.html', tab='register', **ctx)
+
+
+@reports_bp.route('/consultant-book')
+@permission_required("reports_module")
+@dashboard_only('admin')
+def consultant_book():
+    from .consultant_book import load_consultant_book
+
+    segment = request.args.get('segment', 'signed')
+    if segment not in ('signed', 'lost', 'active'):
+        segment = 'signed'
+    ctx = load_consultant_book(get_db(), request.args.get('consultant'), segment)
+    return render_template('reports/consultant_book.html', **ctx)
+
+
+@reports_bp.route('/analytics/<report>')
+@permission_required("reports_module")
+@dashboard_only('admin')
+def analytics_report(report):
+    import csv
+    import io
+    from flask import Response
+    from . import analytics
+    from .staff_kpi import selected_day
+
+    if report not in analytics.TITLES:
+        abort(404)
+    db = get_db()
+    start, end = analytics.reporting_window(request.args)
+    member_ref = request.args.get("member", "").strip()
+    review_status = request.args.get("review_status", "")
+    if review_status not in ("Complete", "Incomplete", "Review required"):
+        review_status = ""
+    consultant = request.args.get("consultant", "").strip()
+    source = request.args.get("source", "").strip()
+    kpi_day = min(selected_day(request.args.get("day")), business_today()).isoformat()
+    rate = analytics.commission_rate(request.args.get("rate"))
+    if report in ("master", "compliance"):
+        tables = analytics.member_tables(db, report, start, end, member_ref, review_status)
+    elif report == "reception":
+        tables = analytics.reception_tables(db, start, end, member_ref)
+    elif report == "funnel":
+        tables = analytics.funnel_tables(db, start, end, consultant, source)
+    elif report == "commission":
+        tables = analytics.commission_tables(db, start, end, rate)
+    else:
+        tables = analytics.kpi_tables(db, start, end, kpi_day)
+    if request.args.get("format") == "csv":
+        index = request.args.get("table", 0, type=int)
+        if not 0 <= index < len(tables):
+            abort(404)
+        table = tables[index]
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(table["headers"])
+        for row in table["rows"]:
+            writer.writerow([
+                "'" + cell if isinstance(cell, str) and (
+                    cell.startswith(("\t", "\r", "\n")) or cell.lstrip().startswith(("=", "+", "-", "@"))
+                ) else cell for cell in row
+            ])
+        return Response(output.getvalue(), mimetype="text/csv",
+                        headers={"Content-Disposition": f"attachment; filename={report}-{index + 1}.csv",
+                                 "Cache-Control": "private, no-store"})
+    filters = {"from": start.isoformat(), "to": end.isoformat()}
+    if member_ref:
+        filters["member"] = member_ref
+    if report == "compliance" and review_status:
+        filters["review_status"] = review_status
+    if report == "funnel":
+        filters.update(consultant=consultant, source=source)
+    if report == "kpis":
+        filters["day"] = kpi_day
+    if rate is not None and report == "commission":
+        filters["rate"] = str(rate)
+    page_size = 100
+    selected_table = request.args.get("table", type=int)
+    for index, table in enumerate(tables):
+        count = len(table["rows"])
+        page_count = max(1, (count + page_size - 1) // page_size)
+        page = request.args.get("page", 1, type=int) if index == selected_table else 1
+        page = min(max(page, 1), page_count)
+        offset = (page - 1) * page_size
+        table.update(count=count, page=page, page_count=page_count,
+                     rows=table["rows"][offset:offset + page_size])
+    return render_template("reports/analytics.html", report=report, title=analytics.TITLES[report],
+                           tables=tables, filters=filters, start=start, end=end,
+                           member_ref=member_ref, kpi_day=kpi_day, rate=rate, today=business_today(),
+                           invalid_rate=bool(request.args.get("rate")) and rate is None)
 
 
 @reports_bp.route('/run-custom', methods=['POST'])

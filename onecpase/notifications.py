@@ -27,6 +27,19 @@ def ensure_schema(db, backend="sqlite"):
         FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
     )""")
     db.execute("CREATE INDEX IF NOT EXISTS idx_staff_notifications_recipient ON staff_notifications(recipient_id, resolved_at, acknowledged_at)")
+    from .database import _ensure_column
+    # 1 when the recipient owns the work and can finish it themselves (a follow-up,
+    # not an approval they are waiting on). Only these lock the app when due.
+    _ensure_column(db, backend, "staff_notifications", "blocks_work", "INTEGER NOT NULL DEFAULT 0")
+
+
+def _self_actionable(kind, event, title):
+    """Work the owner finishes alone. Approvals and escalations wait on someone else."""
+    if kind == "query":
+        return event.startswith(("followup:", "workflow:", "outcome:"))
+    if kind == "sale":
+        return title.endswith("follow-up due")
+    return False
 
 
 def validate_supervisor(db, employee_id, value):
@@ -130,15 +143,17 @@ def sync_notifications(db, now=None, enabled_kinds=None, query_routing_enabled=N
                         recipients.add(routed['id'])
                 if query['department'] == 'Admin':
                     recipients.update(u['id'] for u in db.execute("SELECT id FROM users WHERE role='admin' AND active=1 AND COALESCE(is_platform_user,0)=0").fetchall())
+        actionable = _self_actionable(kind, event, title)
         for recipient in recipients:
             active_keys.add((kind, sid, event, recipient))
+            blocks = 1 if actionable and recipient == owner_id else 0
             db.execute("""INSERT INTO staff_notifications
-                (source_kind,source_id,event_key,recipient_id,title,due_date,created_at)
-                VALUES (?,?,?,?,?,?,?) ON CONFLICT(source_kind,source_id,event_key,recipient_id) DO NOTHING""",
-                (kind, sid, event, recipient, title, due, stamp))
-            db.execute("""UPDATE staff_notifications SET title=?, due_date=?
+                (source_kind,source_id,event_key,recipient_id,title,due_date,created_at,blocks_work)
+                VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(source_kind,source_id,event_key,recipient_id) DO NOTHING""",
+                (kind, sid, event, recipient, title, due, stamp, blocks))
+            db.execute("""UPDATE staff_notifications SET title=?, due_date=?, blocks_work=?
                 WHERE source_kind=? AND source_id=? AND event_key=? AND recipient_id=? AND resolved_at IS NULL""",
-                (title, due, kind, sid, event, recipient))
+                (title, due, blocks, kind, sid, event, recipient))
             db.execute("""UPDATE staff_notifications SET resolved_at=NULL, acknowledged_at=NULL,
                 reminder_count=0, last_reminder_date=NULL WHERE source_kind=? AND source_id=?
                 AND event_key=? AND recipient_id=? AND resolved_at IS NOT NULL""",
@@ -167,12 +182,8 @@ def pending_count(db, user_id):
     return db.execute("SELECT COUNT(*) FROM staff_notifications WHERE recipient_id=? AND acknowledged_at IS NULL AND resolved_at IS NULL", (user_id,)).fetchone()[0]
 
 
-@notifications_bp.get("")
-@login_required
-def index():
-    db = get_db()
-    refresh(db)
-    rows = db.execute("SELECT * FROM staff_notifications WHERE recipient_id=? AND resolved_at IS NULL ORDER BY acknowledged_at IS NOT NULL, due_date, id DESC", (session["user_id"],)).fetchall()
+def work_links(db, rows):
+    """notification id -> the page where its work is done, when this user may open it."""
     links = {}
     def can_view(permission):
         return session.get("role") == "admin" or permission in session.get("permissions", [])
@@ -203,8 +214,113 @@ def index():
                 case = db.execute(f"SELECT member_id FROM {table} WHERE id=?", (r["source_id"],)).fetchone()
                 if case:
                     links[r["id"]] = url_for("members.member_detail", mid=case["member_id"])
+    return links
+
+
+def _today():
+    return datetime.now(ZoneInfo("Africa/Johannesburg")).date().isoformat()
+
+
+def blocking_items(db, user_id, today=None):
+    """The user's own follow-ups due today or earlier: they lock the app until done.
+
+    Doing the work (or setting a new follow-up date) resolves the notification on
+    the next refresh; acknowledging does not, except for "confirm the outcome with
+    the client", which nothing else records. An item whose work page this user
+    cannot open never locks them, or they could never get out.
+    """
+    rows = db.execute(
+        """SELECT * FROM staff_notifications WHERE recipient_id=? AND resolved_at IS NULL
+           AND blocks_work=1 AND COALESCE(due_date, ?) <= ?
+           AND NOT (event_key LIKE 'outcome:%' AND acknowledged_at IS NOT NULL)
+           ORDER BY due_date, id""",
+        (user_id, today or _today(), today or _today())).fetchall()
+    links = work_links(db, rows)
+    return [r for r in rows if r["id"] in links], links
+
+
+def attention_items(db, user_id, today=None):
+    """Everything due today or earlier that the user has not dealt with, for the banner and login pop-up."""
+    today = today or _today()
+    return db.execute(
+        """SELECT * FROM staff_notifications WHERE recipient_id=? AND resolved_at IS NULL
+           AND (acknowledged_at IS NULL OR blocks_work=1) AND COALESCE(due_date, ?) <= ?
+           ORDER BY blocks_work DESC, due_date, id""",
+        (user_id, today, today)).fetchall()
+
+
+def attention_summary(db, user_id, today=None):
+    today = today or _today()
+    rows = attention_items(db, user_id, today)
+    overdue = sum(1 for r in rows if (r["due_date"] or today) < today)
+    return {"overdue": overdue, "today": len(rows) - overdue, "total": len(rows),
+            "locked": sum(1 for r in rows if r["blocks_work"])}
+
+
+# Areas still open while locked: the work itself, the phone and messages to do it,
+# the member profile, and signing out.
+LOCK_OPEN_BLUEPRINTS = {"notifications", "auth", "platform", "tenants", "health", "comms_webhooks",
+                        "join", "mobile", "pbx", "comms", "whatsapp_web"}
+LOCK_WORK_BLUEPRINTS = {"query": {"queries"}, "sale": {"leads", "sales_pipeline"}}
+LOCK_OPEN_ENDPOINTS = {"static", "members.member_detail"}
+
+
+def _is_page_visit(req):
+    if req.method != "GET":
+        return False
+    mode = req.headers.get("Sec-Fetch-Mode")
+    if mode is not None:
+        return mode == "navigate"
+    return "text/html" in req.headers.get("Accept", "")
+
+
+def enforce_overdue_lock():
+    """before_request: send a page visit to the overdue list while the user's own work is overdue."""
+    from flask import request
+    if not session.get("user_id") or request.endpoint is None or not _is_page_visit(request):
+        return None
+    if request.endpoint in LOCK_OPEN_ENDPOINTS or request.blueprint in LOCK_OPEN_BLUEPRINTS:
+        return None
+    db = get_db()
+    now = datetime.now(ZoneInfo("Africa/Johannesburg")).timestamp()
+    stale = now - float(session.get("due_lock_synced_at") or 0) > 60
+    items, _links = blocking_items(db, session["user_id"])
+    if items or stale:
+        refresh(db)  # pick up newly due work, or work that has just been done
+        session["due_lock_synced_at"] = now
+        items, _links = blocking_items(db, session["user_id"])
+    if not items:
+        return None
+    allowed = set().union(*(LOCK_WORK_BLUEPRINTS.get(r["source_kind"], set()) for r in items))
+    if request.blueprint in allowed:
+        return None
+    return redirect(url_for("notifications.overdue"))
+
+
+@notifications_bp.get("/overdue")
+@login_required
+def overdue():
+    db = get_db()
+    refresh(db)
+    items, links = blocking_items(db, session["user_id"])
+    if not items:
+        return redirect(url_for("dashboard.dashboard"))
+    blocking_ids = {r["id"] for r in items}
+    others = [r for r in attention_items(db, session["user_id"]) if r["id"] not in blocking_ids]
+    links.update(work_links(db, others))
+    return render_template("notifications/overdue.html", items=items, others=others, links=links, today=_today())
+
+
+@notifications_bp.get("")
+@login_required
+def index():
+    db = get_db()
+    refresh(db)
+    rows = db.execute("SELECT * FROM staff_notifications WHERE recipient_id=? AND resolved_at IS NULL ORDER BY acknowledged_at IS NOT NULL, due_date, id DESC", (session["user_id"],)).fetchall()
+    links = work_links(db, rows)
     me = db.execute("SELECT supervisor_id FROM users WHERE id=?", (session["user_id"],)).fetchone()
-    return render_template("notifications/index.html", notifications=rows, links=links, supervisor_missing=not me or not me["supervisor_id"])
+    return render_template("notifications/index.html", notifications=rows, links=links, today=_today(),
+                           supervisor_missing=not me or not me["supervisor_id"])
 
 
 @notifications_bp.get("/count")
@@ -224,4 +340,7 @@ def acknowledge(notification_id):
         abort(404)
     db.execute("UPDATE staff_notifications SET acknowledged_at=COALESCE(acknowledged_at,?) WHERE id=?", (datetime.now(ZoneInfo("Africa/Johannesburg")).isoformat(timespec="seconds"), notification_id))
     db.commit()
+    from flask import request
+    if request.form.get("next") == "overdue":
+        return redirect(url_for("notifications.overdue"))
     return redirect(url_for("notifications.index"))

@@ -51,6 +51,34 @@ def test_statement_evidence_alone_does_not_grant_submitted_mandate(app):
         assert arrangement_confirmation(db,mid)['approved']
 
 
+def test_pending_terms_can_be_read_back_on_call_without_granting_approval(app):
+    with app.app_context():
+        db = get_db()
+        mid,pid,_ = seed(db,'submitted')
+        db.execute("UPDATE ptp_agreements SET upfront_amount=100,remaining_balance=900,manager_approval_status='pending' WHERE id=?", (pid,))
+        before = tuple(db.execute('SELECT grant_status,ptp_status FROM ptp_agreements WHERE id=?',(pid,)).fetchone())
+        confirmation = arrangement_confirmation(db,mid)
+        assert not confirmation['approved'] and confirmation['say'] is None
+        proposal = confirmation['proposal_say']
+        for text in ('R1,250.00','R250.00','R100.00','31 Jan 2027','31 Mar 2027',
+                     'not yet approved','Manager approval','received and verified',
+                     'does not itself restore gym access','Do you agree'):
+            assert text in proposal
+        assert len(confirmation['outstanding']) == 4
+        assert before == tuple(db.execute('SELECT grant_status,ptp_status FROM ptp_agreements WHERE id=?',(pid,)).fetchone())
+        statements(db,mid,2)
+        assert 'bank statements must' not in arrangement_confirmation(db,mid)['proposal_say']
+
+
+def test_broken_arrangement_is_not_presented_as_a_new_proposal(app):
+    with app.app_context():
+        db = get_db()
+        mid,pid,_ = seed(db)
+        db.execute("UPDATE ptp_agreements SET ptp_status='broken' WHERE id=?", (pid,))
+        confirmation = arrangement_confirmation(db,mid)
+        assert not confirmation['say'] and not confirmation['proposal_say']
+
+
 def test_confirmation_uses_saved_schedule_rounding_and_month_end_dates(app):
     with app.app_context():
         db = get_db()
@@ -77,6 +105,7 @@ def test_confirmation_does_not_invent_a_schedule_or_date(app):
         db.execute('UPDATE ptp_agreements SET first_collection_date=NULL,payment_count=0 WHERE id=?',(pid,))
         confirmation = arrangement_confirmation(db,mid)
         assert confirmation['approved'] and not confirmation['say'] and not confirmation['schedule']
+        assert not confirmation['proposal_say']
 
 
 def test_saved_payment_rows_take_precedence_over_a_recalculated_plan(app):

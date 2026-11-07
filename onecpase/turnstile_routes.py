@@ -51,10 +51,25 @@ def scan_credential():
             member["id"] if member else None, decision, reason,
         ),
     )
+    event_id = event.lastrowid
+    created_at = db.execute(
+        "SELECT created_at FROM turnstile_events WHERE id=?", (event_id,)
+    ).fetchone()["created_at"]
+    event_html = render_template(
+        "turnstile/_event_row.html",
+        event=dict(
+            id=event_id, created_at=created_at, credential=credential,
+            member_id=member["id"] if member else None,
+            first_name=member["first_name"] if member else None,
+            last_name=member["last_name"] if member else None,
+            decision=decision, reason=reason,
+        ),
+    )
     db.commit()
     return jsonify(
         ok=True,
-        event_id=event.lastrowid,
+        event_id=event_id,
+        event_html=event_html,
         credential=credential,
         decision=decision,
         reason=reason,

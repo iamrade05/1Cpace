@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>{{ title }}</h1></div>
+{% if report == 'master' %}
+<p class="card-note">One row per member. Cash and ledger activity use the selected dates. Membership status, arrears and compliance show the current record. The export includes every column shown here. Identity numbers, bank credentials and attachment contents are excluded.</p>
+{% elif report == 'compliance' %}
+<p class="card-note">Current profile and evidence as of {{ today }}. Review required identifies profiles without a local application or without confirmed rules for their payment method. Uploaded and verified evidence are shown separately.</p>
+{% elif report == 'funnel' %}
+<p class="card-note">Leads captured in the selected period, followed through {{ today }}. Milestones can be skipped. Conversion measures how many leads reaching the prior stage also reached the next stage.</p>
+{% elif report == 'reception' %}
+<p class="card-note">Queries use their logged date and show current status. Collections and debits come from the member ledger. Pending charges and mandate authentication are separate from cash received.</p>
+{% elif report == 'commission' %}
+<p class="card-note">Review sales signed or first paid in the selected period. Enter a scenario rate to apply to the first currently cleared general payment. The amount is an estimate. Payouts, approved rates, splits and reversals require a commission policy and payout records.</p>
+{% elif report == 'kpis' %}
+<p class="card-note">Daily Sales and Reception targets use the KPI day. Period measures use the date range. Cleaner attendance comes from published shifts and HR clock records. Cleaning checks, inspections and issue resolution have no recorded data source.</p>
+{% endif %}
+<form method="get" class="filter-bar">
+  {% if report != 'compliance' %}
+  <label>From <input type="date" class="form-control" name="from" value="{{ start }}" max="{{ today }}"></label>
+  <label>Through <input type="date" class="form-control" name="to" value="{{ end }}" max="{{ today }}"></label>
+  {% endif %}
+  {% if report in ('master', 'compliance', 'reception') %}
+  <label>Member reference <input class="form-control" name="member" value="{{ member_ref }}"></label>
+  {% endif %}
+  {% if report == 'compliance' %}
+  <label>Review status
+    <select class="form-control" name="review_status">
+      <option value="">All statuses</option>
+      {% for status in ('Complete', 'Incomplete', 'Review required') %}
+      <option value="{{ status }}" {% if filters.get('review_status') == status %}selected{% endif %}>{{ status }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  {% elif report == 'funnel' %}
+  <label>Consultant <input class="form-control" name="consultant" value="{{ filters.consultant }}"></label>
+  <label>Lead source <input class="form-control" name="source" value="{{ filters.source }}"></label>
+  {% endif %}
+  {% if report == 'kpis' %}
+  <label>KPI day <input type="date" class="form-control" name="day" value="{{ kpi_day }}" max="{{ today }}"></label>
+  {% endif %}
+  {% if report == 'commission' %}
+  <label>Scenario rate (%) <input type="number" class="form-control" name="rate" min="0" max="100" step="any" value="{{ rate if rate is not none else '' }}"></label>
+  {% endif %}
+  <button class="btn btn-primary" type="submit">Apply filters</button>
+</form>
+{% if invalid_rate %}<p role="alert">Enter a rate from 0 to 100.</p>{% endif %}
+{% for table in tables %}
+{% set table_index = loop.index0 %}
+{% set anchor = 'analytics-table-' ~ table_index %}
+<section class="card" id="{{ anchor }}">
+  <div class="card-header">
+    <h2 class="card-title">{{ table.title }} ({{ table.count }})</h2>
+    <a class="btn btn-outline" href="{{ url_for('reports.analytics_report', report=report, format='csv', table=table_index, **filters) }}">Export CSV</a>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table table">
+      <thead><tr>{% for heading in table.headers %}<th scope="col">{{ heading }}</th>{% endfor %}
+        {% if report == 'master' %}<th scope="col">Member details</th>{% endif %}
+      </tr></thead>
+      <tbody>
+        {% for row in table.rows %}
+        <tr>
+          {% for value in row %}<td>{{ value if value is not none and value != '' else '—' }}</td>{% endfor %}
+          {% if report == 'master' %}
+          <td>{% if row[0] %}
+            <a href="{{ url_for('reports.analytics_report', report='reception', **dict(filters, member=row[0])) }}">Queries and debits</a>
+            · <a href="{{ url_for('reports.analytics_report', report='compliance', member=row[0]) }}">Compliance</a>
+          {% else %}—{% endif %}</td>
+          {% endif %}
+        </tr>
+        {% else %}<tr><td colspan="{{ table.headers | length + (1 if report == 'master' else 0) }}">No matching records.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if table.page_count > 1 %}
+  <div class="card-body">
+    {% if table.page > 1 %}<a href="{{ url_for('reports.analytics_report', report=report, table=table_index, page=table.page - 1, _anchor=anchor, **filters) }}">Previous</a> · {% endif %}
+    Page {{ table.page }} of {{ table.page_count }}
+    {% if table.page < table.page_count %} · <a href="{{ url_for('reports.analytics_report', report=report, table=table_index, page=table.page + 1, _anchor=anchor, **filters) }}">Next</a>{% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

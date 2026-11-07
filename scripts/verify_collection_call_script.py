@@ -38,7 +38,7 @@ def main():
             for stamp in ('2026-08-15', '2026-09-15'):
                 db.execute("""INSERT INTO collections(member_id,outstanding_balance,amount_paid,collection_date,status,notes)
                     VALUES(?,375,0,?,'failed','type=Recurring Fee')""", (task['member_id'], stamp))
-            db.execute("UPDATE members SET first_name='Lerato',last_name='Dube' WHERE id=?", (task['member_id'],))
+            db.execute("UPDATE members SET first_name='Lerato',last_name='Dube',join_date='2025-06-15',member_status='Blocked' WHERE id=?", (task['member_id'],))
             db.execute("UPDATE users SET full_name='Thandi Mokoena' WHERE id=?", (task['assigned_to'],))
             db.execute("INSERT INTO turnstile_events(raw_report_hex,member_id,decision,direction,created_at) VALUES('00',?,'allowed','entry','2026-09-01 08:30:00')", (task['member_id'],))
             pid = db.execute("""INSERT INTO ptp_agreements(member_id,promise_date,payment_method,arrears_amount,
@@ -75,7 +75,15 @@ def main():
                     assert response.status == 200
                     assert 'approval outstanding' in page.get_by_role('region',name=f'Arrangement confirmation · #{pid}').inner_text().lower()
                     guide = page.get_by_role('region', name='Your conversation guide')
-                    assert guide.locator('.call-script-step').count() == 7
+                    assert guide.locator('.call-script-step').count() == 8
+                    assert '15 Jun 2025' in guide.locator('.call-script-facts').inner_text()
+                    assert 'No confirmed payment date' in guide.locator('.call-script-facts').inner_text()
+                    guide.locator('.call-script-step').nth(1).locator('summary').click()
+                    assert 'membership as blocked' in guide.inner_text()
+                    close = guide.locator('.call-script-step').last
+                    close.locator('summary').click()
+                    assert 'exact payment date' in close.inner_text()
+                    guide.locator('.call-script-step').first.locator('summary').click()
                     assert 'last two months' in guide.locator('.call-script-step').nth(5).text_content()
                     assert guide.locator('.call-script-step[open]').count() == 1
                     assert 'Thandi Mokoena from Elevate Health and Fitness' in guide.locator('.call-script-say').first.inner_text()
@@ -89,10 +97,16 @@ def main():
                             guide.screenshot(path=str(out/f'account-step-{width}.png'))
                     choice = guide.locator('#conversation-intention')
                     choice.select_option('return')
+                    assert guide.locator('#return-access-guidance').is_visible()
+                    assert 'R500.00 (50%' in guide.locator('#return-access-guidance').inner_text()
+                    assert 'separate check' in guide.locator('#return-access-guidance').inner_text()
                     assert page.locator('#client-goal').is_visible()
                     page.locator('#client-goal').fill('Improve fitness')
                     assert page.locator('#offer-returning').is_checked()
                     choice.select_option('moved')
+                    assert not guide.locator('#return-access-guidance').is_visible()
+                    assert guide.locator('#settlement-membership-guidance').is_visible()
+                    assert 'does not cancel the membership' in guide.locator('#settlement-membership-guidance').inner_text()
                     assert not page.locator('#client-goal').is_visible()
                     assert 'settle the current arrears' in guide.locator('[data-conversation-path=moved]').inner_text()
                     assert not page.locator('#offer-returning').is_checked()
@@ -112,6 +126,25 @@ def main():
                     assert quote['upfront_received'] == 0
                     assert any(c['key']=='upfront' and not c['met'] for c in quote['checklist'])
                     assert not any(c['key']=='returning_debicheck' for c in quote['checklist'])
+                    with page.expect_response(lambda r: 'offer-preview?' in r.url and 'monthly_affordable=200' in r.url) as response_info:
+                        page.locator('#offer-affordable').fill('200')
+                    quote = response_info.value.json()
+                    assert quote['proposed_schedule']
+                    page.wait_for_function("!document.getElementById('offer-readback').hidden")
+                    readback = page.locator('#offer-readback').inner_text()
+                    assert 'Read back before saving' in readback
+                    assert 'Do you agree' in readback and 'remain conditional' in readback
+                    assert quote['proposed_schedule'][0]['date'] in readback
+                    with page.expect_response(lambda r: 'offer-preview?' in r.url and 'first_collection_date=2027-01-31' in r.url) as response_info:
+                        page.locator('#offer-first-date').fill('2027-01-31')
+                        page.locator('#offer-first-date').dispatch_event('change')
+                    quote = response_info.value.json()
+                    assert quote['first_collection_date'] == '2027-01-31'
+                    assert quote['payment_method'] == 'debicheck'
+                    assert quote['proposed_schedule'][0]['date'] == '2027-01-31'
+                    page.wait_for_function("document.getElementById('offer-readback').textContent.includes('2027-01-31')")
+                    assert page.locator('#offer-payment-method').input_value() == 'debicheck'
+                    assert page.locator('#offer-payment-method option').count() == 1
                     assert page.locator('#outcome-select').input_value() == ''
                     page.locator('#offer-panel').screenshot(path=str(out/f'negotiation-{width}.png'))
                     guide.get_by_role('link',name='Go to call notes').click()

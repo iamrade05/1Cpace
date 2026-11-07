@@ -67,6 +67,10 @@
           <th>Email</th>
           <th>Status</th>
           <th>Joined</th>
+          <th>Signed By</th>
+          <th>Premium</th>
+          <th>Itensity Ref</th>
+          <th>NuPay Contract Ref</th>
           <th></th>
         </tr>
       </thead>
@@ -89,6 +93,10 @@
             {% else %}<span class="badge badge-gray">{{ m.member_status }}</span>{% endif %}
           </td>
           <td class="u-c9565925">{{ m.join_date or (m.created_at[:10] if m.created_at else '—') }}</td>
+          <td>{{ m.signed_by or '—' }}</td>
+          <td class="u-c9565925">{% if m.monthly_installment %}R{{ '{:,.2f}'.format(m.monthly_installment) }}{% else %}—{% endif %}</td>
+          <td class="u-c9565925">{{ m.itensity_ref or '—' }}</td>
+          <td class="u-c9565925">{{ contract_refs.get(m.id) or '—' }}</td>
           <td>
             <a href="{{ url_for('members.member_detail', mid=m.id) }}" class="btn btn-ghost btn-sm">View</a>
             <a href="{{ url_for('members.member_edit', mid=m.id) }}" class="btn btn-ghost btn-sm">Edit</a>

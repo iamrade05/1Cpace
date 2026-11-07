@@ -64,6 +64,7 @@ def _complete_login(user):
         "must_change_password": bool(user["must_change_password"]),
         "tenant_slug":          g.tenant["slug"] if g.get("tenant") else None,
         "session_version":      user["session_version"],
+        "show_due_popup":       True,
     })
     get_db().execute(
         "UPDATE users SET last_login = datetime('now') WHERE id = ?", (user["id"],)

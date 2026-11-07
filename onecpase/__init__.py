@@ -267,6 +267,17 @@ def create_app(test_config: dict | None = None) -> Flask:
             return redirect(url_for("dashboard.dashboard"))
         return jsonify(ok=False, error=f"{area} is not open yet."), 403
 
+    @app.before_request
+    def _enforce_overdue_lock():
+        """Own follow-ups due today or earlier must be dealt with before anything else."""
+        if request.blueprint in {"platform", "mobile"} or not session.get("user_id"):
+            return None
+        from .auth import session_tenant_ok
+        if not session_tenant_ok():
+            return None
+        from .notifications import enforce_overdue_lock
+        return enforce_overdue_lock()
+
     # ── Template context processors ───────────────────────────────────────────
     @app.context_processor
     def inject_phases():
@@ -305,6 +316,29 @@ def create_app(test_config: dict | None = None) -> Flask:
         from .database import get_db
         from .notifications import pending_count
         return {"staff_notification_count": pending_count(get_db(), session["user_id"])}
+
+    @app.context_processor
+    def inject_due_work():
+        """Banner counts on every page, and the list shown once after signing in."""
+        from .auth import session_tenant_ok
+        empty = {"due_work": None, "due_popup": None}
+        if not session.get("user_id") or not session_tenant_ok() or request.blueprint == "platform":
+            return empty
+        try:
+            from .database import get_db
+            from . import notifications
+            db = get_db()
+            popup = None
+            if session.pop("show_due_popup", False) and request.endpoint != "notifications.overdue":
+                notifications.refresh(db)
+                rows = notifications.attention_items(db, session["user_id"])
+                if rows:
+                    popup = {"items": rows, "links": notifications.work_links(db, rows)}
+            summary = notifications.attention_summary(db, session["user_id"])
+            return {"due_work": summary if summary["total"] else None, "due_popup": popup}
+        except Exception:  # a context processor that raises takes down every page
+            app.logger.warning("due work summary unavailable", exc_info=True)
+            return empty
 
     @app.context_processor
     def inject_permissions():

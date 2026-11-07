@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Sales Consultant Book{% endblock %}
+{% macro rand(amount) %}R {{ '{:,.2f}'.format(amount) }}{% endmacro %}
+{% block content %}
+<div class="page-header"><h1>Sales Consultant Book</h1></div>
+<p>Career to date through {{ as_of }}. Where an HR start date is unavailable, the report uses all available dated sales for that consultant.</p>
+<div class="table-wrap">
+  <table class="data-table table">
+    <thead>
+      <tr>
+        <th>Consultant</th><th>Staff start date</th><th>Signed</th><th>Signed book value¹</th>
+        <th>Lost</th><th>Recorded value at exit²</th><th>Active today</th>
+        <th>Active monthly value</th><th>Lifetime loss rate</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for book in books %}
+      {% set signed_url = url_for('reports.consultant_book', consultant=book.id, segment='signed', _anchor='member-detail') %}
+      {% set lost_url = url_for('reports.consultant_book', consultant=book.id, segment='lost', _anchor='member-detail') %}
+      {% set active_url = url_for('reports.consultant_book', consultant=book.id, segment='active', _anchor='member-detail') %}
+      <tr>
+        <td><a href="{{ signed_url }}">{{ book.name }}</a></td>
+        <td>{{ book.start or 'Unavailable' }}</td>
+        <td><a href="{{ signed_url }}">{{ book.signed }}</a></td>
+        <td><a href="{{ signed_url }}">{{ rand(book.signed_value) }}</a></td>
+        <td><a href="{{ lost_url }}">{{ book.lost }}</a></td>
+        <td><a href="{{ lost_url }}">{{ rand(book.lost_value) if book.lost_priced or not book.lost else 'Unavailable' }}</a>
+          {% if book.lost_priced < book.lost %} ({{ book.lost_priced }} of {{ book.lost }} priced){% endif %}
+        </td>
+        <td><a href="{{ active_url }}">{{ book.active }}</a></td>
+        <td><a href="{{ active_url }}">{{ rand(book.active_value) }}</a></td>
+        <td>{% if book.signed %}<a href="{{ lost_url }}">{{ '{:.1%}'.format(book.lost / book.signed) }}</a>{% else %}—{% endif %}</td>
+      </tr>
+      {% else %}<tr><td colspan="9">No sales consultants found.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="card-note">¹ Signed book value uses the recorded monthly fees for all signed members. Historical sign-up prices are unavailable.</p>
+<p class="card-note">² Exit values use recorded cancellation fees per month where available. Losses include recorded cancellations and memberships marked cancelled, expired or terminated. A reactivated member can appear in both Lost and Active today.</p>
+{% if unattributed or missing_date %}
+<p class="card-note">Excluded from consultant totals: {{ unattributed }} dated memberships without a matched sales consultant and {{ missing_date }} memberships without a recorded join or activation date.</p>
+{% endif %}
+
+{% if selected %}
+<section id="member-detail" class="card">
+  <div class="card-header"><h2 class="card-title">{{ selected.name }} · {{ segment | title }} members</h2></div>
+  <div class="table-wrap">
+    <table class="data-table table">
+      <thead><tr><th>Member</th><th>Reference</th><th>Joined</th><th>Current status</th>
+        <th>Recorded monthly fee</th><th>Recorded exit date</th><th>Exit reason</th><th>Monthly fee at exit</th></tr></thead>
+      <tbody>
+        {% for member in members %}
+        <tr>
+          <td>{{ member.first_name }} {{ member.last_name }}</td><td>{{ member.member_ref or '—' }}</td>
+          <td>{{ member.joined }}</td><td>{{ member.member_status or 'Unknown' }}</td>
+          <td>{{ rand(member.monthly_installment) if member.monthly_installment is not none else '—' }}</td>
+          <td>{{ member.exit_date or '—' }}</td><td>{{ member.exit_reason or '—' }}</td>
+          <td>{{ rand(member.exit_value) if member.exit_value is not none else '—' }}</td>
+        </tr>
+        {% else %}<tr><td colspan="8">No members in this list.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

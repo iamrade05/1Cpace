@@ -1175,3 +1175,46 @@ th { background:var(--s2); color:var(--t2); font-size:12px; font-weight:600; }
   .member-request-header, .member-request .card-body { padding:20px; }
   .workflow-content .btn { max-width:100%; white-space:normal; }
 }
+
+/* Due and overdue work: banner on every page, sign-in pop-up, lock page. */
+.due-work-banner { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem 1rem; margin:0 0 1rem; padding:.75rem 1rem; border-radius:8px; text-decoration:none; color:var(--txt); border:1px solid; }
+.due-work-banner.is-overdue { background:color-mix(in srgb, var(--err) 14%, transparent); border-color:var(--err); }
+.due-work-banner.is-due-today { background:color-mix(in srgb, var(--warn) 14%, transparent); border-color:var(--warn); }
+.due-work-banner strong { font-size:1rem; }
+.due-work-banner-action { margin-left:auto; font-weight:600; text-decoration:underline; }
+.due-work-dialog { max-width:min(560px, calc(100vw - 32px)); border:none; border-radius:12px; padding:1.25rem; background:var(--s1, #fff); color:var(--txt); }
+.due-work-dialog::backdrop { background:rgba(0,0,0,.45); }
+.due-work-dialog ul { list-style:none; padding:0; margin:1rem 0; display:grid; gap:.5rem; max-height:50vh; overflow:auto; }
+.due-work-dialog li { display:flex; justify-content:space-between; gap:1rem; padding:.5rem .75rem; border-radius:6px; background:var(--s2, #f3f4f6); }
+.due-work-dialog-actions { display:flex; gap:.5rem; justify-content:flex-end; }
+.overdue-lock .notification-item.is-overdue { border-left:4px solid var(--err); padding-left:.75rem; }
+.overdue-lock .notification-item.is-due-today { border-left:4px solid var(--warn); padding-left:.75rem; }
+
+/* Table tools: filter, sort, columns, rows per page, totals, export (static/js/table-tools.js). */
+.tt-toolbar { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:0 0 .6rem; }
+.tt-toolbar .tt-search { flex:1 1 220px; max-width:320px; padding:7px 11px; border:1px solid var(--s3); border-radius:7px; font-size:.85rem; }
+.tt-toolbar select { padding:6px 8px; border:1px solid var(--s3); border-radius:7px; font-size:.8rem; background:var(--s1); color:var(--txt); max-width:220px; }
+.tt-spacer { flex:1 1 auto; }
+.tt-menu { position:relative; }
+.tt-menu > summary { list-style:none; cursor:pointer; }
+.tt-menu > summary::-webkit-details-marker { display:none; }
+.tt-menu-panel { position:absolute; right:0; z-index:20; margin-top:4px; min-width:200px; max-height:320px; overflow:auto; padding:.5rem .75rem; background:var(--s1); border:1px solid var(--s3); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); display:grid; gap:.35rem; font-size:.82rem; }
+.tt-menu-panel label { display:flex; gap:.4rem; align-items:center; white-space:nowrap; }
+th.tt-sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+th.tt-sortable::after { content:"\2195"; margin-left:.3rem; opacity:.3; font-size:.75em; }
+th.tt-sortable[aria-sort="ascending"]::after { content:"\25B2"; opacity:.8; }
+th.tt-sortable[aria-sort="descending"]::after { content:"\25BC"; opacity:.8; }
+.tt-enhanced tr[hidden], .tt-enhanced .tt-hidden { display:none !important; }
+.tt-totals td { font-weight:700; border-top:2px solid var(--s3); white-space:nowrap; }
+.tt-empty td { text-align:center; padding:1rem; opacity:.7; }
+.tt-footer { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:.5rem; margin:.5rem 0 1rem; font-size:.8rem; }
+.tt-pager { display:flex; gap:.5rem; align-items:center; }
+@media (max-width:600px) { .tt-toolbar .tt-search { max-width:none; } .tt-spacer { display:none; } }
+
+/* Pinned table headings: each table's rows scroll inside their own box while the
+   heading row stays visible (static/js/table-tools.js wraps tables in .tt-scroll). */
+.tt-scroll { max-height:calc(100vh - 150px); overflow:auto; position:relative; }
+.tt-scroll > table > thead th { position:sticky; top:0; z-index:3; background-clip:padding-box; box-shadow:inset 0 -1px 0 var(--b1); }
+.tt-scroll > table > tfoot td { position:sticky; bottom:0; z-index:2; background:var(--s1); box-shadow:inset 0 1px 0 var(--b1); }
+@media (max-width:600px) { .tt-scroll { max-height:75vh; } }
+@media print { .tt-scroll { max-height:none; overflow:visible; } .tt-toolbar, .tt-footer { display:none; } }

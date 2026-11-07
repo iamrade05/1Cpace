@@ -735,3 +735,31 @@ def fitness_dashboard():return _department_dashboard('fitness','Fitness dashboar
 @login_required
 @dashboard_only('work')
 def work_dashboard():return _department_dashboard('work','My work dashboard')
+
+
+@dashboard_bp.post("/table-export-log")
+@login_required
+def table_export_log():
+    """Record a table export before the browser downloads it (static/js/table-tools.js)."""
+    from flask import jsonify
+    from .database import audit_log
+    data = request.get_json(silent=True) or {}
+    try:
+        rows = max(0, int(data.get("rows") or 0))
+    except (TypeError, ValueError):
+        rows = 0
+    fmt = data.get("format") if data.get("format") in ("csv", "xlsx") else None
+    if fmt is None:
+        return jsonify(ok=False, error="Unknown export format."), 400
+    columns = [str(c)[:80] for c in (data.get("columns") or [])][:60]
+    record = {
+        "page": str(data.get("page") or "")[:300],
+        "title": str(data.get("title") or "")[:200],
+        "format": fmt,
+        "rows": rows,
+        "columns": columns,
+    }
+    db = get_db()
+    audit_log(db, "table_export", new_value=json.dumps(record))
+    db.commit()
+    return jsonify(ok=True)

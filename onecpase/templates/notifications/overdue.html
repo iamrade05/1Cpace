@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Attend to this first | 1Cpace{% endblock %}
+{% block content %}
+<header class="page-header"><div><h1>Attend to this first</h1>
+<p class="page-sub">These follow-ups of yours are due. Finish each one, or set a new follow-up date, and the rest of 1Cpace opens again automatically.</p></div></header>
+<div class="card overdue-lock"><div class="card-body notification-list">
+{% for item in items %}
+<article class="notification-item {% if (item.due_date or today) < today %}is-overdue{% else %}is-due-today{% endif %}">
+  <h2>{{ item.title }}</h2>
+  <p>{% if (item.due_date or today) < today %}<strong>Overdue</strong> since {{ item.due_date }}{% else %}<strong>Due today</strong>{% endif %}{% if item.reminder_count %} · {{ item.reminder_count }} reminder{{ 's' if item.reminder_count != 1 }}{% endif %}</p>
+  <div class="notification-actions">
+    <a class="btn btn-primary" href="{{ links[item.id] }}">Open and deal with it</a>
+    {% if item.event_key.startswith('outcome:') %}
+    <form method="post" action="{{ url_for('notifications.acknowledge', notification_id=item.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="overdue"><button class="btn btn-secondary" type="submit">I've confirmed the outcome with the client</button></form>
+    {% endif %}
+  </div>
+</article>
+{% endfor %}
+</div></div>
+{% if others %}
+<div class="card"><div class="card-header"><h2>Also due</h2></div><div class="card-body notification-list">
+<p class="page-sub">Approvals and your team's work. These don't lock the app, but please look at them today.</p>
+{% for item in others %}
+<article class="notification-item">
+  <h2>{{ item.title }}</h2>
+  <p>Due {{ item.due_date or 'now' }}</p>
+  {% if links.get(item.id) %}<div class="notification-actions"><a class="btn btn-ghost" href="{{ links[item.id] }}">View work</a></div>{% endif %}
+</article>
+{% endfor %}
+</div></div>
+{% endif %}
+{% endblock %}

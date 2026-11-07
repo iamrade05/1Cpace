@@ -36,6 +36,93 @@ def test_id_numbers_are_masked():
     assert reports._mask_id("") == ""
 
 
+def test_consultant_book_preserves_original_sale_credit_and_drills_into_losses(app, monkeypatch):
+    from onecpase import consultant_book
+
+    monkeypatch.setattr(consultant_book, "today", lambda: date(2026, 11, 6))
+    with app.test_client() as client:
+        _login_admin(client)
+        with app.app_context():
+            db = get_db()
+            for uid, name in ((21, "Original Seller"), (22, "New Owner")):
+                db.execute(
+                    "INSERT INTO users(id,username,password_hash,full_name,is_sales_consultant) VALUES(?,?,?,?,1)",
+                    (uid, f"book-{uid}", "x", name),
+                )
+            db.execute("INSERT INTO hr_profiles(user_id,start_date) VALUES(21,'2026-01-01')")
+            lost = _member(db, "BOOK-1", "Lost", "Member", status="Cancelled", fee=500)
+            _member(db, "BOOK-2", "Active", "Member", sold_by=" original   seller ",
+                    id_number="9001015800086", fee=550)
+            _member(db, "BOOK-3", "Earlier", "Member", sold_by="Original Seller",
+                    id_number="9001015800087", join="2025-12-31")
+            lead = db.execute(
+                "INSERT INTO leads(full_name,assigned_to) VALUES('Lost Member',22)"
+            ).lastrowid
+            db.execute("INSERT INTO membership_applications(member_id,lead_id,created_by) VALUES(?,?,22)",
+                       (lost, lead))
+            db.execute(
+                """INSERT INTO stage_events(entity_type,entity_id,lead_id,field,to_value,owner_id)
+                   VALUES('lead',?,?,'sales_stage','JOINED',21)""", (lead, lead),
+            )
+            db.execute(
+                """INSERT INTO queries(member_id,category,query_type,description,member_cancelled,
+                                       closed_at,cancellation_monthly_fee)
+                   VALUES(?,'cancellation','Relocation','Request',1,'2026-10-04',425)""", (lost,),
+            )
+            db.commit()
+            context = consultant_book.load_consultant_book(db, "21", "lost")
+            book = context["selected"]
+            assert (book["signed"], book["lost"], book["active"]) == (2, 1, 1)
+            assert (book["signed_value"], book["lost_value"], book["active_value"]) == (1050, 425, 550)
+            assert [(m["member_ref"], m["exit_date"]) for m in context["members"]] == [
+                ("BOOK-1", date(2026, 10, 4))
+            ]
+            assert next(b for b in context["books"] if b["id"] == "22")["signed"] == 0
+
+        page = client.get("/reports/consultant-book?consultant=21&segment=lost")
+        assert page.status_code == 200
+        assert b"50.0%" in page.data and b"Relocation" in page.data
+        assert b"BOOK-1" in page.data and b"BOOK-2" not in page.data
+
+
+def test_analytics_reports_render_and_financial_reports_reconcile(app, monkeypatch):
+    from onecpase import analytics
+
+    monkeypatch.setattr(analytics, "today", lambda: date(2026, 11, 6))
+    with app.test_client() as client:
+        _login_admin(client)
+        with app.app_context():
+            db = get_db()
+            db.execute("INSERT INTO users(id,username,password_hash,full_name,is_sales_consultant) "
+                       "VALUES(25,'analytics-sales','x','Test Consultant',1)")
+            member = _member(db, "AN-001", "=Test", "Member", sold_by="Test Consultant", join="2026-10-16")
+            db.execute("""INSERT INTO leads(full_name,created_at,assigned_to,lead_status,converted_member_id)
+                       VALUES('Cohort Member','2026-10-16',25,'joined',?)""", (member,))
+            for purpose, amount, status, when, notes in (
+                ("registration_fee", 100, "paid", "2026-10-16", ""),
+                ("general", 400, "reversed", "2026-10-17", ""),
+                ("general", 50, "paid", "2026-10-18", "type=Discount"),
+                ("general", 500, "paid", "2026-10-19", ""),
+            ):
+                db.execute("""INSERT INTO collections(member_id,payment_purpose,amount_paid,status,
+                                                      collection_date,method,notes)
+                           VALUES(?,?,?,?,?,'debicheck',?)""", (member, purpose, amount, status, when, notes))
+            db.commit()
+        dates = "?from=2026-10-15&to=2026-11-06"
+        for report in analytics.TITLES:
+            response = client.get(f"/reports/analytics/{report}{dates}")
+            assert response.status_code == 200, report
+            assert analytics.TITLES[report].encode() in response.data
+        master = client.get(f"/reports/analytics/master{dates}&format=csv&member=AN-001")
+        assert b"Current arrears (R)" in master.data
+        assert b"AN-001,'=Test,Member" in master.data
+        commissions = client.get(f"/reports/analytics/commission{dates}&rate=10&format=csv")
+        assert b"2026-10-19,500.0,10,50.00,Payment recorded" in commissions.data
+        debit = client.get(f"/reports/analytics/reception{dates}&format=csv&table=3&member=AN-001")
+        assert b"reversed" in debit.data and b"paid,0,500.0" in debit.data
+        assert client.get(f"/reports/analytics/master{dates}&format=csv&table=99").status_code == 404
+
+
 def test_register_row_has_every_requested_column(app, monkeypatch):
     stale = (date.today() - timedelta(days=45)).isoformat()
     _no_external_visits(monkeypatch, {"790000001": stale}, None)

@@ -3,11 +3,12 @@
 <section class="form-card" aria-labelledby="arrangement-confirmation-title">
   <h3 id="arrangement-confirmation-title">Arrangement confirmation · #{{ confirmation.id }}</h3>
   <p><span class="badge {{ 'badge-success' if confirmation.approved else 'badge-warning' }}">{{ 'Approved' if confirmation.approved else 'Approval outstanding' }}</span></p>
-  {% if confirmation.say %}
-    <p class="call-script-say">{{ confirmation.say }}</p>
-    <details><summary>Agreed arrears payment schedule</summary><div class="table-wrap"><table class="table"><thead><tr><th scope="col">Payment</th><th scope="col">Due date</th><th scope="col">Arrears amount</th></tr></thead><tbody>{% for payment in confirmation.schedule %}<tr><td>{{ loop.index }}</td><td>{{ payment.date }}</td><td>R{{ '%.2f'|format(payment.amount) }}</td></tr>{% endfor %}</tbody></table></div></details>
+  {% if confirmation.say or confirmation.proposal_say %}
+    <p class="call-script-say">{{ confirmation.say or confirmation.proposal_say }}</p>
+    {% if not confirmation.approved %}<p class="card-note">Read this back while the client is on the call. Record whether they accept the proposed terms and the outstanding conditions in the call notes. Do not record acceptance unless the client confirms it.</p>{% endif %}
+    <details><summary>{{ 'Agreed' if confirmation.approved else 'Proposed' }} arrears payment schedule</summary><div class="table-wrap"><table class="table"><thead><tr><th scope="col">Payment</th><th scope="col">Due date</th><th scope="col">Arrears amount</th></tr></thead><tbody>{% for payment in confirmation.schedule %}<tr><td>{{ loop.index }}</td><td>{{ payment.date }}</td><td>R{{ '%.2f'|format(payment.amount) }}</td></tr>{% endfor %}</tbody></table></div></details>
   {% else %}
-    <p class="card-note">Confirm the final terms only after the required evidence and approvals are complete.</p>
+    <p class="card-note">Review the saved amounts and obtain a dated schedule before reading back the proposal. Final approval is separate from the client accepting proposed terms.</p>
     <ul><li>Two months of bank statements: {{ 'Analysed' if confirmation.statement_ready else 'Required' }}</li><li>Required DebiCheck mandate(s): {{ 'Approved' if confirmation.mandate_ready else 'Approval required' }}</li><li>Arrangement: {{ confirmation.grant_status|replace('_',' ')|title }}</li></ul>
     {% if confirmation.approved and not confirmation.schedule %}<p class="card-note">The saved arrangement has no dated payment schedule. Review it before confirming a clearance date.</p>{% endif %}
   {% endif %}

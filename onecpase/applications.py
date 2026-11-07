@@ -118,23 +118,23 @@ def _sync_sales_stage_for_application(
         return True
 
     current = current_sales_stage(lead)
-    allowed = {
-        "APPLICATION_STARTED": {"APPLICATION_INVITED"},
-        "APPLICATION_SUBMITTED": {"APPLICATION_STARTED"},
-        "JOINED": {"APPLICATION_SUBMITTED"},
-    }
-    if target not in allowed or current not in allowed[target]:
+    # Walk every step from where the lead stands, each one recorded. The automatic
+    # Itensity push goes straight from verification to active, so a lead can still
+    # be at APPLICATION_STARTED when it must become JOINED (application 2153, 6 Nov 2026).
+    chain = ["APPLICATION_INVITED", "APPLICATION_STARTED", "APPLICATION_SUBMITTED", "JOINED"]
+    if current not in chain or chain.index(current) >= chain.index(target):
         if strict:
             raise ValueError(f"Cannot synchronize sales stage {current} -> {target} for application {aid}.")
         return False
 
     try:
-        transition_sales_stage(
-            db, row["lead_id"], target, actor_id if actor_id is not None else session.get("user_id"),
-            reason="Application workflow synchronized",
-            notes=f"Application status: {status}",
-            commit=False,
-        )
+        for step in chain[chain.index(current) + 1:chain.index(target) + 1]:
+            transition_sales_stage(
+                db, row["lead_id"], step, actor_id if actor_id is not None else session.get("user_id"),
+                reason="Application workflow synchronized",
+                notes=f"Application status: {status}",
+                commit=False,
+            )
         return True
     except ValueError:
         if strict:
@@ -303,8 +303,16 @@ def statement_accepted(db, member_id) -> bool:
 
 
 def _push_analysis(db, member_id, analysis):
-    """The affordability result for the Itensity push: a manager's acceptance counts as a pass."""
-    return {"verification_qualified": 1} if statement_accepted(db, member_id) else analysis
+    """The affordability result for the Itensity push.
+
+    A manager's acceptance counts as a pass, and so does the latest statement passing
+    the same check NuPay submission uses. The saved statement_analyses rows can't be
+    trusted alone: the manual analysis form never records a pass, and analysing a
+    statement again updates only the document (application 2153, 6 Nov 2026).
+    """
+    if statement_accepted(db, member_id) or not nupay_submission_blockers(db, member_id):
+        return {"verification_qualified": 1}
+    return analysis
 
 
 def statement_money_in_months(db, member_id) -> int:

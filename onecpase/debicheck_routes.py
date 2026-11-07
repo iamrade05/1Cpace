@@ -24,6 +24,7 @@ from .encryption import decrypt_mandate, decrypt_member, encrypt_mandate
 from .members import BANKS
 from .employee_numbers import current_employee_number, employee_number_context
 from .debicheck_rules import mandate_rules_context
+from .debicheck_limits import can_override as can_override_send_limit, claim_send, finish_send, mandate_send_block
 
 
 debicheck_bp = Blueprint("debicheck", __name__, url_prefix="/debicheck")
@@ -232,6 +233,12 @@ def add():
             member = decrypt_member(raw_member)
             data = _submission_data(member, request.form)
             errors = validate_mandate(data)
+            linked_ptp = request.form.get('from_ptp', '')
+            if str(linked_ptp).isdigit() and request.form.get('purpose') == 'Arrangement (PTP)':
+                terms = db.execute('SELECT first_collection_date FROM ptp_agreements WHERE id=? AND member_id=?',
+                                   (int(linked_ptp), member['id'])).fetchone()
+                if terms and terms['first_collection_date'] and data['debicheck_submit_date'] != terms['first_collection_date']:
+                    errors.append('The first debit date must match the saved arrangement (' + terms['first_collection_date'] + '). Agree and update the arrangement before changing this date.')
             if errors:
                 for error in errors:
                     flash(error, "error")
@@ -267,10 +274,18 @@ def add():
                 orders.append({"label": label, "amount": f"{float(amount):.2f}"})
         except ValueError:
             continue
+    form = request.form.to_dict()
+    if request.method == 'GET' and orders and orders[0]['label'] == 'Arrangement (PTP)':
+        linked_ptp = request.args.get('from_ptp', '')
+        if str(linked_ptp).isdigit() and str(selected_member_id).isdigit():
+            terms = db.execute('SELECT first_collection_date FROM ptp_agreements WHERE id=? AND member_id=?',
+                               (int(linked_ptp), int(selected_member_id))).fetchone()
+            if terms and terms['first_collection_date']:
+                form['submit_date'] = terms['first_collection_date']
     return render_template(
         "debicheck/add.html", members=members, banks=BANKS, orders=orders,
         selected_member_id=str(selected_member_id), today=date.today().isoformat(),
-        form=request.form,
+        form=form,
         submission_checklist=_checklist(db, int(selected_member_id)) if str(selected_member_id).isdigit() else [],
         statement_months_ready=_months_ready(db, int(selected_member_id)) if str(selected_member_id).isdigit() else False,
         submission_blockers=_submission_blockers(db, int(selected_member_id)) if str(selected_member_id).isdigit() else [],
@@ -300,7 +315,12 @@ def detail(mandate_id):
     blockers = _submission_blockers(get_db(), row["member_id"])
     role = session.get("role")
     can_override = can_override_nupay(role, blockers, statement_money_in_months(get_db(), row["member_id"]))
+    send_limit = None
+    if mandate.get("status") != "active" and not mandate.get("imported_from_nupay"):
+        send_limit = mandate_send_block(get_db(), mandate_id, row["member_id"])
     return render_template("debicheck/detail.html", mandate=mandate,
+                           send_limit=send_limit,
+                           send_limit_can_override=can_override_send_limit(send_limit, role),
                            collection_call_url=collection_call_url,
                            mandate_field_errors=validate_stored_mandate(mandate),
                            submission_checklist=_checklist(get_db(), row["member_id"]),
@@ -439,11 +459,17 @@ def _push(db, mandate_id, mandate: dict, member_id: int):
     if errors:
         flash("; ".join(errors), "error")
         return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
-    db.commit()  # Persist the reference and any audited exception before external submission.
+    claim_id, limit = claim_send(db, mandate_id, member_id)
+    if limit:
+        db.rollback()
+        flash("Not sent to NuPay: " + limit, "error")
+        return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
+    db.commit()  # Persist the reference, the day's send and any audited exception before external submission.
     try:
         success, message = push_mandate_to_nupay(mandate)
     except Exception as exc:
         success, message = False, f"NuPay integration error: {exc}"
+    finish_send(db, claim_id, success)
     record_push_result(db, mandate_id, success, message)
     member_activity(
         db, member_id,
@@ -485,6 +511,7 @@ def push(mandate_id):
 def _background_manual_review_push(
     app, db_path: str, mandate_id: int, mandate: dict, member_id: int,
     overridden: bool = False, user_id: int | None = None, override_note: str | None = None,
+    claim_id: int | None = None,
 ) -> None:
     """Runs the visible-browser, human-paced NuPay push off the request
     thread — it blocks until the person finishes in the window (or closes
@@ -506,6 +533,7 @@ def _background_manual_review_push(
                     success, message = push_mandate_to_nupay_manual_review(mandate)
             except Exception as exc:
                 success, message = False, f"NuPay integration error: {exc}"
+            finish_send(conn, claim_id, success)
             record_push_result(conn, mandate_id, success, message)
             member_activity(
                 conn, member_id,
@@ -520,6 +548,7 @@ def _background_manual_review_push(
             "Background manual-review NuPay push crashed for mandate %s", mandate_id
         )
         try:
+            finish_send(conn, claim_id, False)
             conn.execute(
                 "UPDATE debicheck_mandates SET status='failed', "
                 "nupay_response='Manual-review push crashed — see server logs.' WHERE id=?",
@@ -565,6 +594,11 @@ def review_on_nupay(mandate_id):
     if errors:
         flash("; ".join(errors), "error")
         return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
+    claim_id, limit = claim_send(db, mandate_id, row["member_id"])
+    if limit:
+        db.rollback()
+        flash("Not sent to NuPay: " + limit, "error")
+        return redirect(url_for("debicheck.detail", mandate_id=mandate_id))
     db.execute("UPDATE debicheck_mandates SET status='reviewing' WHERE id=?", (mandate_id,))
     member_activity(
         db, row["member_id"],
@@ -577,7 +611,7 @@ def review_on_nupay(mandate_id):
     app_obj = current_app._get_current_object()
     threading.Thread(
         target=_background_manual_review_push,
-        args=(app_obj, db_path, mandate_id, mandate, row["member_id"], overridden, session.get("user_id"), override_note),
+        args=(app_obj, db_path, mandate_id, mandate, row["member_id"], overridden, session.get("user_id"), override_note, claim_id),
         daemon=True,
     ).start()
 

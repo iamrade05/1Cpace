@@ -176,6 +176,22 @@ def next_debit_date(debit_day, today=None):
     return earliest
 
 
+def arrangement_payment_terms(first_date, method, *, debit_day=None):
+    """Validate the terms reception reads back; preserve existing debit policy."""
+    from datetime import date
+    from .debicheck_rules import debit_date_error, earliest_debit_date
+    method = str('debicheck' if method is None else method).strip()
+    if method != 'debicheck':
+        raise ValueError('Monthly arrangement repayments require DebiCheck under the current rules.')
+    value = str(next_debit_date(debit_day, today=earliest_debit_date()).isoformat() if first_date is None else first_date).strip()
+    if not value:
+        raise ValueError('Choose the first arrears repayment date agreed with the client.')
+    error = debit_date_error(value)
+    if error:
+        raise ValueError(error)
+    return date.fromisoformat(value).isoformat(), method
+
+
 def create_arrangement(db, member_id, offer, *, user_id, normal_active, notes=""):
     """Record the PTP agreed on the call and list the mandates it needs.
 
@@ -187,9 +203,12 @@ def create_arrangement(db, member_id, offer, *, user_id, normal_active, notes=""
 
     member = db.execute(
         "SELECT monthly_installment, debit_order_date FROM members WHERE id=?", (member_id,)).fetchone()
+    from .collection_membership import membership_payment_context
+    normal_instalment = membership_payment_context(db, member_id)['normal_instalment']
     plan = offer.get("arrangement") or {}
     payments = int(plan.get("payments") or 0)
-    first_date = next_debit_date(member["debit_order_date"]).isoformat()
+    first_date, payment_method = arrangement_payment_terms(
+        offer.get('first_collection_date'), offer.get('payment_method'), debit_day=member['debit_order_date'])
     schedule = repayment_schedule(offer["ptp_balance"], payments, first_date) if payments else []
     first_amount = float(schedule[0][1]) if schedule else float(offer["ptp_balance"])
     reasons = manager_review_reasons(db, member_id, member["monthly_installment"], len(schedule))
@@ -203,8 +222,8 @@ def create_arrangement(db, member_id, offer, *, user_id, normal_active, notes=""
                 manager_approval_status, discount_pct, discount_amount, discount_basis,
                 discounted_balance, upfront_percent, upfront_amount, remaining_balance,
                 recovery_installment, recovery_months)
-           VALUES (?,?,?,?,?,'debicheck',?, 'pending','no',1,?,?,?,?,?,?,?,?,?,?,?)""",
-        (member_id, user_id, arrears, first_amount, first_date,
+           VALUES (?,?,?,?,?,?,?, 'pending','no',1,?,?,?,?,?,?,?,?,?,?,?)""",
+        (member_id, user_id, arrears, first_amount, first_date, payment_method,
          "partial" if len(schedule) > 1 else "full", notes or "Arranged on collections call",
          approval, offer["discount_percent"], offer["discount_amount"],
          "category_rule" if offer["discount_percent"] else None,
@@ -221,7 +240,7 @@ def create_arrangement(db, member_id, offer, *, user_id, normal_active, notes=""
          first_date if schedule else None, 1 if normal_active else 0, ptp_id))
     paying = False
     record_required(db, ptp_id, required_mandates(
-        db, member_id, offer["ptp_balance"], member["monthly_installment"], paying, normal_active))
+        db, member_id, offer["ptp_balance"], normal_instalment, paying, normal_active))
     supersede_open_ptps(db, member_id, ptp_id)
     refresh_member_cases(db, member_id, changed_by=user_id, source="ptp",
                          reason="Promise to pay arranged on a collections call")

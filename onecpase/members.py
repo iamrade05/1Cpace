@@ -1,3 +1,4 @@
+import re
 import os
 import time
 from collections import defaultdict
@@ -160,7 +161,10 @@ def _is_discount(collection) -> bool:
 
 
 def _get_last_gym_visit(db, member):
-    """Return the latest known visit from local turnstile or Elev8 access data."""
+    """Use Itensity for its bound gym; local turnstiles for other gyms."""
+    from .itensity_attendance import configured_for_request, member_last_visit
+    if configured_for_request():
+        return member_last_visit(member)
     local = db.execute(
         """SELECT created_at AS last_visited, direction
            FROM turnstile_events WHERE member_id=? AND decision IN ('allowed','granted')
@@ -180,46 +184,8 @@ def _get_last_gym_visit(db, member):
             "source": "1Cpase turnstile",
         }
 
-    if not elev8_source_enabled():
-        return None
-    try:
-        import pyodbc as _pyodbc
-        connection = _pyodbc.connect(
-            "DRIVER={ODBC Driver 17 for SQL Server};"
-            "SERVER=tcp:RADE,1433;DATABASE=ELEV8_;"
-            "Trusted_Connection=yes;Encrypt=no;TrustServerCertificate=yes;",
-            timeout=4,
-        )
-        contact = (member["contact"] or "").strip().replace(" ", "")
-        if not contact:
-            connection.close()
-            return None
-        cursor = connection.cursor()
-        cursor.execute(
-            """SELECT TOP 1
-                   TRY_CONVERT(datetime2(0), lv.last_visited),
-                   DATEDIFF(day, TRY_CONVERT(datetime2(0), lv.last_visited), GETDATE()),
-                   CASE
-                     WHEN DATEPART(hour, TRY_CONVERT(datetime2(0), lv.last_visited)) BETWEEN 5 AND 12 THEN 'Morning'
-                     WHEN DATEPART(hour, TRY_CONVERT(datetime2(0), lv.last_visited)) BETWEEN 13 AND 20 THEN 'Afternoon'
-                     ELSE 'Other'
-                   END
-               FROM dbo.last_visited_report lv
-               WHERE RIGHT(NULLIF(LTRIM(RTRIM(lv.cell)), ''), 9)=RIGHT(?, 9)
-                 AND NULLIF(LTRIM(RTRIM(lv.last_visited)), '') IS NOT NULL
-               ORDER BY TRY_CONVERT(datetime2(0), lv.last_visited) DESC""",
-            (contact,),
-        )
-        row = cursor.fetchone()
-        connection.close()
-        if row:
-            return {
-                "last_visited": row[0], "days_ago": row[1],
-                "shift": row[2], "source": "Elev8 access database",
-            }
-    except Exception:
-        pass
     return None
+
 
 members_bp = Blueprint("members", __name__, template_folder="templates/members")
 members_bp.context_processor(employee_number_context)
@@ -350,13 +316,22 @@ def members_index():
 
     restrict_to_own = bool(session.get("is_sales_consultant"))
 
+    # Signed by: whoever loaded the client here, else their lead's consultant or
+    # the application's creator, else Itensity's own "sold by" for imported members.
     base_sql = """
         SELECT m.id, m.member_ref, m.first_name, m.last_name, m.contact, m.email, m.id_number,
                m.created_at,
-               m.join_date, m.member_status, m.tariff, m.payment_type,
-               m.itensity_ref, u.full_name AS consultant_name
+               m.join_date, m.member_status, m.tariff, m.payment_type, m.monthly_installment,
+               m.itensity_ref, u.full_name AS consultant_name,
+               COALESCE(u.full_name, lead_user.full_name, app_user.full_name,
+                        NULLIF(TRIM(m.sold_by), '')) AS signed_by
         FROM members m
         LEFT JOIN users u ON m.uploaded_by_id = u.id
+        LEFT JOIN membership_applications ma
+          ON ma.id = (SELECT MAX(x.id) FROM membership_applications x WHERE x.member_id = m.id)
+        LEFT JOIN leads l ON l.id = ma.lead_id
+        LEFT JOIN users lead_user ON lead_user.id = l.assigned_to
+        LEFT JOIN users app_user ON app_user.id = ma.created_by
         WHERE 1=1
     """
     params = []
@@ -374,16 +349,22 @@ def members_index():
                 OR (m.first_name || ' ' || m.last_name) LIKE ?
                 OR m.contact LIKE ? OR m.id_number_hash = ?
                 OR m.email LIKE ? OR m.itensity_ref LIKE ? OR m.member_ref LIKE ?
+                OR m.sold_by LIKE ? OR u.full_name LIKE ?
+                OR EXISTS (SELECT 1 FROM debicheck_mandates d WHERE d.member_id = m.id
+                           AND (d.contract_reference LIKE ? OR d.nupay_response LIKE ?))
             )"""
-            params += [like, like, like, like, hash_for_lookup(q.strip()), like, like, like]
+            params += [like, like, like, like, hash_for_lookup(q.strip()), like, like, like, like, like, like, like]
         else:
             base_sql += """ AND (
                 m.first_name LIKE ? OR m.last_name LIKE ?
                 OR (m.first_name || ' ' || m.last_name) LIKE ?
                 OR m.contact LIKE ? OR m.id_number LIKE ?
                 OR m.email LIKE ? OR m.itensity_ref LIKE ? OR m.member_ref LIKE ?
+                OR m.sold_by LIKE ? OR u.full_name LIKE ?
+                OR EXISTS (SELECT 1 FROM debicheck_mandates d WHERE d.member_id = m.id
+                           AND (d.contract_reference LIKE ? OR d.nupay_response LIKE ?))
             )"""
-            params += [like, like, like, like, like, like, like, like]
+            params += [like, like, like, like, like, like, like, like, like, like, like, like]
 
     if status_filter:
         base_sql += " AND m.member_status = ?"
@@ -392,6 +373,7 @@ def members_index():
     base_sql += " ORDER BY m.join_date DESC, m.id DESC"
 
     rows = db.execute(base_sql, params).fetchall()
+    contract_refs = nupay_contract_references(db)
 
     member_counts = get_member_counts(
         db,
@@ -414,12 +396,37 @@ def members_index():
     return render_template(
         "members/index.html",
         members=rows,
+        contract_refs=contract_refs,
         search=q,
         status_filter=status_filter,
         status_counts=member_counts["by_status"],
         total_members=total_members,
         authoritative_total_members=authoritative_total_members,
     )
+
+
+_CONTRACT_REF_RE = re.compile(r"Contract(?:\s+Reference)?\s*:?\s*([A-Z]{2,}[A-Z0-9]{6,})")
+
+
+def nupay_contract_references(db) -> dict[int, str]:
+    """Member id -> NuPay contract reference, from their active mandate when there is one.
+
+    Older mandates only carry the reference inside NuPay's response text.
+    """
+    best: dict[int, tuple] = {}
+    for row in db.execute(
+        "SELECT id, member_id, status, contract_reference, nupay_response FROM debicheck_mandates"
+    ).fetchall():
+        ref = (row["contract_reference"] or "").strip()
+        if not ref:
+            found = _CONTRACT_REF_RE.search(row["nupay_response"] or "")
+            ref = found.group(1) if found else ""
+        if not ref:
+            continue
+        rank = (1 if row["status"] in ("active", "approved") else 0, row["id"])
+        if row["member_id"] not in best or rank > best[row["member_id"]][0]:
+            best[row["member_id"]] = (rank, ref)
+    return {member_id: ref for member_id, (_rank, ref) in best.items()}
 
 
 def _get_tariffs():
@@ -721,11 +728,18 @@ def members_add():
                     flash("Member and mandate saved. NuPay submission blocked: " + "; ".join(blockers), "warning")
                     return redirect(url_for("applications.application_detail", aid=intake_aid, intake=1))
                 override_note = nupay_override_note(db, mid, blockers) if blockers else None
-                db.commit()  # Persist an explicit admin exception before external submission.
+                from .debicheck_limits import claim_send, finish_send
+                claim_id, limit = claim_send(db, mandate_id, mid)
+                if limit:
+                    db.commit()
+                    flash("Member and mandate saved. Not sent to NuPay: " + limit, "warning")
+                    return redirect(url_for("applications.application_detail", aid=intake_aid, intake=1))
+                db.commit()  # Persist an explicit admin exception and the day's send before external submission.
                 try:
                     pushed, message = push_mandate_to_nupay(mandate)
                 except Exception as exc:
                     pushed, message = False, f"NuPay integration error: {exc}"
+                finish_send(db, claim_id, pushed)
                 record_push_result(db, mandate_id, pushed, message)
                 member_activity(
                     db, mid,

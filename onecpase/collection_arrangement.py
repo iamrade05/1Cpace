@@ -40,6 +40,36 @@ def arrangement_confirmation(db, member_id):
     upfront = float(ptp.get('upfront_amount') or 0)
     balance = round(sum(amount for _, amount in schedule), 2) if schedule else float(ptp.get('remaining_balance') or 0)
     total = round(arrears-discount, 2)
+    method = {'debicheck':'DebiCheck', 'cash':'cash', 'eft':'EFT', 'card':'card'}.get(ptp.get('payment_method'))
+    method_text = f'The scheduled arrears repayments are by {method}. ' if method else ''
+    outstanding = []
+    if not statement_ready:
+        outstanding.append('Two months of bank statements must be analysed.')
+    if not mandate_ready:
+        outstanding.append('The required DebiCheck mandate(s) must be approved.')
+    if ptp.get('manager_approval_status') not in ('not_required', 'approved'):
+        outstanding.append('Manager approval is required.')
+    if upfront > 0 and not ptp.get('upfront_verified'):
+        outstanding.append('The upfront payment must be received and verified.')
+    proposal_say = None
+    if not approved and schedule and ptp.get('ptp_status') in ('pending', 'partially_paid'):
+        first = date.fromisoformat(schedule[0][0]).strftime('%d %b %Y')
+        last = date.fromisoformat(schedule[-1][0]).strftime('%d %b %Y')
+        proposal_say = (f'Let me read back the payment proposal we have recorded. '
+                        f'The original arrears are R{arrears:,.2f}, with a proposed discount of R{discount:,.2f}, '
+                        f'leaving R{total:,.2f} to repay. The proposed upfront payment is R{upfront:,.2f}. '
+                        f'The remaining arrears schedule covers R{balance:,.2f} in {len(schedule)} monthly payment(s), '
+                        f'starting on {first}. ')
+        if len(schedule) == 1:
+            proposal_say += f'The arrears payment is R{schedule[0][1]:,.2f}. '
+        else:
+            proposal_say += (f'The regular arrears payment is R{schedule[0][1]:,.2f}, '
+                             f'with a final arrears payment of R{schedule[-1][1]:,.2f} on {last}. ')
+        proposal_say += (method_text + 'Any ongoing membership fees are separate. '
+                         'These terms are conditional; the arrangement and any discount are not yet approved. '
+                         + ' '.join(outstanding) + ' '
+                         'This proposal does not itself restore gym access. '
+                         'Do you agree to these proposed amounts and dates, and understand the outstanding conditions?')
     say = None
     if approved and schedule:
         first = date.fromisoformat(schedule[0][0]).strftime('%d %b %Y')
@@ -55,10 +85,11 @@ def arrangement_confirmation(db, member_id):
         else:
             say += (f'The regular arrears payment is R{schedule[0][1]:,.2f}, '
                     f'with a final arrears payment of R{schedule[-1][1]:,.2f}. ')
-        say += (f'If every agreed payment is received, these arrears should be cleared by {last}. '
+        say += (method_text + f'If every agreed payment is received, these arrears should be cleared by {last}. '
                 'This schedule covers the agreed arrears; any ongoing membership fees are separate. '
                 'Can you confirm that you understand and agree with these payment amounts and dates?')
     return {'id':ptp['id'], 'approved':approved, 'statement_ready':statement_ready,
             'mandate_ready':mandate_ready, 'grant_status':ptp.get('grant_status') or 'not granted',
-            'say':say, 'schedule':[{'date':day,'amount':amount} for day,amount in schedule],
+            'say':say, 'proposal_say':proposal_say, 'outstanding':outstanding,
+            'schedule':[{'date':day,'amount':amount} for day,amount in schedule],
             'arrears':arrears, 'discount':discount, 'total':total, 'upfront':upfront, 'balance':balance}

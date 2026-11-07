@@ -59,6 +59,58 @@ def test_names_have_natural_fallbacks():
     assert 'speaking to receptionist' in guide['steps'][0]['say']
 
 
+def test_profile_script_connects_membership_payment_and_call_commitment():
+    guide = build_call_script(
+        {'first_name':'Boitumelo', 'join_date':'2025-06-15', 'monthly_installment':300},
+        {'full_name':'Reception'}, {'last_visited':'2026-10-01'}, {'total_arrears':900},
+        today=date(2026,11,2), payment_stats={'last_payment_date':'2026-08-15', 'last_payment_amount':250})
+    assert 'joined us on 15 Jun 2025' in guide['steps'][1]['say']
+    assert 'R250.00 on 15 Aug 2026' in guide['steps'][2]['say']
+    assert 'R900.00' in guide['steps'][2]['say']
+    assert 'R300.00' in guide['steps'][4]['cue']
+    assert 'separately from arrears' in guide['steps'][4]['cue']
+    close = guide['steps'][-1]
+    assert 'exact payment date' in close['say'] and 'payment method' in close['say']
+    assert 'what time' in close['say']
+    assert 'do not record a promise to pay' in close['cue']
+    agreement = guide['steps'][-2]
+    assert 'while we are on the call' in agreement['say']
+    assert 'before saving the call' in agreement['cue']
+    assert 'separate from approval' in agreement['cue']
+
+
+@pytest.mark.parametrize('stamp', [None, '', 'bad data', '2027-01-01'])
+def test_unconfirmed_membership_and_payment_dates_prompt_questions(stamp):
+    guide = build_call_script({'join_date':stamp}, {}, None, {'total_arrears':200},
+        today=date(2026,11,2), payment_stats={'last_payment_date':stamp,'last_payment_amount':500})
+    assert guide['joined_label'] == 'Membership start not confirmed'
+    assert 'joined us on' not in guide['steps'][1]['say']
+    assert 'latest successful payment' not in guide['steps'][2]['say']
+    assert 'When did you last make a payment?' in guide['steps'][2]['say']
+    assert 'never paid' not in guide['steps'][2]['say']
+
+
+def test_existing_issues_and_arrangements_are_reviewed_before_a_new_offer():
+    guide = build_call_script({'member_status':'Blocked'}, {}, None, {'total_arrears':700},
+        queries=[{'status':'open'}], arrangements=[{'ptp_status':'partially_paid'}],
+        previous_calls=[{'outcome':'asked_callback'}])
+    words = ' '.join(p['say'] + p['cue'] for p in guide['context'])
+    assert 'membership as blocked' in words and 'does not restore access' in words
+    assert 'unresolved query' in words and 'reconciliation' in words
+    assert 'already a payment arrangement' in words and 'approval status' in words
+    assert 'previously asked us to call back' in words
+    assert 'missed without verifying' in words
+
+
+def test_resolved_history_and_settled_plans_do_not_trigger_live_issue_prompts():
+    guide = build_call_script({'member_status':'Active'}, {}, None, {'total_arrears':0},
+        queries=[{'status':'closed'}, {'status':'resolved'}],
+        arrangements=[{'ptp_status':'paid'}, {'ptp_status':'cancelled'}],
+        previous_calls=[{'outcome':'reminder_delivered'}, {'outcome':'asked_callback'}])
+    assert guide['context'] == []
+    assert not any(step.get('negotiate') for step in guide['steps'])
+
+
 def test_call_profile_uses_logged_in_caller_and_current_member_facts(app, client, monkeypatch):
     from tests.test_collections_call_queue import _seed_callers_and_members
     from onecpase.collections import _ensure_daily_call_tasks
@@ -91,6 +143,39 @@ def test_call_profile_uses_logged_in_caller_and_current_member_facts(app, client
         state.update(user_id=12, role='reception', permissions=['collections_call_queue'])
     denied = client.get(path)
     assert denied.status_code == 302 and b'overdue balance of' not in denied.data
+
+
+def test_call_profile_uses_cash_receipt_not_discount_or_failed_debit(app, client):
+    from tests.test_collections_call_queue import _seed_callers_and_members
+    from onecpase.collections import _ensure_daily_call_tasks
+    with app.app_context():
+        _seed_callers_and_members(1)
+        db = get_db()
+        _ensure_daily_call_tasks(db, date(2026,8,12))
+        task = dict(db.execute('SELECT * FROM collection_call_tasks LIMIT 1').fetchone())
+        db.execute("UPDATE members SET join_date='2025-06-15',member_status='Blocked' WHERE id=?", (task['member_id'],))
+        for stamp, amount, status, note in [
+            ('2026-06-15',100,'paid','type=Recurring Fee'),
+            ('2026-07-01',50,'partial','type=Recurring Fee'),
+            ('2026-07-15',200,'paid','type=Discount'),
+            ('2026-08-01',300,'failed','type=Recurring Fee')]:
+            db.execute('''INSERT INTO collections(member_id,collection_date,outstanding_balance,amount_paid,status,notes)
+                VALUES(?,?,300,?,?,?)''', (task['member_id'],stamp,amount,status,note))
+        db.commit()
+        before = [tuple(r) for r in db.execute('SELECT id,amount_paid,status FROM collections ORDER BY id')]
+    with client.session_transaction() as state:
+        state.update(user_id=task['assigned_to'],role='reception',permissions=['collections_call_queue'])
+    response = client.get(f"/collections/call-queue/{task['id']}/profile")
+    assert response.status_code == 200
+    assert b'joined us on 15 Jun 2025' in response.data
+    assert b'latest successful payment recorded is R50.00 on 01 Jul 2026' in response.data
+    assert b'latest successful payment recorded is R200.00' not in response.data
+    assert b'membership as blocked' in response.data
+    assert b'Agree the next step before ending the call' in response.data
+    with app.app_context():
+        db = get_db()
+        assert before == [tuple(r) for r in db.execute('SELECT id,amount_paid,status FROM collections ORDER BY id')]
+        assert db.execute('SELECT COUNT(*) FROM ptp_agreements').fetchone()[0] == 0
 
 
 def test_training_context_does_not_invent_return_commitment_or_financial_terms():

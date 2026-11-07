@@ -10,9 +10,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css', v='statement-check-20261105') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css', v='sticky-20261106') }}">
   {% if request.endpoint=='dashboard.sales_dashboard' %}<link rel="stylesheet" href="{{ url_for('static', filename='css/sales-board.css', v='20261102') }}">{% endif %}
-  {% if request.endpoint=='collections.call_profile' %}<link rel="stylesheet" href="{{ url_for('static', filename='css/collection-call-script.css', v='negotiation-20261102') }}"><script defer src="{{ url_for('static', filename='js/collection-conversation.js', v='20261102') }}"></script>{% endif %}
+  {% if request.endpoint=='collections.call_profile' %}<link rel="stylesheet" href="{{ url_for('static', filename='css/collection-call-script.css', v='negotiation-20261102') }}"><script defer src="{{ url_for('static', filename='js/collection-conversation.js', v='settlement-context-20261106') }}"></script>{% endif %}
   {% if request.blueprint in ('hr','workforce') %}<link rel="stylesheet" href="{{ url_for('static', filename='css/hr-workforce.css', v='hr-cleanup-20261028') }}">{% endif %}
   {% if request.blueprint=='reception_admin' %}<link rel="stylesheet" href="{{ url_for('static', filename='css/reception-admin.css', v='reception-admin-20261028') }}">{% endif %}
 </head>
@@ -302,6 +302,14 @@
          class="nav-item {% if request.endpoint == 'reports.index' and request.args.get('tab') == 'finance' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg> Finance
       </a>
+      <a href="{{ url_for('reports.consultant_book') }}"
+         class="nav-item {% if request.endpoint == 'reports.consultant_book' %}active{% endif %}">Sales Consultant Book</a>
+      {% for report, title in [('master','Master Member Report'), ('kpis','Staff KPIs'), ('funnel','Sales Funnel'),
+                               ('reception','Reception, Collections and Debits'), ('compliance','Member Compliance'),
+                               ('commission','Sales Commission')] %}
+      <a href="{{ url_for('reports.analytics_report', report=report) }}"
+         class="nav-item {% if request.endpoint == 'reports.analytics_report' and request.view_args.get('report') == report %}active{% endif %}">{{ title }}</a>
+      {% endfor %}
       <a href="{{ url_for('reports.index') }}?tab=arrears"
          class="nav-item {% if request.endpoint == 'reports.index' and request.args.get('tab') == 'arrears' %}active{% endif %}">
         <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Arrears &amp; PTP
@@ -424,6 +432,13 @@
 <span class="topbar-user">{{ session.get("full_name", "") }}</span>
   </div>
   <div class="content">
+    {% if due_work and request.endpoint != 'notifications.overdue' %}
+    <a class="due-work-banner {{ 'is-overdue' if due_work.overdue else 'is-due-today' }}" href="{{ url_for('notifications.overdue') if due_work.locked else url_for('notifications.index') }}" role="status">
+      <strong>{% if due_work.overdue %}{{ due_work.overdue }} overdue{% endif %}{% if due_work.overdue and due_work.today %} · {% endif %}{% if due_work.today %}{{ due_work.today }} due today{% endif %}</strong>
+      <span>{% if due_work.locked %}Your follow-ups must be dealt with before you carry on.{% else %}Follow-ups and approvals waiting for you.{% endif %}</span>
+      <span class="due-work-banner-action">Open</span>
+    </a>
+    {% endif %}
     {% if get_flashed_messages() %}
     <div class="alerts">
       {% for category, msg in get_flashed_messages(with_categories=true) %}
@@ -608,7 +623,26 @@
   })();
 </script>
 
-<script src="{{ url_for('static', filename='js/ui.js', v='dashboard-periods-20261028') }}"></script>
+{% if due_popup %}
+<dialog class="due-work-dialog" data-open-on-load aria-labelledby="due-work-dialog-title">
+  <h2 id="due-work-dialog-title">Due today and overdue</h2>
+  <p>Before you start, here is the work waiting for you.</p>
+  <ul>
+    {% for item in due_popup['items'] %}
+    <li>
+      {% if due_popup['links'].get(item.id) %}<a href="{{ due_popup['links'][item.id] }}">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}
+      <small>Due {{ item.due_date or 'now' }}</small>
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="due-work-dialog-actions">
+    <a class="btn btn-primary" href="{{ url_for('notifications.index') }}">Open notifications</a>
+    <form method="dialog"><button class="btn btn-ghost">Later</button></form>
+  </div>
+</dialog>
+{% endif %}
+<script src="{{ url_for('static', filename='js/ui.js', v='due-work-20261106') }}"></script>
+<script src="{{ url_for('static', filename='js/table-tools.js', v='members-cols-20261106') }}"></script>
 {% block scripts %}{% endblock %}
 {% if config.INSPECT_MODE %}
 <script>window.__INSPECT_META__ = {{ inspect_meta | tojson }};</script>

@@ -11,12 +11,16 @@
       panel.hidden = panel.dataset.conversationPath !== choice.value;
     });
     goal.hidden = choice.value !== 'return' && choice.value !== 'undecided';
+    var accessGuide = document.getElementById('return-access-guidance');
+    if (accessGuide) accessGuide.hidden = choice.value !== 'return';
+    var settlementGuide = document.getElementById('settlement-membership-guidance');
+    if (settlementGuide) settlementGuide.hidden = choice.value !== 'moved' && choice.value !== 'not_returning';
     if (returning) returning.checked = choice.value === 'return';
     if (button) {
       button.disabled = !choice.value;
       document.getElementById('negotiation-guidance').textContent = !choice.value
         ? 'First select the client’s response in section 04.'
-        : choice.value === 'return' ? 'Explore a manageable plan to support their return.'
+        : choice.value === 'return' ? 'Discuss repayment, then check the separate reactivation and access conditions before promising a return.'
           : 'Focus on settling the current arrears; returning is not a condition of this conversation.';
     }
     if (typeof refreshOffer === 'function') refreshOffer();

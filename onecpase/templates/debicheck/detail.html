@@ -29,12 +29,17 @@
     {% if mandate_field_errors and not mandate.imported_from_nupay and mandate.status != 'active' %}
       <div role="alert"><strong>Change the mandate details before submitting</strong>{% for reason in mandate_field_errors %}<p>{{ reason }}</p>{% endfor %}</div>
     {% endif %}
+    {% if send_limit and mandate.status != 'reviewing' %}
+      <div role="alert"><strong>{% if send_limit.kind == 'today' %}Already sent today{% elif send_limit.kind == 'awaiting' %}Waiting for the client{% else %}Two failed DebiCheck attempts{% endif %}</strong><p>{{ send_limit.message }}</p></div>
+    {% endif %}
+    {% set extra_attempt_box %}{% if send_limit_can_override %}<label><input type="checkbox" name="extra_attempt" value="1"> Manager: allow an extra attempt (logged)</label>{% endif %}{% endset %}
     {% if mandate.status == 'reviewing' %}
       <span class="btn btn-ghost" style="cursor:default;">⏳ Waiting for you to finish in the NuPay browser window</span>
-    {% elif has_perm('new_debicheck') and mandate.status != 'active' and not mandate.imported_from_nupay and not mandate_field_errors and (statement_months_ready or statement_can_override) and (not statement_blockers or statement_can_override) %}
+    {% elif has_perm('new_debicheck') and mandate.status != 'active' and not mandate.imported_from_nupay and not mandate_field_errors and (statement_months_ready or statement_can_override) and (not statement_blockers or statement_can_override) and (not send_limit or send_limit_can_override) %}
       {% if statement_check %}
       <form method="post" action="{{ url_for('debicheck.review_on_nupay', mandate_id=mandate.id) }}" class="statement-check-form">
         <input type="hidden" name="override" value="1">
+        {{ extra_attempt_box }}
         {% include 'applications/_statement_check.html' %}
         <div class="statement-check-actions">
           <button class="btn btn-primary">Override &amp; Review on NuPay</button>
@@ -45,11 +50,13 @@
       {% if session.get('role') in ('admin', 'manager') %}
       <form method="post" action="{{ url_for('debicheck.review_on_nupay', mandate_id=mandate.id) }}">
         {% if session.get('role') == 'admin' %}<label><input type="checkbox" name="override" value="1"> Admin override (audited)</label>{% endif %}
+        {{ extra_attempt_box }}
         <button class="btn btn-primary">Review &amp; Submit on NuPay</button>
       </form>
       {% endif %}
       <form method="post" action="{{ url_for('debicheck.push',mandate_id=mandate.id) }}">
         {% if session.get('role') == 'admin' %}<label><input type="checkbox" name="override" value="1"> Admin override (audited)</label>{% endif %}
+        {{ extra_attempt_box }}
         <button class="btn btn-secondary">{% if mandate.status in ('submitted','pending','failed','rejected','cancelled') %}Resend Automatically{% else %}Push Automatically{% endif %}</button>
       </form>
       {% endif %}

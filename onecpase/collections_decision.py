@@ -211,7 +211,7 @@ def decide_offer(
     # An active mandate means only the arrangement mandate is new; without one
     # the normal instalment needs a mandate as well.
     mandates_to_load = []
-    if mandate_state != "active":
+    if mandate_state != "active" and normal_instalment > 0:
         mandates_to_load.append({"purpose": "Normal instalment", "amount": normal_instalment})
     if ptp_balance > 0:
         mandates_to_load.append({"purpose": "Arrangement (PTP)", "amount": ptp_balance})
