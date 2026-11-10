@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import json
 from zoneinfo import ZoneInfo
+from .collections_engine import lock_collection
 
 ZONE=ZoneInfo('Africa/Johannesburg')
 CATEGORIES={'card_fee':'Card fees','arrears':'Arrears payments','card_purchase':'Card purchases','merchandise':'Merchandise','registration_fee':'Registration fees','other':'Other reception fees'}
@@ -176,7 +177,8 @@ def receipt(db,uid,form):
     item_id=None;quantity=0;collection_id=None;created=0
     if form.get('collection_id'):
         collection_id=integer(form.get('collection_id'))
-        row=db.execute("SELECT c.*,u.department,u.role FROM collections c LEFT JOIN users u ON u.id=c.created_by WHERE c.id=?",(collection_id,)).fetchone()
+        lock_collection(db, collection_id)
+        row=db.execute("SELECT c.*,u.department,u.role FROM active_collections c LEFT JOIN users u ON u.id=c.created_by WHERE c.id=?",(collection_id,)).fetchone()
         from .members import _is_discount
         if not row or row['status'] not in ('paid','partial') or _is_discount(row) or str(row['collection_date'])[:10]!=shift['work_date'] or row['member_id']!=mid or cents(row['amount_paid'])!=amount:raise ValueError('The linked collection must be a matching paid receipt for this member and day.')
         source_method={'pos':'card','credit_card':'card','debit_card':'card','bank_transfer':'eft'}.get(str(row['method']).lower(),str(row['method']).lower())
@@ -244,7 +246,7 @@ def outstanding(db,day):
             if row:pending.append(dict(row))
     unallocated=[]
     from .members import _is_discount
-    for row in db.execute("""SELECT c.*,m.first_name,m.last_name FROM collections c JOIN members m ON m.id=c.member_id JOIN users u ON u.id=c.created_by
+    for row in db.execute("""SELECT c.*,m.first_name,m.last_name FROM active_collections c JOIN members m ON m.id=c.member_id JOIN users u ON u.id=c.created_by
         WHERE substr(CAST(c.collection_date AS TEXT),1,10)=? AND c.status IN ('paid','partial') AND c.amount_paid>0
         AND (LOWER(u.department) IN ('reception','collections') OR u.role='admin')
         AND LOWER(c.method) IN ('cash','card','pos','credit_card','debit_card','eft','bank_transfer')

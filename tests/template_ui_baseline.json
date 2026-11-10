@@ -868,5 +868,17 @@
     "style_blocks": 0,
     "hex_colours": 0,
     "emoji": 0
+  },
+  "email/member_compliance.html": {
+    "inline_styles": 6,
+    "style_blocks": 0,
+    "hex_colours": 4,
+    "emoji": 0
+  },
+  "email/member_welcome.html": {
+    "inline_styles": 24,
+    "style_blocks": 0,
+    "hex_colours": 12,
+    "emoji": 0
   }
 }

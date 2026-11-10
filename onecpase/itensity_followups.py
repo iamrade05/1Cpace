@@ -203,7 +203,7 @@ def send_documents(conn, member_id: int, itensity_ref: str, surname: str) -> dic
 def reg_fee_to_send(conn, member_id: int) -> tuple[dict | None, str | None]:
     """The one paid reg fee to record: (payment details, reason it can't be sent)."""
     rows = conn.execute(
-        """SELECT id,amount_paid,status,notes,method,collection_date FROM collections
+        """SELECT id,amount_paid,status,notes,method,collection_date FROM active_collections
            WHERE member_id=? AND payment_purpose='registration_fee' AND status='paid' AND amount_paid > 0""",
         (member_id,),
     ).fetchall()
@@ -237,6 +237,11 @@ def send_reg_fee(conn, member_id: int, itensity_ref: str, surname: str) -> dict:
     collection, reason = reg_fee_to_send(conn, member_id)
     if not collection:
         return {"status": "not_sent", "message": reason}
+    from .collections_engine import lock_collection
+    lock_collection(conn, collection["collection_id"])
+    confirmed, reason = reg_fee_to_send(conn, member_id)
+    if confirmed != collection:
+        return {"status": "not_sent", "message": reason or "The registration fee changed before sending."}
 
     # Only a confirmed non-delivery may try again. 'sending' and 'unknown' may
     # already be on the account, and this statement decides that atomically.

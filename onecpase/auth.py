@@ -69,6 +69,8 @@ def _complete_login(user):
     get_db().execute(
         "UPDATE users SET last_login = datetime('now') WHERE id = ?", (user["id"],)
     )
+    from .user_activity import record_sign_in
+    record_sign_in(get_db(), "signed_in", user_id=user["id"], username=user["username"], commit=False)
     get_db().commit()
 
 
@@ -345,12 +347,16 @@ def login():
                     _clear_otp_challenge()
                     flash("We could not send your sign-in code. Please try again later or contact an administrator.", "error")
                     return render_template("auth/login.html", tenant=g.tenant), 503
+                from .user_activity import record_sign_in
+                record_sign_in(db, "code_sent", user_id=user["id"], username=username)
                 flash(f"A 6-digit code was sent to {_masked_email(user['email'])}. Enter it below.", "info")
                 return redirect(url_for("auth.verify_otp"))
             else:
                 _complete_login(user)
                 return redirect(url_for("dashboard.dashboard"))
 
+        from .user_activity import record_failed_password
+        record_failed_password(db, username)
         flash("Invalid username or password.", "error")
 
     return render_template("auth/login.html", tenant=g.tenant)
@@ -382,6 +388,9 @@ def verify_otp():
             (challenge_hash, now, _OTP_MAX_ATTEMPTS),
         )
         if updated.rowcount != 1:
+            db.rollback()
+            from .user_activity import record_sign_in
+            record_sign_in(db, "too_many_codes", user_id=otp_data["user_id"])
             _clear_otp_challenge()
             flash("Too many failed attempts. Please sign in again.", "error")
             return redirect(url_for("auth.login"))
@@ -404,10 +413,13 @@ def verify_otp():
             return redirect(url_for("auth.login"))
         else:
             remaining_attempts = _OTP_MAX_ATTEMPTS - otp_data["attempts"]
+            from .user_activity import record_sign_in
             if remaining_attempts <= 0:
+                record_sign_in(db, "too_many_codes", user_id=otp_data["user_id"], commit=False)
                 _clear_otp_challenge()
                 flash("Too many failed attempts. Please sign in again.", "error")
                 return redirect(url_for("auth.login"))
+            record_sign_in(db, "wrong_code", user_id=otp_data["user_id"], commit=False)
             db.commit()
             flash(f"Incorrect code. {remaining_attempts} attempt(s) remaining.", "error")
 
@@ -502,6 +514,8 @@ def change_password():
                 db.rollback()
                 return _session_expired_response()
             db.commit()
+            from .user_activity import record_sign_in
+            record_sign_in(db, "password_changed", user_id=user["id"], username=user["username"])
             session["must_change_password"] = False
             session['session_version'] = user['session_version'] + 1
             flash("Password changed successfully.", "success")
@@ -640,6 +654,8 @@ def reset_password():
                     "UPDATE users SET password_hash = ?, must_change_password = 0, session_version=session_version+1 WHERE id = ? AND session_version=?",
                     (generate_password_hash(new_pw), user["id"],row['session_version']),
                 )
+                from .user_activity import record_sign_in
+                record_sign_in(db, "password_reset", user_id=user["id"], commit=False)
             db.commit()
             session.pop("_reset_challenge", None)
             flash("Password updated. Sign in with your new password.", "success")
@@ -650,6 +666,9 @@ def reset_password():
 
 @auth_bp.get("/logout")
 def logout():
+    if session.get("user_id") and session_tenant_ok():
+        from .user_activity import record_sign_in
+        record_sign_in(get_db(), "signed_out", user_id=session["user_id"], username=session.get("username"))
     if session.get("is_power_user") and session.get("platform_admin_id"):
         platform_admin_id = session["platform_admin_id"]
         platform_username = session.get("platform_admin_username", "")

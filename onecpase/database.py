@@ -97,6 +97,13 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
 
     from .sales_kpi import ensure_sales_kpi_schema
     ensure_sales_kpi_schema(db, backend)
+    _ensure_column(db, backend, "collections", "itensity_pos_requested", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, backend, "collections", "staff_notes", "TEXT")
+    # PostgreSQL expands c.* when creating the view, after the column upgrades.
+    create_view = "CREATE OR REPLACE VIEW" if backend == "postgresql" else "CREATE VIEW IF NOT EXISTS"
+    db.execute(f"""{create_view} active_collections AS
+        SELECT c.* FROM collections c
+        WHERE NOT EXISTS (SELECT 1 FROM collection_voids v WHERE v.collection_id = c.id)""")
 
     from .sales_board import ensure_schema as ensure_sales_board_schema
     ensure_sales_board_schema(db)
@@ -105,6 +112,8 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
     ensure_mobile_schema(db)
     from .query_forms import ensure_schema as ensure_query_forms_schema
     ensure_query_forms_schema(db, backend)
+    from .client_email import ensure_schema as ensure_client_email_schema
+    ensure_client_email_schema(db, backend)
 
     # ── Additive column migrations ────────────────────────────────────────────
     _ensure_column(db, backend, "users", "must_change_password", "INTEGER DEFAULT 0")
@@ -417,6 +426,8 @@ def _init_db_on_connection(db, backend: str, tenant_name: str = "1Cpace") -> Non
         _ensure_column(db, backend, "debicheck_mandates", col, defn)
     from .debicheck_limits import ensure_schema as ensure_debicheck_send_log
     ensure_debicheck_send_log(db, backend)
+    from .user_activity import ensure_schema as ensure_user_activity_schema
+    ensure_user_activity_schema(db, backend)
 
     for col, defn in [
         ("reg_no", "TEXT"),
@@ -1052,10 +1063,18 @@ def _backfill_member_applications(db) -> None:
         """UPDATE compliance_checklists
            SET pos_status = CASE WHEN EXISTS (
                SELECT 1 FROM membership_applications ma
-               JOIN collections c ON c.member_id = ma.member_id
+               JOIN active_collections c ON c.member_id = ma.member_id
                WHERE ma.id = compliance_checklists.application_id
                  AND c.status = 'paid' AND c.amount_paid > 0
-           ) THEN 'paid' ELSE pos_status END"""
+           ) THEN 'paid' ELSE pos_status END
+           WHERE NOT EXISTS (
+               SELECT 1 FROM membership_applications ma
+               JOIN collections c ON c.member_id = ma.member_id
+               WHERE ma.id = compliance_checklists.application_id AND (
+                   EXISTS (SELECT 1 FROM collection_voids v WHERE v.collection_id = c.id)
+                   OR EXISTS (SELECT 1 FROM collection_corrections cc WHERE cc.collection_id = c.id)
+               )
+           )"""
     )
     db.execute(
         """UPDATE membership_applications

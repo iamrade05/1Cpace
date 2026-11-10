@@ -88,7 +88,7 @@ def _load_register(db, status='', search='', segment=''):
         SELECT m.id, m.member_ref, m.first_name, m.last_name, m.id_number, m.contact,
                m.member_status, m.package, m.monthly_installment, m.join_date,
                m.payment_type, m.sold_by, u.full_name AS signed_by_user,
-               (SELECT MAX(c.collection_date) FROM collections c
+               (SELECT MAX(c.collection_date) FROM active_collections c
                  WHERE c.member_id = m.id AND COALESCE(c.amount_paid,0) > 0) AS last_paid,
                (SELECT MAX(t.created_at) FROM turnstile_events t
                  WHERE t.member_id = m.id AND t.decision = 'granted') AS local_last_visit,
@@ -102,7 +102,7 @@ def _load_register(db, status='', search='', segment=''):
     arrears = bulk_member_arrears(db)
     visits, visit_error = _itensity_last_visits()
     cash_dates = {}
-    for payment in db.execute('SELECT member_id,collection_date,amount_paid,status,notes FROM collections WHERE COALESCE(amount_paid,0)>0'):
+    for payment in db.execute('SELECT member_id,collection_date,amount_paid,status,notes FROM active_collections WHERE COALESCE(amount_paid,0)>0'):
         if cash_amount(payment) > 0:
             mid = payment['member_id']
             cash_dates[mid] = max(cash_dates.get(mid,''), str(payment['collection_date'] or '')[:10])
@@ -151,7 +151,7 @@ def _load_register(db, status='', search='', segment=''):
         GROUP BY month ORDER BY month DESC
     """).fetchall()
     collected = {r['month']: r['collected'] for r in monthly_totals(db.execute(
-        'SELECT * FROM collections WHERE substr(collection_date,1,10) BETWEEN ? AND ?',
+        'SELECT * FROM active_collections WHERE substr(collection_date,1,10) BETWEEN ? AND ?',
         (history_start(12),current_cycle()[1].isoformat())).fetchall())}
     joins_by_month = [{**dict(j), "collected": collected.get(j["month"], 0)} for j in joins]
 
@@ -386,7 +386,7 @@ def _load_overview(db):
 
     monthly = monthly_totals(db.execute(f"""
         SELECT *
-        FROM collections WHERE substr(collection_date,1,10) BETWEEN '{history_start(6)}' AND '{current_cycle()[1].isoformat()}'
+        FROM active_collections WHERE substr(collection_date,1,10) BETWEEN '{history_start(6)}' AND '{current_cycle()[1].isoformat()}'
     """).fetchall())
     joins_monthly = db.execute(f"""
         SELECT strftime('%Y-%m', date(join_date,'-14 days','start of month','+1 month')) AS month, COUNT(*) AS cnt
@@ -441,7 +441,7 @@ def _load_finance(db, period):
     from_date, to_date = _date_range(period)
     from collections import defaultdict
     from decimal import Decimal
-    rows = db.execute('''SELECT c.*,m.package FROM collections c LEFT JOIN members m ON m.id=c.member_id
+    rows = db.execute('''SELECT c.*,m.package FROM active_collections c LEFT JOIN members m ON m.id=c.member_id
         WHERE substr(c.collection_date,1,10) BETWEEN ? AND ?''',(from_date,to_date)).fetchall()
     monthly_collections = monthly_totals(rows)
     methods, statuses, packages = defaultdict(list), defaultdict(list), defaultdict(list)
@@ -459,7 +459,7 @@ def _load_finance(db, period):
     member_rows = {
         r["id"]: r for r in db.execute(
             """SELECT id, first_name, last_name, package, member_status, contact
-               FROM members WHERE id IN (SELECT DISTINCT member_id FROM collections)"""
+               FROM members WHERE id IN (SELECT DISTINCT member_id FROM active_collections)"""
         ).fetchall()
     }
     top_outstanding = []
@@ -671,7 +671,7 @@ def consultant_book():
 def analytics_report(report):
     import csv
     import io
-    from flask import Response
+    from flask import Response, current_app, g
     from . import analytics
     from .staff_kpi import selected_day
 
@@ -735,9 +735,18 @@ def analytics_report(report):
         offset = (page - 1) * page_size
         table.update(count=count, page=page, page_count=page_count,
                      rows=table["rows"][offset:offset + page_size])
+    show_activation_audit = bool(
+        report == "compliance" and current_app.config.get("ITENSITY_AUTO_PUSH_FROM")
+        and g.get("tenant_slug") == current_app.config.get("ITENSITY_TENANT_SLUG")
+    )
+    activation_audit = None
+    if show_activation_audit:
+        from scripts.audit_sales_activation import latest_exceptions
+        activation_audit = latest_exceptions(current_app, g.tenant_slug)
     return render_template("reports/analytics.html", report=report, title=analytics.TITLES[report],
                            tables=tables, filters=filters, start=start, end=end,
                            member_ref=member_ref, kpi_day=kpi_day, rate=rate, today=business_today(),
+                           show_activation_audit=show_activation_audit, activation_audit=activation_audit,
                            invalid_rate=bool(request.args.get("rate")) and rate is None)
 
 

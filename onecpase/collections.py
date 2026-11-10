@@ -1,11 +1,14 @@
 import calendar
+import hashlib
+import json
 import re
 import sqlite3
 import threading
 from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
-from flask import (Blueprint, current_app, flash, g, jsonify, redirect, render_template,
+from flask import (Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template,
                    request, session, url_for)
 from flask_mail import Message
 from .auth import permission_required, roles_required
@@ -27,10 +30,13 @@ from .collections_engine import (
     DEFAULT_CONTACT_TALK_SECONDS,
     get_collection_rule_int,
     grant_exception_access,
+    lock_collection,
+    lock_member_collections,
     log_collection_communication,
     next_communication,
     reached_sql,
     reconcile_open_cases,
+    RESOLUTION_PAID_IN_FULL,
     return_collection_exception,
     sync_collection_case,
     talk_seconds_sql,
@@ -42,6 +48,7 @@ collections_bp = Blueprint("collections", __name__, url_prefix="/collections")
 
 PAYMENT_METHODS = ["cash", "card", "eft", "debicheck", "snapscan", "other"]
 STATUSES = ["pending", "paid", "partial", "failed", "reversed"]
+COLLECTION_PAYMENT_FIELDS = ("amount_paid", "status", "method", "collection_date", "payment_purpose")
 MIN_DAILY_CALL_TARGET = 100
 DAILY_CALL_TARGET = 100
 DAILY_CONTACT_TARGET = 10
@@ -163,7 +170,7 @@ def _cycle_candidates(db, cycle: dict) -> list[dict]:
     if cycle["phase"] == "collection":
         failed_rows = db.execute(
             """SELECT m.id AS member_id, MAX(c.id) AS collection_id, m.first_name, m.last_name
-               FROM members m JOIN collections c ON c.member_id=m.id
+               FROM members m JOIN active_collections c ON c.member_id=m.id
                WHERE CAST(m.debit_order_date AS TEXT)=?
                  AND c.status='failed'
                  AND COALESCE(c.outstanding_balance,0)>COALESCE(c.amount_paid,0)
@@ -253,7 +260,7 @@ def _old_owing_candidates(db, excluded: set[int], today: date) -> list[dict]:
         """SELECT m.id AS member_id, MAX(c.id) AS collection_id, m.first_name, m.last_name,
                   COALESCE(m.monthly_installment,0) AS installment,
                   MAX(CASE WHEN c.status='failed' THEN 1 ELSE 0 END) AS has_failed_debit
-           FROM members m JOIN collections c ON c.member_id=m.id
+           FROM members m JOIN active_collections c ON c.member_id=m.id
            WHERE c.status IN ('failed','pending','partial')
              AND COALESCE(c.outstanding_balance,0)>COALESCE(c.amount_paid,0)
              AND NOT EXISTS (
@@ -341,7 +348,7 @@ def _ensure_daily_call_tasks(db, today: date | None = None) -> dict | None:
     # Never keep an unworked task labelled failed after its source is no longer failed.
     db.execute("""DELETE FROM collection_call_tasks WHERE task_date=? AND status='pending'
         AND queue_type='failed_debit' AND (cycle_date>=? OR NOT EXISTS (
-            SELECT 1 FROM collections c WHERE c.id=collection_call_tasks.collection_id
+            SELECT 1 FROM active_collections c WHERE c.id=collection_call_tasks.collection_id
             AND c.status='failed' AND COALESCE(c.outstanding_balance,0)>COALESCE(c.amount_paid,0)))""",
         (task_date, task_date))
     # Payment data can change after tasks are generated (including payments
@@ -445,20 +452,28 @@ def collections_index():
     db = get_db()
     search = request.args.get("q", "").strip()
     status_filter = request.args.get("status", "").strip()
+    can_void = session.get("role") in ("admin", "manager") and (
+        session.get("role") == "admin" or "new_collection" in session.get("permissions", ())
+    )
+    show_voided = can_void and status_filter == "voided"
 
     query = """
         SELECT c.id, c.outstanding_balance, c.discount_pct, c.amount_paid,
                c.collection_date, c.method, c.status, c.notes,
                m.id AS member_id, m.first_name, m.last_name, m.package
-        FROM collections c
-        JOIN members m ON c.member_id = m.id
-        WHERE 1=1
     """
+    if show_voided:
+        query += """, v.reason AS void_reason, v.voided_at, u.full_name AS voided_by
+            FROM collection_voids v JOIN collections c ON c.id=v.collection_id
+            LEFT JOIN users u ON u.id=v.actor_id"""
+    else:
+        query += " FROM active_collections c"
+    query += " JOIN members m ON c.member_id = m.id WHERE 1=1"
     params = []
     if search:
         query += " AND (m.first_name LIKE ? OR m.last_name LIKE ?)"
         params += [f"%{search}%", f"%{search}%"]
-    if status_filter:
+    if status_filter and not show_voided:
         query += " AND c.status = ?"
         params.append(status_filter)
     query += " ORDER BY c.collection_date DESC, c.id DESC"
@@ -483,7 +498,9 @@ def collections_index():
         collections=rows,
         search=search,
         status_filter=status_filter,
-        statuses=STATUSES,
+        statuses=[*STATUSES, "voided"] if can_void else STATUSES,
+        can_void=can_void,
+        show_voided=show_voided,
         totals=totals,
         monthly=monthly,
     )
@@ -634,7 +651,7 @@ def call_queue():
                         SELECT SUM(CASE WHEN c.outstanding_balance>COALESCE(c.amount_paid,0)
                                         THEN c.outstanding_balance-COALESCE(c.amount_paid,0)
                                         ELSE 0 END)
-                        FROM collections c WHERE c.member_id=m.id
+                        FROM active_collections c WHERE c.member_id=m.id
                           AND c.status IN ('failed','pending','partial')
                       ),0) AS balance
                FROM collection_call_tasks t
@@ -737,7 +754,7 @@ def _offer_from_request(db, member_id: int, form) -> dict:
     from .ptp import compute_arrears_from_profile
 
     rows = db.execute(
-        "SELECT * FROM collections WHERE member_id=? ORDER BY collection_date DESC, id DESC", (member_id,)
+        "SELECT * FROM active_collections WHERE member_id=? ORDER BY collection_date DESC, id DESC", (member_id,)
     ).fetchall()
     arrears = compute_arrears_from_profile(_build_payment_profile(rows))
     from .debicheck import normalise_debicheck_status
@@ -977,7 +994,7 @@ def call_profile(task_id: int):
         return redirect(url_for("collections.call_queue"))
 
     collections = db.execute(
-        "SELECT * FROM collections WHERE member_id=? ORDER BY collection_date DESC, id DESC",
+        "SELECT * FROM active_collections WHERE member_id=? ORDER BY collection_date DESC, id DESC",
         (task["member_id"],),
     ).fetchall()
     from .members import _build_payment_profile, _get_last_gym_visit
@@ -1085,10 +1102,10 @@ def _send_collection_reminder_email(member) -> bool:
         return False
     tenant_name = g.tenant["name"] if g.get("tenant") else "1Cpace"
     try:
-        msg = Message(
-            subject=collection_care_email_subject(member["first_name"], tenant_name),
-            recipients=[member["email"]],
-        )
+        from .client_email import department_message
+        msg = department_message("reception",
+                                 collection_care_email_subject(member["first_name"], tenant_name),
+                                 [member["email"]])
         msg.body = collection_care_message(member["first_name"], tenant_name)
         msg.html = collection_care_email_html(member["first_name"], tenant_name)
         mail.send(msg)
@@ -1158,7 +1175,7 @@ def record_call_result(task_id: int):
         from .members import _build_payment_profile
         from .ptp import compute_arrears_from_profile
 
-        rows = db.execute("SELECT * FROM collections WHERE member_id=?", (task["member_id"],)).fetchall()
+        rows = db.execute("SELECT * FROM active_collections WHERE member_id=?", (task["member_id"],)).fetchall()
         owed = compute_arrears_from_profile(_build_payment_profile(rows))["total_arrears"]
         same = request.form.get("same_premium", "yes") == "yes"
         campaign = bool(request.form.get("sales_campaign")) and session.get("role") == "admin"
@@ -1567,26 +1584,29 @@ def collections_add():
                 statuses=STATUSES, selected_member_id=selected_member_id,
             )
 
-        if find_duplicate_collection(db, int(member_id), collection_date, outstanding_balance,
-                                     amount_paid, method, status, notes,
-                                     "registration_fee" if request.form.get("payment_purpose") == "registration_fee" else "general"):
-            flash("An identical collection record is already on file for this member.", "warning")
-            return redirect(url_for("collections.collections_index"))
-
         try:
+            mid = int(member_id)
+            purpose = "registration_fee" if request.form.get("payment_purpose") == "registration_fee" else "general"
+            paid = float(amount_paid or 0)
+            push_to_itensity = request.form.get("push_to_itensity") == "1" and paid > 0
+            lock_member_collections(db, mid)
+            if find_duplicate_collection(db, mid, collection_date, outstanding_balance,
+                                         amount_paid, method, status, notes, purpose):
+                flash("An identical collection record is already on file for this member.", "warning")
+                return redirect(url_for("collections.collections_index"))
+
             cursor = db.execute(
                 """INSERT INTO collections
                    (member_id, outstanding_balance, discount_pct, amount_paid,
-                    collection_date, method, status, notes, created_by, payment_purpose)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (int(member_id), float(outstanding_balance or 0), float(discount_pct or 0),
-                 float(amount_paid or 0), collection_date, method, status, notes, session.get("user_id"),
-                 "registration_fee" if request.form.get("payment_purpose") == "registration_fee" else "general"),
+                    collection_date, method, status, notes, created_by, payment_purpose, itensity_pos_requested)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (mid, float(outstanding_balance or 0), float(discount_pct or 0),
+                 paid, collection_date, method, status, notes, session.get("user_id"), purpose, int(push_to_itensity)),
             )
             if status == "failed":
                 sync_collection_case(
                     db,
-                    int(member_id),
+                    mid,
                     collection_id=cursor.lastrowid,
                     failed_debit_date=collection_date,
                     failure_reason=notes or "Debit order failed",
@@ -1594,17 +1614,17 @@ def collections_add():
                 )
             member_activity(
                 db,
-                int(member_id),
+                mid,
                 f"Added collection: R{float(amount_paid or 0):,.2f} paid, "
                 f"R{float(outstanding_balance or 0):,.2f} outstanding ({status})",
             )
-            reconcile_open_cases(db, [int(member_id)], changed_by=session.get("user_id"))
-            _sync_application_payment(db, int(member_id))
+            reconcile_open_cases(db, [mid], changed_by=session.get("user_id"))
+            _sync_application_payment(db, mid)
             db.commit()
             flash("Collection record added successfully.", "success")
 
-            if request.form.get("push_to_itensity") == "1" and float(amount_paid or 0) > 0:
-                member_row = db.execute("SELECT * FROM members WHERE id = ?", (int(member_id),)).fetchone()
+            if push_to_itensity:
+                member_row = db.execute("SELECT * FROM members WHERE id = ?", (mid,)).fetchone()
                 member_data = decrypt_member(member_row) if member_row else None
                 if not member_data:
                     flash("Could not push to Itensity POS: member not found.", "warning")
@@ -1613,14 +1633,15 @@ def collections_add():
                     app_obj = current_app._get_current_object()
                     threading.Thread(
                         target=_background_itensity_pos_push,
-                        args=(app_obj, db_path, int(member_id), member_data, float(amount_paid),
+                        args=(app_obj, db_path, mid, member_data, paid,
                               notes or "Member payment", method, session.get("user_id")),
                         daemon=True,
                     ).start()
                     flash("Payment saved. Itensity POS sync started in the background.", "info")
 
-            return redirect(url_for("members.member_detail", mid=int(member_id)) + "#payments")
+            return redirect(url_for("members.member_detail", mid=mid) + "#payments")
         except Exception as e:
+            db.rollback()
             flash(f"Error saving collection: {e}", "error")
 
     return render_template(
@@ -1633,8 +1654,10 @@ def collections_add():
 @permission_required("new_collection")
 def collections_edit(cid: int):
     db = get_db()
+    if request.method == "POST":
+        lock_collection(db, cid)
     col = db.execute(
-        """SELECT c.*, m.first_name, m.last_name FROM collections c
+        """SELECT c.*, m.first_name, m.last_name FROM active_collections c
            JOIN members m ON c.member_id = m.id WHERE c.id = ?""",
         (cid,),
     ).fetchone()
@@ -1643,62 +1666,214 @@ def collections_edit(cid: int):
         return redirect(url_for("collections.collections_index"))
 
     if request.method == "POST":
-        amount_paid = request.form.get("amount_paid", "0").strip()
-        status = request.form.get("status", "pending")
-        method = request.form.get("method", "cash")
-        notes = request.form.get("notes", "").strip()
-        collection_date = request.form.get("collection_date", "")
-        try:
-            db.execute(
-                """UPDATE collections
-                   SET amount_paid = ?, status = ?, method = ?, notes = ?, collection_date = ?, payment_purpose = ?
-                   WHERE id = ?""",
-                (float(amount_paid or 0), status, method, notes, collection_date,
-                 "registration_fee" if request.form.get("payment_purpose", col["payment_purpose"]) == "registration_fee" else "general", cid),
-            )
-            if status == "failed":
-                sync_collection_case(
-                    db,
-                    col["member_id"],
-                    collection_id=cid,
-                    failed_debit_date=collection_date,
-                    failure_reason=notes or "Debit order failed",
-                    arrears_amount=float(col["outstanding_balance"] or 0) - float(amount_paid or 0),
-                )
-            member_activity(
-                db,
-                col["member_id"],
-                f"Updated collection #{cid}: R{float(amount_paid or 0):,.2f} paid ({status})",
-            )
-            reconcile_open_cases(db, [col["member_id"]], changed_by=session.get("user_id"))
-            _sync_application_payment(db, col["member_id"])
-            db.commit()
-            flash("Collection updated.", "success")
-            return redirect(url_for("collections.collections_index"))
-        except Exception as e:
-            flash(f"Error: {e}", "error")
+        if any(field in request.form for field in (*COLLECTION_PAYMENT_FIELDS, "member_id", "outstanding_balance", "discount_pct")):
+            abort(403, description="Use the manager correction form to change recorded payment details.")
+        notes = request.form.get("notes", "").strip() or None
+        if notes != col["staff_notes"]:
+            db.execute("UPDATE collections SET staff_notes=? WHERE id=?", (notes, cid))
+            member_activity(db, col["member_id"], f"Updated staff note on collection #{cid}")
+        db.commit()
+        flash("Staff note saved.", "success")
+        return redirect(url_for("collections.collections_edit", cid=cid))
 
-    return render_template("collections/edit.html", col=col, methods=PAYMENT_METHODS, statuses=STATUSES)
+    corrections = []
+    correction_block = None
+    can_correct = session.get("role") in ("admin", "manager")
+    if can_correct:
+        for entry in db.execute(
+            """SELECT cc.*, u.full_name AS actor_name FROM collection_corrections cc
+               LEFT JOIN users u ON u.id=cc.actor_id WHERE cc.collection_id=? ORDER BY cc.id DESC""",
+            (cid,),
+        ):
+            corrections.append(dict(entry, before=json.loads(entry["before_values"]), after=json.loads(entry["after_values"])))
+        try:
+            _check_collection_correction_source(db, col)
+        except ValueError as error:
+            correction_block = str(error)
+    revision = corrections[0]["id"] if corrections else 0
+    return render_template(
+        "collections/edit.html", col=col, methods=PAYMENT_METHODS, statuses=STATUSES,
+        can_correct=can_correct, correction_block=correction_block, corrections=corrections,
+        correction_token=_collection_correction_token(col, revision) if can_correct else None,
+    )
+
+
+def _collection_payment_values(col):
+    return {field: col[field] for field in COLLECTION_PAYMENT_FIELDS}
+
+
+def _collection_correction_token(col, revision):
+    snapshot = json.dumps([col["id"], revision, _collection_payment_values(col)], sort_keys=True, default=str)
+    return hashlib.sha256(snapshot.encode()).hexdigest()
+
+
+def _corrected_collection_values(col, form):
+    before = _collection_payment_values(col)
+    after = before.copy()
+    for field, allowed in (("status", STATUSES), ("method", PAYMENT_METHODS),
+                           ("payment_purpose", ("general", "registration_fee"))):
+        if field in form:
+            value = form[field].strip()
+            if value != (before[field] or ""):
+                if value not in allowed:
+                    raise ValueError(f"Choose a valid {field.replace('_', ' ')}.")
+                after[field] = value
+    if "collection_date" in form:
+        value = form["collection_date"].strip()
+        if value != str(before["collection_date"] or "")[:10]:
+            try:
+                after["collection_date"] = date.fromisoformat(value).isoformat()
+            except ValueError:
+                raise ValueError("Enter a valid payment date.") from None
+    if "amount_paid" in form:
+        try:
+            amount = Decimal(form["amount_paid"].strip())
+            if not amount.is_finite() or amount < 0 or amount != amount.quantize(Decimal("0.01")):
+                raise InvalidOperation
+        except InvalidOperation:
+            raise ValueError("Enter a non-negative payment amount with up to two decimal places.") from None
+        after["amount_paid"] = float(amount)
+    if after != before:
+        paid = float(after["amount_paid"] or 0)
+        if after["status"] in ("paid", "partial") and paid <= 0:
+            raise ValueError("Paid and partial entries need a positive payment amount.")
+        if after["status"] in ("pending", "failed", "reversed") and paid != 0:
+            raise ValueError("Set the amount to zero for a pending, failed or reversed entry.")
+    return before, after
+
+
+@collections_bp.post("/<int:cid>/correct")
+@permission_required("new_collection")
+@roles_required("admin", "manager")
+def collections_correct(cid: int):
+    db = get_db()
+    back = redirect(url_for("collections.collections_edit", cid=cid))
+    try:
+        reason = _collection_correction_reason(request.form)
+        lock_collection(db, cid)
+        col = db.execute("SELECT * FROM active_collections WHERE id=?", (cid,)).fetchone()
+        if col is None:
+            raise ValueError("This collection entry is missing or already voided.")
+        _check_collection_correction_source(db, col)
+        revision = db.execute(
+            "SELECT COALESCE(MAX(id),0) FROM collection_corrections WHERE collection_id=?", (cid,),
+        ).fetchone()[0]
+        if request.form.get("correction_token") != _collection_correction_token(col, revision):
+            raise ValueError("This entry changed or the correction form expired. Review the current payment and try again.")
+        before, after = _corrected_collection_values(col, request.form)
+        if before == after:
+            raise ValueError("Change at least one payment detail before saving a correction.")
+
+        mid = col["member_id"]
+        actor = session["user_id"]
+        previous_case = _paid_case_before_correction(db, mid)
+        db.execute(
+            "UPDATE collections SET amount_paid=?, status=?, method=?, collection_date=?, payment_purpose=? WHERE id=?",
+            (*(after[field] for field in COLLECTION_PAYMENT_FIELDS), cid),
+        )
+        db.execute(
+            """INSERT INTO collection_corrections
+               (collection_id, actor_id, reason, before_values, after_values, corrected_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (cid, actor, reason, json.dumps(before, default=str), json.dumps(after, default=str),
+             datetime.now(ZoneInfo("Africa/Johannesburg")).isoformat(timespec="seconds")),
+        )
+        if after["status"] == "failed" and before["status"] != "failed" and previous_case is None:
+            sync_collection_case(db, mid, collection_id=cid, failed_debit_date=after["collection_date"],
+                                 failure_reason=reason, arrears_amount=col["outstanding_balance"] or 0)
+        member_activity(db, mid, f"Corrected collection #{cid}: {reason}", user_id=actor)
+        _reconcile_collection_correction(db, mid, cid, actor, previous_case)
+        db.commit()
+        flash("Payment corrected. The original values and reason are in the correction history.", "success")
+    except ValueError as error:
+        db.rollback()
+        flash(str(error), "warning")
+    except Exception:
+        db.rollback()
+        raise
+    return back
 
 
 @collections_bp.post("/<int:cid>/delete")
+@collections_bp.post("/<int:cid>/void")
 @permission_required("new_collection")
-def collections_delete(cid: int):
+@roles_required("admin", "manager")
+def collections_void(cid: int):
     db = get_db()
-    col = db.execute(
-        "SELECT member_id, amount_paid FROM collections WHERE id = ?", (cid,)
-    ).fetchone()
-    db.execute("DELETE FROM collections WHERE id = ?", (cid,))
-    if col:
-        member_activity(
-            db,
-            col["member_id"],
-            f"Deleted collection #{cid} (R{float(col['amount_paid'] or 0):,.2f} paid)",
+    try:
+        reason = _collection_correction_reason(request.form)
+        lock_collection(db, cid)
+        col = db.execute("SELECT * FROM active_collections WHERE id=?", (cid,)).fetchone()
+        if col is None:
+            raise ValueError("This collection entry is missing or already voided.")
+        _check_collection_correction_source(db, col)
+
+        mid = col["member_id"]
+        actor = session["user_id"]
+        previous_case = _paid_case_before_correction(db, mid)
+
+        db.execute(
+            "INSERT OR IGNORE INTO collection_voids (collection_id,actor_id,reason,voided_at) VALUES (?,?,?,?)",
+            (cid, actor, reason, datetime.now(ZoneInfo("Africa/Johannesburg")).isoformat(timespec="seconds")),
         )
-        _sync_application_payment(db, col["member_id"])
-    db.commit()
-    flash("Collection record deleted.", "info")
+        member_activity(db, mid, f"Voided collection #{cid}: {reason}", user_id=actor)
+        _reconcile_collection_correction(db, mid, cid, actor, previous_case)
+        db.commit()
+        flash("Collection entry voided. The original is available in the void history.", "success")
+    except ValueError as error:
+        db.rollback()
+        flash(str(error), "warning")
+    except Exception:
+        db.rollback()
+        raise
     return redirect(url_for("collections.collections_index"))
+
+
+def _collection_correction_reason(form):
+    reason = form.get("reason", "").strip()
+    if not reason or len(reason) > 500:
+        raise ValueError("Enter a correction reason of 1 to 500 characters.")
+    return reason
+
+
+def _paid_case_before_correction(db, mid):
+    from .ptp import bulk_member_arrears
+
+    case = db.execute("SELECT * FROM collections_cases WHERE member_id=? ORDER BY id DESC LIMIT 1", (mid,)).fetchone()
+    if case and case["status"] == "closed" and case["resolution_type"] == RESOLUTION_PAID_IN_FULL:
+        if bulk_member_arrears(db, [mid]).get(mid, {}).get("total_arrears", 0) == 0:
+            return case
+    return None
+
+
+def _reconcile_collection_correction(db, mid, cid, actor, previous_case):
+    from .ptp import bulk_member_arrears
+
+    if previous_case is not None:
+        owed = bulk_member_arrears(db, [mid]).get(mid, {})
+        if owed.get("total_arrears", 0) > 0:
+            sync_collection_case(db, mid, failure_reason=f"Balance restored by correction to collection #{cid}",
+                                 arrears_amount=owed["total_arrears"], months_owing=owed["months_in_arrears"],
+                                 monthly_installment=previous_case["monthly_installment"])
+    reconcile_open_cases(db, [mid], changed_by=actor, source="correction")
+    _sync_application_payment(db, mid)
+
+
+def _check_collection_correction_source(db, col):
+    cid = col["id"]
+    notes = (col["notes"] or "").casefold()
+    if col["created_by"] is None or col["method"] == "debicheck" or any(
+        marker in notes for marker in ("itensity", "nupay_txn=", "webappl ledger import", "reviewed payment ledger")
+    ):
+        raise ValueError("Reconcile provider-sourced entries through the source workflow.")
+    if col["itensity_pos_requested"] or db.execute(
+        "SELECT 1 FROM itensity_reg_fee_pushes WHERE collection_id=?", (cid,)
+    ).fetchone():
+        raise ValueError("Review this entry through the linked Itensity POS push.")
+    if db.execute("SELECT 1 FROM reception_receipts WHERE collection_id=?", (cid,)).fetchone():
+        raise ValueError("Correct this entry through its Reception receipt.")
+    if db.execute("SELECT 1 FROM query_refund_claims WHERE collection_id=?", (cid,)).fetchone():
+        raise ValueError("Review this entry through the linked refund query.")
 
 
 # ── Shared collections KPIs ───────────────────────────────────────────────────

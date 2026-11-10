@@ -625,6 +625,22 @@ def users_index():
     )
 
 
+@admin_bp.route("/activity")
+@_admin_required
+def user_activity():
+    """Who signed in, what they opened and what they changed (onecpase/user_activity.py)."""
+    from .user_activity import KINDS, PAGE_VISIT_DAYS, load_activity, parse_filters
+    filters = parse_filters(request.args)
+    data = load_activity(get_db(), filters)
+    return render_template(
+        "admin/activity.html",
+        filters=filters,
+        kinds=KINDS,
+        retention_days=PAGE_VISIT_DAYS,
+        **data,
+    )
+
+
 @admin_bp.route("/users/add", methods=["GET", "POST"])
 @_admin_required
 def user_add():

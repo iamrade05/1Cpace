@@ -6,9 +6,9 @@
   <td>{{ event.reason or '—' }}</td>
   <td>
     {% if not event.member_id and event.credential and has_perm('add_member') %}
-    <form method="POST" action="{{ url_for('turnstile.assign_credential', event_id=event.id) }}" style="display:flex;gap:6px;">
+    <form method="POST" action="{{ url_for('turnstile.assign_credential', event_id=event.id) }}" class="turnstile-link-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="number" min="1" name="member_id" class="form-control" style="width:95px;" placeholder="Member ID" required>
+      <input type="number" min="1" name="member_id" class="form-control turnstile-member-id" placeholder="Member ID" required>
       <button class="btn btn-primary btn-sm">Link</button>
     </form>
     {% else %}—{% endif %}

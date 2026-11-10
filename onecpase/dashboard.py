@@ -432,7 +432,7 @@ def dashboard():
         total_members = authoritative_total_members
 
     pending_collections = db.execute(
-        "SELECT COUNT(*) FROM collections WHERE status = 'pending'"
+        "SELECT COUNT(*) FROM active_collections WHERE status = 'pending'"
     ).fetchone()[0]
 
     from .ptp import bulk_member_arrears
@@ -451,7 +451,7 @@ def dashboard():
     collection_rows = db.execute(
         """SELECT collection_date AS event_date,
                   COALESCE(amount_paid, 0) AS amount, notes
-           FROM collections
+           FROM active_collections
            WHERE collection_date >= ?
              AND status IN ('paid','partial')""",
         (earliest_start,),
@@ -468,7 +468,7 @@ def dashboard():
 
     # ── Portfolio breakdowns (all-time/current-state context) ───────────────
     status_rows = db.execute(
-        "SELECT status, COUNT(*) AS cnt FROM collections GROUP BY status"
+        "SELECT status, COUNT(*) AS cnt FROM active_collections GROUP BY status"
     ).fetchall()
     status_map = {r["status"]: r["cnt"] for r in status_rows}
     payment_status_labels = ["Paid", "Partial", "Pending"]
@@ -487,13 +487,13 @@ def dashboard():
 
     method_rows = db.execute(
         """SELECT COALESCE(method, 'Unknown') AS method, COUNT(*) AS cnt
-           FROM collections GROUP BY method ORDER BY cnt DESC"""
+           FROM active_collections GROUP BY method ORDER BY cnt DESC"""
     ).fetchall()
     method_labels = [r["method"] for r in method_rows]
     method_values = [r["cnt"] for r in method_rows]
 
     total_due = db.execute(
-        "SELECT COALESCE(SUM(outstanding_balance), 0) FROM collections"
+        "SELECT COALESCE(SUM(outstanding_balance), 0) FROM active_collections"
     ).fetchone()[0]
     collection_rate = round(
         (total_collected_ever / total_due * 100) if total_due else 0, 1

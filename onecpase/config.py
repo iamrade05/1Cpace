@@ -141,6 +141,10 @@ class Config:
     MAIL_USERNAME       = os.environ.get("MAIL_USERNAME", "")
     MAIL_PASSWORD       = os.environ.get("MAIL_PASSWORD", "")
     MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER", "1Cpace <noreply@1cpase.local>")
+    DEPARTMENT_MAIL_ENABLED = os.environ.get("DEPARTMENT_MAIL_ENABLED", "0") == "1"
+    MAIL_RECEPTION_SENDER = os.environ.get("MAIL_RECEPTION_SENDER", "reception@elev8healthandfitnessgym.com")
+    MAIL_SALES_SENDER = os.environ.get("MAIL_SALES_SENDER", "sales@elev8healthandfitnessgym.com")
+    CLIENT_EMAIL_AUTOMATION_ENABLED = os.environ.get("CLIENT_EMAIL_AUTOMATION_ENABLED", "0") == "1"
     OTP_TTL             = int(os.environ.get("OTP_TTL", 300))
     OTP_ENABLED         = os.environ.get("OTP_ENABLED", "1") == "1"
 

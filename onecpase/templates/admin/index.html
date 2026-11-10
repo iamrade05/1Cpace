@@ -9,6 +9,7 @@
     <div style="font-size:2.2rem;font-weight:900;color:#185FA5;">{{ stats.users }}</div>
     <div style="font-size:0.8rem;color:#6b7280;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;">Staff Users</div>
     <a href="{{ url_for('admin.users_index') }}" class="btn btn-primary btn-sm" style="margin-top:14px;display:inline-block;">Manage Users</a>
+    <a href="{{ url_for('admin.user_activity') }}" class="btn btn-ghost btn-sm activity-card-link">User activity</a>
   </div>
   <div class="form-card" style="text-align:center;padding:28px;">
     <div style="font-size:2.2rem;font-weight:900;color:#185FA5;">{{ stats.tariffs }}</div>

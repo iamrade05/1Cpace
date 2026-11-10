@@ -6,7 +6,10 @@
 <header class="page-header"><div><h1>User Management</h1></div></header>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
   <p style="font-size:0.85rem;color:#6b7280;">Manage staff accounts and module permissions.</p>
-  <a href="{{ url_for('admin.user_add') }}" class="btn btn-primary">+ Add User</a>
+  <div class="page-actions">
+    <a href="{{ url_for('admin.user_activity') }}" class="btn btn-ghost">User activity</a>
+    <a href="{{ url_for('admin.user_add') }}" class="btn btn-primary">+ Add User</a>
+  </div>
 </div>
 
 {% if users_needing_email %}
@@ -64,6 +67,7 @@
         </td>
         <td style="display:flex;gap:8px;">
           <a href="{{ url_for('admin.user_edit', uid=u.id) }}" class="btn btn-ghost btn-sm">Edit</a>
+          <a href="{{ url_for('admin.user_activity', user=u.id) }}" class="btn btn-ghost btn-sm">Activity</a>
           {% if u.id != session.user_id and not u.is_platform_user
                 and u.username|lower not in protected_usernames %}
           <form method="POST" action="{{ url_for('admin.user_reset_password', uid=u.id) }}" style="margin:0;"

@@ -6,15 +6,23 @@ import pytest
 import deploy_beta
 
 
-def test_failed_tests_prevent_ssh_connection(monkeypatch):
+def test_release_test_helper_rejects_failed_suite(monkeypatch):
+    monkeypatch.setattr(deploy_beta.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1))
+    with pytest.raises(SystemExit, match="Release tests failed"):
+        deploy_beta.run_release_tests()
+
+
+def test_legacy_beta_target_refuses_deployment_before_testing_or_connecting(monkeypatch):
     monkeypatch.setattr(deploy_beta, "parse_args", lambda: SimpleNamespace(check_only=False))
     monkeypatch.setattr(deploy_beta, "release_paths", lambda: [])
     monkeypatch.setattr(deploy_beta, "validate_release", lambda paths: None)
-    monkeypatch.setattr(deploy_beta.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1))
+    monkeypatch.setattr(deploy_beta, "run_release_tests", lambda: pytest.fail("Unsafe target must be refused before testing"))
+
     def unexpected_connection(args):
-        pytest.fail("Failed tests must prevent a deployment connection")
+        pytest.fail("The shared production target must be refused before connecting")
+
     monkeypatch.setattr(deploy_beta, "connect", unexpected_connection)
-    with pytest.raises(SystemExit, match="Release tests failed"):
+    with pytest.raises(SystemExit, match="Beta deployment refused"):
         deploy_beta.main()
 
 

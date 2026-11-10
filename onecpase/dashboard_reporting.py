@@ -112,7 +112,7 @@ def activity_rows(db,period,scope,user_id,*,allowed_ids=None):
     if scope in ('admin','reception','collections','ptp'):
         values=[]
         for start,end in bounds:
-            payments=db.execute("SELECT amount_paid,notes FROM collections WHERE status IN ('paid','partial') AND substr(collection_date,1,10)>=? AND substr(collection_date,1,10)<=?",(start,end)).fetchall()
+            payments=db.execute("SELECT amount_paid,notes FROM active_collections WHERE status IN ('paid','partial') AND substr(collection_date,1,10)>=? AND substr(collection_date,1,10)<=?",(start,end)).fetchall()
             values.append(round(sum(float(r['amount_paid'] or 0) for r in payments if not _is_discount(r)),2))
         rows.append(comparison_row('Collections received',*values,'money'))
         valid="COALESCE(ptp_status,'pending') NOT IN ('cancelled','canceled','rejected','declined','superseded') AND COALESCE(manager_approval_status,'not_required') NOT IN ('rejected','declined')"

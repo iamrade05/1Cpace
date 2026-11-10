@@ -138,6 +138,24 @@ CREATE TABLE IF NOT EXISTS collections (
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS collection_voids (
+    collection_id INTEGER PRIMARY KEY REFERENCES collections(id),
+    actor_id INTEGER NOT NULL REFERENCES users(id),
+    reason TEXT NOT NULL,
+    voided_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS collection_corrections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    collection_id INTEGER NOT NULL REFERENCES collections(id),
+    actor_id INTEGER NOT NULL REFERENCES users(id),
+    reason TEXT NOT NULL,
+    before_values TEXT NOT NULL,
+    after_values TEXT NOT NULL,
+    corrected_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_collection_corrections_collection ON collection_corrections(collection_id, id);
+
 CREATE TABLE IF NOT EXISTS collection_call_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     task_date TEXT NOT NULL,
@@ -1352,6 +1370,24 @@ CREATE TABLE IF NOT EXISTS collections (
     FOREIGN KEY (member_id) REFERENCES members(id),
     FOREIGN KEY (created_by) REFERENCES users(id)
 );
+
+CREATE TABLE IF NOT EXISTS collection_voids (
+    collection_id INTEGER PRIMARY KEY REFERENCES collections(id),
+    actor_id INTEGER NOT NULL REFERENCES users(id),
+    reason TEXT NOT NULL,
+    voided_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS collection_corrections (
+    id SERIAL PRIMARY KEY,
+    collection_id INTEGER NOT NULL REFERENCES collections(id),
+    actor_id INTEGER NOT NULL REFERENCES users(id),
+    reason TEXT NOT NULL,
+    before_values TEXT NOT NULL,
+    after_values TEXT NOT NULL,
+    corrected_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_collection_corrections_collection ON collection_corrections(collection_id, id);
 
 CREATE TABLE IF NOT EXISTS collection_call_tasks (
     id SERIAL PRIMARY KEY,

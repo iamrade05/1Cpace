@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Welcome to Elev8</title></head>
+<body style="margin:0;padding:24px 12px;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;color:#231f20;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center">
+<table role="presentation" width="600" cellspacing="0" cellpadding="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;">
+<tr><td background="{{ gym_bg_src | default('cid:elev8-gym') }}" height="220" valign="top" style="height:220px;padding:24px 32px;background-color:#231f20;background-image:url('{{ gym_bg_src | default('cid:elev8-gym') }}');background-position:center;background-size:cover;color:#ffffff;"><img src="{{ logo_src | default('cid:elev8-logo') }}" width="144" height="134" alt="Elev8 Health &amp; Fitness" style="display:block;width:144px;height:134px;border:0;"></td></tr>
+<tr><td style="padding:32px 32px 12px;font-size:13px;color:#b31830;font-weight:bold;letter-spacing:2px;">YOUR FITNESS JOURNEY STARTS HERE</td></tr>
+<tr><td style="padding:0 32px 20px;"><h1 style="font-size:32px;line-height:1.2;margin:0 0 18px;">Welcome to Elev8, {{ first_name }}.</h1><p style="font-size:16px;line-height:1.6;margin:0;">Thank you for choosing us and trusting us with your fitness journey.</p></td></tr>
+<tr><td style="padding:4px 32px 24px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#fff1f3;border-radius:12px;"><tr><td style="padding:24px;">
+<p style="margin:0 0 8px;font-size:12px;font-weight:bold;letter-spacing:2px;">LET US HELP YOU GET STARTED</p><p style="margin:0 0 12px;font-size:44px;font-weight:bold;color:#d51f37;">7 DAYS</p>
+<h2 style="margin:0 0 12px;font-size:20px;">1. Trainer support</h2>
+<p style="margin:0;font-size:16px;line-height:1.6;">During the next seven days, Elev8 can pair you with a fitness instructor to help you get started.</p>
+<p style="margin:16px 0 0;font-size:16px;line-height:1.6;font-weight:bold;">Would you like to take part? Please reply Yes or No.</p></td></tr></table></td></tr>
+<tr><td style="padding:0 32px 28px;"><h2 style="font-size:20px;margin:0 0 10px;">2. Personal training after seven days</h2><p style="font-size:16px;line-height:1.6;margin:0 0 14px;">If you feel you need further assistance after seven days, would you be interested in optional personal training?</p>
+<p style="font-size:16px;line-height:1.6;font-weight:bold;margin:0 0 14px;">Please reply Yes or No.</p>
+<p style="font-size:14px;line-height:1.6;margin:0 0 22px;">Personal training fees are agreed directly with your personal trainer.</p>
+<a href="mailto:{{ reception_email }}" style="display:inline-block;background:#d51f37;color:#ffffff;text-decoration:none;font-weight:bold;padding:15px 22px;border-radius:8px;">Reply to Reception</a></td></tr>
+<tr><td style="padding:22px 32px;background:#f7f7f7;font-size:13px;line-height:1.7;">Your Reception team<br><a href="mailto:{{ reception_email }}" style="color:#d51f37;">{{ reception_email }}</a></td></tr>
+</table></td></tr></table></body></html>

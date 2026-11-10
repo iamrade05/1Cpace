@@ -45,6 +45,47 @@
   <button class="btn btn-primary" type="submit">Apply filters</button>
 </form>
 {% if invalid_rate %}<p role="alert">Enter a rate from 0 to 100.</p>{% endif %}
+{% if show_activation_audit %}
+<section class="card">
+  <div class="card-header">
+    <h2 class="card-title">Sales activation exceptions{% if activation_audit %} ({{ activation_audit.applications | length }}){% endif %}</h2>
+  </div>
+  {% if activation_audit %}
+  <div class="card-body">
+    <p class="card-note">Checked {{ activation_audit.application_count }} applications from {{ activation_audit.from_date }} through {{ activation_audit.through_date }}. Updates after the NuPay sync.</p>
+    {% if activation_audit.through_date != today.isoformat() %}
+    <p class="card-note">Today's audit is pending. This list shows the last completed run.</p>
+    {% endif %}
+    {% if activation_audit.provider_evidence.nupay != 'current_report' %}
+    <p class="card-note">No NuPay mandate rows were available. The audit used recorded statuses.</p>
+    {% endif %}
+    {% if activation_audit.provider_evidence.itensity == 'partial_roster' %}
+    <p class="card-note">The Itensity roster was incomplete. Missing references could not be verified.</p>
+    {% elif activation_audit.provider_evidence.itensity == 'saved_references_only' %}
+    <p class="card-note">The Itensity roster was unavailable. The audit used saved references.</p>
+    {% endif %}
+    {% if not activation_audit.applications %}<p>No exceptions found in the available evidence.</p>{% endif %}
+  </div>
+  {% if activation_audit.applications %}
+  <div class="table-wrap">
+    <table class="data-table table">
+      <thead><tr><th scope="col">Application</th><th scope="col">Needs attention</th></tr></thead>
+      <tbody>
+        {% for row in activation_audit.applications %}
+        <tr>
+          <td><a href="{{ url_for('applications.application_detail', aid=row.application_id) }}">{{ row.application_id }}</a></td>
+          <td><ul>{% for reason in row.reasons %}<li>{{ reason }}</li>{% endfor %}</ul></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="card-body"><p>Waiting for the first scheduled audit after the NuPay sync.</p></div>
+  {% endif %}
+</section>
+{% endif %}
 {% for table in tables %}
 {% set table_index = loop.index0 %}
 {% set anchor = 'analytics-table-' ~ table_index %}

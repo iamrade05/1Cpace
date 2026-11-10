@@ -1,4 +1,6 @@
 from datetime import date, timedelta
+from math import isfinite
+import re
 from urllib.parse import quote
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
@@ -42,6 +44,37 @@ def parse_date_value(value, fallback: date | None = None) -> date:
         except ValueError:
             pass
     return fallback or date.today()
+
+
+def _measurement_date(form):
+    value = form.get("date", "").strip()
+    try:
+        return date.fromisoformat(value) if value else date.today()
+    except ValueError:
+        raise ValueError("Enter a valid measurement date.") from None
+
+
+def _measurement(form, key, label, *, percentage=False):
+    raw = form.get(key, "").strip()
+    if not raw:
+        return None
+    message = f"Enter a {label} between 0 and 100." if percentage else f"Enter a positive {label}."
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(message) from None
+    if not isfinite(value) or (not 0 <= value <= 100 if percentage else value <= 0):
+        raise ValueError(message)
+    return value
+
+
+def _body_metrics(form):
+    return (
+        _measurement(form, "weight_kg", "weight"),
+        _measurement(form, "body_fat_pct", "body fat percentage", percentage=True),
+        _measurement(form, "muscle_mass_kg", "muscle mass"),
+        _measurement(form, "bmi", "BMI"),
+    )
 
 
 def get_active_members():
@@ -128,26 +161,19 @@ def fitness_add():
     ).fetchall()
 
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        instructor_id = request.form.get("instructor_id", "").strip()
-        schedule_day = request.form.get("schedule_day", "")
-        schedule_time = request.form.get("schedule_time", "")
-        capacity = request.form.get("capacity", "20").strip()
-
-        if not name:
-            flash("Class name is required.", "error")
+        try:
+            fields = _class_fields(request.form, instructors)
+        except ValueError as error:
+            flash(str(error), "error")
         else:
-            try:
-                db.execute(
-                    """INSERT INTO fitness_classes (name, instructor_id, schedule_day, schedule_time, capacity)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (name, int(instructor_id) if instructor_id else None, schedule_day, schedule_time, int(capacity or 20)),
-                )
-                db.commit()
-                flash(f"Class '{name}' created.", "success")
-                return redirect(url_for("fitness.fitness_index"))
-            except Exception as e:
-                flash(f"Error: {e}", "error")
+            db.execute(
+                """INSERT INTO fitness_classes (name, instructor_id, schedule_day, schedule_time, capacity)
+                   VALUES (?, ?, ?, ?, ?)""",
+                fields,
+            )
+            db.commit()
+            flash(f"Class '{fields[0]}' created.", "success")
+            return redirect(url_for("fitness.fitness_index"))
 
     return render_template("fitness/add.html", instructors=instructors, days=SCHEDULE_DAYS)
 
@@ -166,27 +192,42 @@ def fitness_edit(fid: int):
     ).fetchall()
 
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        instructor_id = request.form.get("instructor_id", "").strip()
-        schedule_day = request.form.get("schedule_day", "")
-        schedule_time = request.form.get("schedule_time", "")
-        capacity = request.form.get("capacity", "20").strip()
-        active = 1 if request.form.get("active") else 0
-
         try:
+            fields = _class_fields(request.form, instructors)
+        except ValueError as error:
+            flash(str(error), "error")
+        else:
+            active = 1 if request.form.get("active") else 0
             db.execute(
                 """UPDATE fitness_classes
                    SET name=?, instructor_id=?, schedule_day=?, schedule_time=?, capacity=?, active=?
                    WHERE id=?""",
-                (name, int(instructor_id) if instructor_id else None, schedule_day, schedule_time, int(capacity or 20), active, fid),
+                (*fields, active, fid),
             )
             db.commit()
             flash("Class updated.", "success")
             return redirect(url_for("fitness.fitness_index"))
-        except Exception as e:
-            flash(f"Error: {e}", "error")
 
     return render_template("fitness/edit.html", fc=fc, instructors=instructors, days=SCHEDULE_DAYS)
+
+
+def _class_fields(form, instructors):
+    name = form.get("name", "").strip()
+    instructor_id = form.get("instructor_id", "").strip()
+    schedule_day = form.get("schedule_day", "").strip()
+    schedule_time = form.get("schedule_time", "").strip()
+    if not name:
+        raise ValueError("Class name is required.")
+    if instructor_id and not any(str(person["id"]) == instructor_id for person in instructors):
+        raise ValueError("Select a valid instructor.")
+    if schedule_day and schedule_day not in SCHEDULE_DAYS:
+        raise ValueError("Select a valid schedule day.")
+    if schedule_time and not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?", schedule_time):
+        raise ValueError("Enter a valid schedule time.")
+    capacity = as_int(form.get("capacity", "").strip() or "20")
+    if not 1 <= capacity <= 200:
+        raise ValueError("Enter a class capacity between 1 and 200.")
+    return name, int(instructor_id) if instructor_id else None, schedule_day, schedule_time, capacity
 
 
 @fitness_bp.route("/<int:fid>/bookings")
@@ -283,8 +324,13 @@ def assessment_add():
     trainers = get_fitness_staff()
     if request.method == "POST":
         member_id = request.form.get("member_id")
-        if not member_id:
-            flash("Please select a member.", "error")
+        try:
+            if not member_id:
+                raise ValueError("Please select a member.")
+            recorded_on = _measurement_date(request.form)
+            measurements = _body_metrics(request.form)
+        except ValueError as error:
+            flash(str(error), "error")
         else:
             get_db().execute(
                 """
@@ -297,11 +343,8 @@ def assessment_add():
                 (
                     member_id,
                     request.form.get("assessed_by_id") or None,
-                    parse_date_value(request.form.get("date")).isoformat(),
-                    as_float(request.form.get("weight_kg"), None),
-                    as_float(request.form.get("body_fat_pct"), None),
-                    as_float(request.form.get("muscle_mass_kg"), None),
-                    as_float(request.form.get("bmi"), None),
+                    recorded_on.isoformat(),
+                    *measurements,
                     str(request.form.get("fitness_level", "")).strip() or None,
                     str(request.form.get("notes", "")).strip() or None,
                 ),
@@ -678,7 +721,16 @@ def body_matrix_member(mid: int):
 @fitness_bp.post("/body-matrix/<int:mid>/add")
 @permission_required("body_matrix")
 def body_matrix_add(mid: int):
-    recorded_on = parse_date_value(request.form.get("date"))
+    try:
+        recorded_on = _measurement_date(request.form)
+        measurements = _body_metrics(request.form)
+        circumferences = tuple(
+            _measurement(request.form, f"{area}_cm", f"{area} measurement")
+            for area in ("chest", "waist", "hips", "arms", "thighs")
+        )
+    except ValueError as error:
+        flash(str(error), "error")
+        return redirect(url_for("fitness.body_matrix_member", mid=mid))
     get_db().execute(
         """
         INSERT INTO body_matrix (
@@ -693,15 +745,8 @@ def body_matrix_add(mid: int):
             recorded_on.isoformat(),
             recorded_on.isocalendar()[1],
             recorded_on.strftime("%Y-%m"),
-            as_float(request.form.get("weight_kg"), None),
-            as_float(request.form.get("body_fat_pct"), None),
-            as_float(request.form.get("muscle_mass_kg"), None),
-            as_float(request.form.get("bmi"), None),
-            as_float(request.form.get("chest_cm"), None),
-            as_float(request.form.get("waist_cm"), None),
-            as_float(request.form.get("hips_cm"), None),
-            as_float(request.form.get("arms_cm"), None),
-            as_float(request.form.get("thighs_cm"), None),
+            *measurements,
+            *circumferences,
             str(request.form.get("notes", "")).strip() or None,
         ),
     )

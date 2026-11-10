@@ -21,6 +21,7 @@ from .collections_engine import (
     evaluate_ptp,
     get_collection_rules,
     grant_exception_access,
+    lock_collection,
     record_access_decision,
     reconcile_open_cases,
     refresh_member_cases,
@@ -131,7 +132,7 @@ def bulk_member_arrears(db, member_ids=None) -> dict:
     from collections import defaultdict
     from .members import _build_payment_profile
 
-    query = "SELECT * FROM collections"
+    query = "SELECT * FROM active_collections"
     params: list = []
     if member_ids is not None:
         member_ids = list(member_ids)
@@ -168,7 +169,7 @@ def _debt_collection_member_rows(db) -> list[dict]:
             MAX(CASE WHEN COALESCE(c.amount_paid, 0) > 0 THEN c.collection_date ELSE NULL END) AS last_payment,
             MAX(CASE WHEN c.status = 'failed' THEN c.collection_date ELSE NULL END) AS last_failed
         FROM members m
-        JOIN collections c ON c.member_id = m.id
+        JOIN active_collections c ON c.member_id = m.id
         LEFT JOIN users u ON m.uploaded_by_id = u.id
         WHERE m.member_status IN ('Active', 'Frozen', 'Cancelled', 'Inactive')
         GROUP BY m.id
@@ -601,7 +602,7 @@ def _run_collections_automations(db, today: str, dry_run: bool = False) -> dict:
     owing_members = db.execute("""
         SELECT DISTINCT m.id, m.gym_access_status, m.member_status, m.access_block_reason,
                COALESCE(m.monthly_installment, 0) AS monthly_installment
-        FROM members m JOIN collections c ON c.member_id = m.id
+        FROM members m JOIN active_collections c ON c.member_id = m.id
         WHERE c.status IN ('failed', 'pending', 'partial')
           AND COALESCE(c.outstanding_balance, 0) > COALESCE(c.amount_paid, 0)
     """).fetchall()
@@ -1184,11 +1185,15 @@ def _apply_payment_to_ledger(db, mid: int, amount: float) -> None:
     """Apply money to the oldest outstanding ledger rows first, which is what
     updates the client's payment profile."""
     remaining = amount
-    rows = db.execute(
-        """SELECT id, outstanding_balance, amount_paid FROM collections
+    open_rows = """SELECT id, outstanding_balance, amount_paid FROM active_collections
            WHERE member_id=? AND COALESCE(outstanding_balance,0)>COALESCE(amount_paid,0)
-           ORDER BY collection_date ASC, id ASC""", (mid,)
-    ).fetchall()
+           ORDER BY collection_date ASC, id ASC"""
+    rows = db.execute(open_rows, (mid,)).fetchall()
+    if hasattr(db, "_conn"):
+        collection_ids = {row["id"] for row in rows}
+        for collection_id in sorted(collection_ids):
+            lock_collection(db, collection_id)
+        rows = [row for row in db.execute(open_rows, (mid,)).fetchall() if row["id"] in collection_ids]
     for row in rows:
         if remaining <= 0:
             break

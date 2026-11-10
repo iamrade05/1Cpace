@@ -157,7 +157,7 @@ def _payments(db):
         SELECT c.id,c.member_id,c.collection_date,c.method,c.payment_purpose,c.status,c.amount_paid,
                c.outstanding_balance,c.notes,c.created_by,u.full_name AS staff,
                m.member_ref,m.first_name,m.last_name
-        FROM collections c JOIN members m ON m.id=c.member_id
+        FROM active_collections c JOIN members m ON m.id=c.member_id
         LEFT JOIN users u ON u.id=c.created_by
         ORDER BY c.collection_date,c.id
     """).fetchall()

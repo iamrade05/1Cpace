@@ -105,7 +105,8 @@ def dispatch(db, limit=10):
             if row['channel'] in ('email','staff_email'):
                 if not current_app.config.get('MAIL_SERVER'):
                     raise ValueError('Email transport is not configured')
-                mail.send(Message('ELEv8 — Your query update', recipients=[recipient], body=text))
+                from .client_email import department_message
+                mail.send(department_message('reception', 'ELEv8 — Your query update', [recipient], body=text))
                 status = 'sent'
             else:
                 result = send_whatsapp_message(current_app.config.get('WA_RECEPTION_PHONE_ID', ''), recipient, text)
@@ -170,7 +171,7 @@ def settlement(db, qry, today=None):
     signed_clock = datetime.fromisoformat(signed['submitted_at']).astimezone(LOCAL).replace(tzinfo=None)
     seen, paid, last = set(), Decimal('0.00'), None
     # Include the preceding UTC date: 22:30 UTC is already the next gym day.
-    for raw in db.execute("SELECT * FROM collections WHERE member_id=? AND status IN ('paid','partial') AND amount_paid>0 AND collection_date>=? ORDER BY collection_date,id", (qry['member_id'],(signed_day-timedelta(days=1)).isoformat())).fetchall():
+    for raw in db.execute("SELECT * FROM active_collections WHERE member_id=? AND status IN ('paid','partial') AND amount_paid>0 AND collection_date>=? ORDER BY collection_date,id", (qry['member_id'],(signed_day-timedelta(days=1)).isoformat())).fetchall():
         row = dict(raw)
         notes = row.get('notes') or ''
         if re.search(r'(?:^|[|;])\s*type\s*=\s*Discount\b', notes, re.I) or (row.get('method') or '').lower() in ('discount','adjustment'):
@@ -247,7 +248,7 @@ def refund_assessment(db, qry, ids, reason, contract_end=None):
                             submitted_at=accepted['submitted_at'] if accepted else None,
                             option=(json.loads(decrypt(accepted['payload'])).get('payment_option') or (json.loads(decrypt(accepted['snapshot'])).get('quote') or {}).get('selected_option')) if accepted else None,
                             completed_at=details.get('completion',{}).get('at')))
-    rows = [dict(r) for r in db.execute('SELECT * FROM collections WHERE member_id=? AND id IN ('+','.join('?' for _ in ids)+')', (qry['member_id'], *ids)).fetchall()] if ids else []
+    rows = [dict(r) for r in db.execute('SELECT * FROM active_collections WHERE member_id=? AND id IN ('+','.join('?' for _ in ids)+')', (qry['member_id'], *ids)).fetchall()] if ids else []
     result = dict(status='needs_review', reason=reason, findings=[], cancellations=history)
     if not ids:
         result.update(status='awaiting_transaction_selection',findings=['Select the successful collected transactions during Reception verification.'])

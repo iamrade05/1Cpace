@@ -177,7 +177,7 @@ def _collections_for(db, ids: list[int]) -> dict[int, list[Any]]:
     for start in range(0, len(ids), CHUNK):
         part = ids[start:start + CHUNK]
         for row in db.execute(
-            f"SELECT * FROM collections WHERE member_id IN ({','.join('?' for _ in part)}) "
+            f"SELECT * FROM active_collections WHERE member_id IN ({','.join('?' for _ in part)}) "
             "ORDER BY collection_date DESC, id DESC", part,
         ):
             grouped.setdefault(row["member_id"], []).append(row)
@@ -335,7 +335,7 @@ def member_view(db, member_id: int, roster: dict[str, dict[str, Any]] | None = N
     plan = nt.plan_import(db, rows)
     synthetic = _synthetic(plan).get(member_id, [])
     real = db.execute(
-        "SELECT * FROM collections WHERE member_id = ? ORDER BY collection_date DESC, id DESC", (member_id,)
+        "SELECT * FROM active_collections WHERE member_id = ? ORDER BY collection_date DESC, id DESC", (member_id,)
     ).fetchall()
     now_amt, now_months = _profile_arrears(real)
     after_amt, after_months = _profile_arrears(list(real) + synthetic)

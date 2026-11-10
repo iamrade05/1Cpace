@@ -94,7 +94,7 @@ def dashboard_metrics(db, *, user_id=None, today=None,date_from=None,date_to=Non
     first,last=cycle_bounds(month)
     start=date_from or first.isoformat();end=date_to or last.isoformat()
     from .members import _is_discount
-    period_payments=db.execute("SELECT amount_paid,notes FROM collections WHERE substr(collection_date,1,10)>=? AND substr(collection_date,1,10)<=? AND status IN ('paid','partial')",(start,end)).fetchall()
+    period_payments=db.execute("SELECT amount_paid,notes FROM active_collections WHERE substr(collection_date,1,10)>=? AND substr(collection_date,1,10)<=? AND status IN ('paid','partial')",(start,end)).fetchall()
     period_collected=round(sum(float(row['amount_paid'] or 0) for row in period_payments if not _is_discount(row)),2)
 
     financial = {
@@ -189,12 +189,12 @@ def account_summary(db, member_id):
     owing = float(base["total_outstanding"])
     installment = float(base["monthly_installment"])
     failed = db.execute(
-        """SELECT COUNT(*) AS n, MAX(collection_date) AS last_date FROM collections
+        """SELECT COUNT(*) AS n, MAX(collection_date) AS last_date FROM active_collections
            WHERE member_id=? AND status='failed'
              AND COALESCE(outstanding_balance,0)>COALESCE(amount_paid,0)""",
         (member_id,)).fetchone()
     last_paid = db.execute(
-        """SELECT collection_date, amount_paid FROM collections
+        """SELECT collection_date, amount_paid FROM active_collections
            WHERE member_id=? AND COALESCE(amount_paid,0)>0 AND status IN ('paid','partial')
            ORDER BY collection_date DESC, id DESC LIMIT 1""", (member_id,)).fetchone()
     last_call = db.execute(
@@ -305,7 +305,7 @@ def member_profile(db, member_id):
            LEFT JOIN users u ON u.id = p.created_by
            WHERE p.member_id=? ORDER BY p.id DESC""", (member_id,)).fetchall()
     payments = db.execute(
-        "SELECT * FROM collections WHERE member_id=? ORDER BY collection_date DESC, id DESC",
+        "SELECT * FROM active_collections WHERE member_id=? ORDER BY collection_date DESC, id DESC",
         (member_id,)).fetchall()
     receipts = db.execute(
         """SELECT r.*, u.full_name AS staff FROM ptp_receipts r

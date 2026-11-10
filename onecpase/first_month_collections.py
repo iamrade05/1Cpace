@@ -50,7 +50,7 @@ def cycle_failed_debits(db, cycle: str) -> dict:
         """SELECT m.id, m.first_name, m.last_name, m.contact, m.join_date,
                   COALESCE(lead_user.full_name, app_user.full_name, NULLIF(TRIM(m.sold_by), '')) AS signed_by,
                   COALESCE(l.assigned_to, ma.created_by) AS signed_by_id,
-                  (SELECT MIN(c.collection_date) FROM collections c
+                  (SELECT MIN(c.collection_date) FROM active_collections c
                     WHERE c.member_id = m.id AND c.status = 'failed'
                       AND COALESCE(c.payment_purpose, 'general') <> 'registration_fee'
                       AND substr(c.collection_date, 1, 10) >= substr(m.join_date, 1, 10)) AS failed_on,

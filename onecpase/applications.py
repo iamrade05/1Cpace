@@ -504,7 +504,7 @@ def registration_fee_paid(db, member_id: int) -> bool:
     member = db.execute("SELECT joining_fee FROM members WHERE id=?", (member_id,)).fetchone()
     from .financial_reporting import cash_amount
     paid = sum((cash_amount(row) for row in db.execute(
-        "SELECT amount_paid,status,notes FROM collections WHERE member_id=? AND payment_purpose='registration_fee' AND status='paid' AND amount_paid > 0",
+        "SELECT amount_paid,status,notes FROM active_collections WHERE member_id=? AND payment_purpose='registration_fee' AND status='paid' AND amount_paid > 0",
         (member_id,),
     )),0)
     return bool(paid > 0 and float(paid) >= registration_fee_due(member["joining_fee"])) if member else False

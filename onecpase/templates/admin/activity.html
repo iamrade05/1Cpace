@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}User Activity | 1Cpace{% endblock %}
+{% block page_title %}User Activity{% endblock %}
+
+{% block content %}
+{% from '_ui.html' import page_header, badge, callout, panel, empty_state %}
+{% set header_actions %}<a href="{{ url_for('admin.users_index') }}" class="btn btn-ghost">Back to users</a>{% endset %}
+{{ page_header('User activity', subtitle='Who signed in, what they opened and what they changed. Times are SAST.', actions=header_actions) }}
+
+{% set start_s = filters.start.isoformat() %}
+{% set end_s = filters.end.isoformat() %}
+<form method="get" action="{{ url_for('admin.user_activity') }}" class="panel activity-filters">
+  <div class="form-field">
+    <label for="activity-user">Person</label>
+    <select id="activity-user" name="user" class="form-control">
+      <option value="">Everyone</option>
+      {% for person in staff %}
+      <option value="{{ person.id }}" {% if filters.user_id == person.id %}selected{% endif %}>{{ person.full_name }}{% if not person.active %} (disabled){% endif %}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-field">
+    <label for="activity-start">From</label>
+    <input id="activity-start" type="date" name="start" value="{{ start_s }}" class="form-control">
+  </div>
+  <div class="form-field">
+    <label for="activity-end">To</label>
+    <input id="activity-end" type="date" name="end" value="{{ end_s }}" class="form-control">
+  </div>
+  <div class="form-field">
+    <label for="activity-kind">Show</label>
+    <select id="activity-kind" name="kind" class="form-control">
+      {% for key, label in kinds.items() %}
+      <option value="{{ key }}" {% if filters.kind == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-field activity-check">
+    <label><input type="checkbox" name="failed" value="1" {% if filters.failed_only %}checked{% endif %}> Failed sign-ins only</label>
+  </div>
+  <div class="form-actions">
+    <button class="btn btn-primary">Show</button>
+    <a class="btn btn-ghost" href="{{ url_for('admin.user_activity') }}">Reset</a>
+  </div>
+</form>
+
+{% if unknown_attempts %}
+{{ callout(unknown_attempts ~ ' sign-in attempt' ~ ('' if unknown_attempts == 1 else 's') ~ ' in this period used a username that does not exist. Choose "Failed sign-ins only" to see them.', 'warning') }}
+{% endif %}
+{{ callout('Sign-ins and pages opened are recorded from the day this page went live. Pages opened are kept for ' ~ retention_days ~ ' days; sign-ins and changes are kept permanently.', 'info') }}
+
+{% call panel('People') %}
+<div class="table-wrap"><table class="data-table table" id="activity-people">
+  <thead><tr>
+    <th>Person</th><th>Role</th><th>Sign-ins</th><th>Failed sign-ins</th><th>Pages opened</th>
+    <th>Changes</th><th>Exports</th><th>Last seen</th><th>Last signed in from</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for row in summary %}
+  <tr>
+    <td><strong>{{ row.name }}</strong><div class="activity-sub">{{ row.username }}{% if not row.active %} · disabled{% endif %}</div></td>
+    <td>{{ row.role }}</td>
+    <td class="num">{{ row.sign_ins }}</td>
+    <td class="num">{% if row.failed %}{{ badge(row.failed, 'bad') }}{% else %}0{% endif %}</td>
+    <td class="num">{{ row.pages }}</td>
+    <td class="num">{{ row.changes }}</td>
+    <td class="num">{{ row.exports }}</td>
+    <td data-sort="{{ row.last_seen or '' }}">{% if row.last_seen %}{{ row.last_seen|sast }}{% elif row.last_login %}<span class="muted">Before this period: {{ row.last_login|sast }}</span>{% else %}<span class="muted">Never</span>{% endif %}</td>
+    <td>{% if row.last_ip %}<span class="mono">{{ row.last_ip }}</span><div class="activity-sub">{{ row.last_device }}</div>{% else %}<span class="muted">Not recorded yet</span>{% endif %}</td>
+    <td><a class="btn btn-ghost btn-sm" href="{{ url_for('admin.user_activity', user=row.user_id, start=start_s, end=end_s) }}">View</a></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="10">{{ empty_state('No staff accounts to show.') }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endcall %}
+
+{% call panel('What happened') %}
+{% if truncated %}
+{{ callout('Showing the latest ' ~ events|length ~ ' entries. Choose a person or a shorter date range to see everything.', 'warning') }}
+{% endif %}
+<div class="table-wrap"><table class="data-table table" id="activity-timeline">
+  <thead><tr><th>When</th><th>Person</th><th>Type</th><th>What</th><th>Details</th><th>IP address</th><th>Device</th></tr></thead>
+  <tbody>
+  {% for e in events %}
+  <tr>
+    <td class="mono" data-sort="{{ e.at }}">{{ e.at|sast('%Y-%m-%d %H:%M:%S') }}</td>
+    <td>{{ e.person }}</td>
+    <td>{{ badge(e.kind, 'bad' if e.failed else ('info' if e.kind == 'Sign-in' else ('warn' if e.kind == 'Change' else 'neutral'))) }}</td>
+    <td>{% if e.link %}<a href="{{ e.link }}">{{ e.what }}</a>{% else %}{{ e.what }}{% endif %}</td>
+    <td class="activity-detail">{{ e.detail }}{% if e.path and not e.link %}<div class="activity-sub mono">{{ e.path }}</div>{% endif %}</td>
+    <td class="mono">{{ e.ip }}</td>
+    <td>{{ e.device }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7">{{ empty_state('Nothing recorded for this person and period.') }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endcall %}
+{% endblock %}

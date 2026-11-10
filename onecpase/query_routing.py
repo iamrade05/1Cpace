@@ -89,8 +89,9 @@ def notify_assignment(db, qid, escalated=False):
         # Send separately so recipients do not expose each other's addresses.
         for recipient in sorted(set(recipients)):
             action = 'escalated' if escalated or qry['status'] == 'escalated' else 'assigned'
-            message = Message(subject=f"1Cpace — Query {qry['reference'] or qid} {action}",
-                              recipients=[recipient])
+            from .client_email import department_message
+            message = department_message("reception", f"1Cpace — Query {qry['reference'] or qid} {action}",
+                                         [recipient])
             message.body = (f"Query: {qry['reference'] or qid}\n"
                             f"Category: {qry['category']}\nDepartment: {qry['department']}\n"
                             f"Priority: {qry['priority']}\nFollow-up: {qry['follow_up_date'] or 'Not set'}\n\n"

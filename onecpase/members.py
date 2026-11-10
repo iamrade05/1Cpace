@@ -794,7 +794,7 @@ def member_detail(mid: int):
     member = decrypt_member(member)
 
     collections = db.execute(
-        "SELECT * FROM collections WHERE member_id = ? ORDER BY collection_date DESC, id DESC",
+        "SELECT * FROM active_collections WHERE member_id = ? ORDER BY collection_date DESC, id DESC",
         (mid,),
     ).fetchall()
 

@@ -1,0 +1,30 @@
+[Unit]
+Description=1Cpace isolated staging application
+Requires=onecpase-beta.socket
+After=onecpase-beta.socket
+
+[Service]
+User=onecpase-beta
+Group=onecpase-beta
+StateDirectory=onecpase-beta
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/onecpase-beta
+EnvironmentFile=/opt/onecpase-beta/.env
+Environment=PYTHONPATH=/opt/onecpase-beta
+Environment=PYTHON_DOTENV_DISABLED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/onecpase-beta/venv/bin/python -m gunicorn.app.wsgiapp --workers 1 --timeout 90 run:app
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+InaccessiblePaths=/opt/onecpase /var/data/onecpase /opt/onecpase-backups
+
+[Install]
+WantedBy=multi-user.target

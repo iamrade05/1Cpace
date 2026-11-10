@@ -6,6 +6,7 @@ and access control.
 """
 
 import calendar
+import sqlite3
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_HALF_UP
 
@@ -371,7 +372,7 @@ def ptp_debit_orders_needed(db, member_id, ptp_amount, normal_installment, *, mo
 
     since = ((today or date.today()) - timedelta(days=30 * months)).isoformat()
     paying = db.execute(
-        "SELECT 1 FROM collections WHERE member_id=? AND COALESCE(amount_paid,0)>0 "
+        "SELECT 1 FROM active_collections WHERE member_id=? AND COALESCE(amount_paid,0)>0 "
         "AND status IN ('paid','partial') AND collection_date>=? LIMIT 1",
         (member_id, since),
     ).fetchone() is not None
@@ -654,9 +655,29 @@ def evaluate_ptp(promised_date, payment_received, today=None):
 RESOLUTION_PAID_IN_FULL = "PAID_IN_FULL"
 RESOLUTION_ACCOUNT_CURRENT = "ACCOUNT_CURRENT"
 OPEN_CASE_STATUSES = ("open", "active", "pending")
+COLLECTION_LOCK_NAMESPACE = 0x314350
 
 
-def resolve_case(db, case_id, resolution_type, *, resolved_by=None, notes=None, balance=0):
+def lock_member_collections(db, member_id):
+    if isinstance(db, sqlite3.Connection):
+        if not db.in_transaction:
+            db.execute("BEGIN IMMEDIATE")
+    else:
+        db.execute("SELECT pg_advisory_xact_lock(?,?)", (COLLECTION_LOCK_NAMESPACE, member_id)).fetchone()
+
+
+def lock_collection(db, collection_id):
+    if isinstance(db, sqlite3.Connection):
+        lock_member_collections(db, None)
+    else:
+        member = db.execute("SELECT member_id FROM collections WHERE id=?", (collection_id,)).fetchone()
+        if member is None:
+            return
+        lock_member_collections(db, member["member_id"])
+        db.execute("SELECT id FROM collections WHERE id=? FOR UPDATE", (collection_id,)).fetchone()
+
+
+def resolve_case(db, case_id, resolution_type, *, resolved_by=None, notes=None, balance=0, source="payment"):
     """Close a case without deleting it, recording why and with what balance."""
     db.execute(
         """UPDATE collections_cases
@@ -666,7 +687,7 @@ def resolve_case(db, case_id, resolution_type, *, resolved_by=None, notes=None, 
         (resolution_type, resolved_by, float(money(balance)), notes, float(money(balance)), case_id),
     )
     refresh_case_workflow(
-        db, case_id, changed_by=resolved_by, source="payment",
+        db, case_id, changed_by=resolved_by, source=source,
         reason=notes or f"Resolved: {resolution_type}",
     )
     member = db.execute("SELECT member_id FROM collections_cases WHERE id=?", (case_id,)).fetchone()
@@ -699,9 +720,11 @@ def reconcile_open_cases(db, member_ids=None, *, changed_by=None, source="paymen
         owed = arrears.get(case["member_id"], {})
         total = float(owed.get("total_arrears", 0) or 0)
         if total <= 0:
+            correction = source == "correction"
             resolve_case(
-                db, case["id"], RESOLUTION_PAID_IN_FULL, resolved_by=changed_by,
-                notes="Outstanding balance cleared by payment", balance=0,
+                db, case["id"], RESOLUTION_ACCOUNT_CURRENT if correction else RESOLUTION_PAID_IN_FULL,
+                resolved_by=changed_by, balance=0, source=source,
+                notes="Outstanding balance cleared by correction" if correction else "Outstanding balance cleared by payment",
             )
             resolved += 1
             continue
@@ -1149,7 +1172,7 @@ def is_first_debit_failure(db, member_id, failed_debit_date, months_owing):
     if (failed - joined).days > window:
         return False
     earlier_payment = db.execute(
-        """SELECT 1 FROM collections
+        """SELECT 1 FROM active_collections
            WHERE member_id=? AND collection_date < ?
              AND (status='paid' OR COALESCE(amount_paid,0) > 0)
              AND LOWER(COALESCE(notes,'')) LIKE '%recurring%' LIMIT 1""",
@@ -1368,7 +1391,7 @@ def find_duplicate_collection(db, member_id, collection_date, outstanding_balanc
     except (TypeError, ValueError):
         return None   # invalid amounts are the caller's own validation to report
     return db.execute(
-        """SELECT id FROM collections
+        """SELECT id FROM active_collections
            WHERE member_id=? AND collection_date=? AND ROUND(COALESCE(outstanding_balance,0),2)=?
              AND ROUND(COALESCE(amount_paid,0),2)=? AND COALESCE(method,'')=? AND status=?
              AND COALESCE(notes,'')=? AND COALESCE(payment_purpose,'general')=? LIMIT 1""",

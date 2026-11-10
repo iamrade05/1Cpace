@@ -389,6 +389,11 @@ def create_app(test_config: dict | None = None) -> Flask:
         return {"followup_due_count": count, "followup_scope": scope}
 
     @app.after_request
+    def _record_user_activity(response):
+        from .user_activity import record_request
+        return record_request(response)
+
+    @app.after_request
     def _security_headers(response):
         if app.config.get("SECURITY_HSTS_ENABLED") and app.config.get("ENVIRONMENT") == "production":
             hsts = f"max-age={app.config.get('SECURITY_HSTS_MAX_AGE', 31536000)}"

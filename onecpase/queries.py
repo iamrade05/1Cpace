@@ -630,7 +630,7 @@ def _account_summary(db, member_id):
     member = decrypt_member(row)
 
     collections = db.execute(
-        "SELECT * FROM collections WHERE member_id=? ORDER BY collection_date DESC, id DESC",
+        "SELECT * FROM active_collections WHERE member_id=? ORDER BY collection_date DESC, id DESC",
         (member_id,)
     ).fetchall()
 

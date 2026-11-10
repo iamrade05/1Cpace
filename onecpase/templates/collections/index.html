@@ -84,19 +84,31 @@
           <td><span class="badge badge-gray">{{ (c.method or 'cash')|upper }}</span></td>
           <td>
             {% set s = c.status %}
-            {% if s == 'paid' %}<span class="badge badge-success">Paid</span>
+            {% if show_voided %}<span class="badge badge-gray">Voided</span>
+            {% elif s == 'paid' %}<span class="badge badge-success">Paid</span>
             {% elif s == 'partial' %}<span class="badge badge-warning">Partial</span>
             {% elif s == 'pending' %}<span class="badge badge-info">Pending</span>
             {% elif s == 'failed' %}<span class="badge badge-danger">Failed</span>
             {% else %}<span class="badge badge-gray">{{ s|capitalize }}</span>{% endif %}
           </td>
           <td>
+            {% if show_voided %}
+            <strong>{{ c.void_reason }}</strong><br>
+            <small>{{ c.voided_by or 'Staff' }} · {{ c.voided_at }} · Original status {{ c.status|capitalize }}</small>
+            {% if c.notes %}<div>{{ c.notes }}</div>{% endif %}
+            {% else %}
             <a href="{{ url_for('collections.collections_edit', cid=c.id) }}" class="btn btn-ghost btn-sm">Edit</a>
-            <details class="row-menu"><summary>Actions</summary><div class="row-menu-panel"><form method="post" action="{{ url_for('collections.collections_delete', cid=c.id) }}"
-                  style="display:inline"
-                  data-confirm="Delete this record?">
-              <button type="submit" class="btn btn-danger btn-sm">Del</button>
-            </form></div></details>
+            {% if can_void %}
+            <details class="row-menu"><summary>Void entry</summary><div class="row-menu-panel">
+              <form method="post" action="{{ url_for('collections.collections_void', cid=c.id) }}"
+                    data-confirm="Void this entry in the 1Cpace ledger?">
+                <label>Reason <input name="reason" required maxlength="500"></label>
+                <small>Reconcile any provider transaction before voiding a ledger entry.</small>
+                <button type="submit" class="btn btn-danger btn-sm">Void entry</button>
+              </form>
+            </div></details>
+            {% endif %}
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

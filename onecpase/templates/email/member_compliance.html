@@ -1,0 +1,10 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Elev8 membership requirements</title></head>
+<body style="font-family:Arial,Helvetica,sans-serif;background:#eef2f1;color:#152a25;padding:24px;">
+<div style="max-width:600px;margin:auto;background:white;padding:28px;border-top:8px solid #17553b;">
+<p style="font-weight:bold;letter-spacing:2px;">ELEV8 HEALTH &amp; FITNESS</p>
+<h1 style="font-size:26px;">Let us complete your membership</h1>
+<p>Hi {{ first_name }},</p><p>Please contact the Sales team for help with your outstanding membership requirements.</p>
+<ul>{% for item in missing %}<li style="margin-bottom:12px;">{{ item }}</li>{% endfor %}</ul>
+<p>Our Sales team can explain what is needed and help you complete each item.</p>
+<p><a href="mailto:{{ sales_email }}" style="color:#17553b;">{{ sales_email }}</a></p>
+<p>Your Elev8 Sales team</p></div></body></html>

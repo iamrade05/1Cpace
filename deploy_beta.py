@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
-"""Deploy 1Cpace V8 to the beta instance on the Absolute Hosting VPS.
+"""Inspect the legacy 1Cpace deployment target on the Absolute Hosting VPS.
 
-    python deploy_beta.py                # validate, confirm, deploy
     python deploy_beta.py --check-only   # validate and report, change nothing
-    python deploy_beta.py --yes          # non-interactive
 
-Beta is /opt/onecpase, served at beta.1cpace.co.za by nginx on port 5002.
-Three unrelated applications share this host — production 1Cpace in
-/opt/cpace on 5000, FiksAccounts in /opt/fiksaccounts on 5001, and this.
-The target is hard-guarded so a mistyped flag cannot reach the other two.
+The legacy target /opt/onecpase serves production. The standalone command
+refuses to release to it. See deploy/beta/README.md for isolated staging.
 
 The onecpase package is replaced wholesale rather than extracted over, so
 modules deleted upstream do not linger on the server. The previous tree is
@@ -322,32 +318,19 @@ def check_public_health() -> bool:
 
 def main() -> int:
     args = parse_args()
+    if not args.check_only:
+        raise SystemExit("Beta deployment refused: /opt/onecpase is the production target.")
     paths = release_paths()
     validate_release(paths)
-    if not args.check_only:
-        run_release_tests()
 
     client = connect(args)
     try:
         report(client, args)
-        if args.check_only:
-            healthy = check_public_health()
-            print("Check-only: nothing was changed.")
-            return 0 if healthy else 1
-
-        if not args.yes:
-            print(f"\nAbout to replace {args.app_dir} on {args.host} with "
-                  f"{len(paths)} files and restart {SERVICE}.")
-            if input("Type DEPLOY to continue: ").strip() != "DEPLOY":
-                print("Aborted; nothing was changed.")
-                return 1
-
-        with tempfile.TemporaryDirectory() as tmp:
-            deploy(client, build_archive(paths, Path(tmp)), args)
+        healthy = check_public_health()
+        print("Check-only: inspected the legacy production target and beta hostname.")
+        return 0 if healthy else 1
     finally:
         client.close()
-
-    return 0 if check_public_health() else 1
 
 
 if __name__ == "__main__":

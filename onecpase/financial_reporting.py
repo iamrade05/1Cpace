@@ -49,7 +49,7 @@ def totals(rows):
 
 
 def cash_received(db, start=None, end=None, user_id=None):
-    sql, params = 'SELECT amount_paid,status,notes FROM collections WHERE 1=1', []
+    sql, params = 'SELECT amount_paid,status,notes FROM active_collections WHERE 1=1', []
     if start is not None:
         sql += ' AND substr(collection_date,1,10)>=?'
         params.append(str(start))

@@ -277,8 +277,16 @@ def _run_source(app, tenant, source):
                    (datetime.now(ZONE).isoformat(timespec='seconds'),
                     'Report fetch or import failed. Check the payment-sync server log.',source))
         db.commit()
+        return
     finally:
         db.close()
+
+    if source == 'nupay' and app.config.get('ITENSITY_AUTO_PUSH_FROM'):
+        try:
+            from scripts.audit_sales_activation import refresh_after_nupay
+            refresh_after_nupay(app, tenant, mandates, stamp)
+        except Exception:
+            log.exception('Sales activation audit failed for %s', tenant['slug'])
 
 
 def run_daily(app):

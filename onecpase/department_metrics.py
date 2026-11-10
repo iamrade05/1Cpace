@@ -27,7 +27,7 @@ def reception(db,start,end,today):
     from collections import defaultdict
     from .ptp import compute_arrears_from_profile
     from .members import _build_payment_profile,_is_discount
-    ledger=db.execute('SELECT * FROM collections ORDER BY member_id,collection_date DESC,id DESC').fetchall()
+    ledger=db.execute('SELECT * FROM active_collections ORDER BY member_id,collection_date DESC,id DESC').fetchall()
     by_member=defaultdict(list)
     for row in ledger:by_member[row['member_id']].append(row)
     profiles={mid:_build_payment_profile(rows) for mid,rows in by_member.items()}
@@ -37,7 +37,7 @@ def reception(db,start,end,today):
     matched=sum(row['paid'] for row in period_charges)
     total=sum(row['total_arrears'] for row in balances.values())
     period_filter='substr(collection_date,1,10)>=? AND substr(collection_date,1,10)<=?'
-    payments=db.execute('SELECT status,COUNT(*) AS n FROM collections WHERE '+period_filter+' GROUP BY status',(start,end)).fetchall()
+    payments=db.execute('SELECT status,COUNT(*) AS n FROM active_collections WHERE '+period_filter+' GROUP BY status',(start,end)).fetchall()
     collected=sum(float(row['amount_paid'] or 0) for row in ledger if row['status'] in ('paid','partial') and
                   start<=str(row['collection_date'] or '')[:10]<=end and not _is_discount(row))
     calls=scalar(db,"SELECT COUNT(*) FROM pbx_call_logs WHERE direction='outbound' AND "+actor_filter(ids,'user_id')+

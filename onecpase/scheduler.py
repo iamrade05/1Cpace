@@ -425,6 +425,24 @@ def _job_fitness_allocations(app) -> None:
                 logger.exception('[scheduler] Fitness allocation failed for tenant %s',tenant['slug'])
 
 
+def _job_client_emails(app):
+    from flask import g
+    from .database import get_db
+    from .client_email import run_client_emails
+    if not app.config.get("CLIENT_EMAIL_AUTOMATION_ENABLED"):
+        return
+    for tenant in _active_tenants(app):
+        with app.app_context():
+            g.tenant = dict(tenant)
+            g.tenant_slug = tenant["slug"]
+            db = get_db()
+            try:
+                run_client_emails(db)
+            except Exception:
+                db.rollback()
+                logger.exception("Client email processing failed for tenant %s", tenant["slug"])
+
+
 def _job_query_funnel(app):
     from flask import g
     from .phases import is_enabled
@@ -474,6 +492,8 @@ def init_scheduler(app) -> None:
         return
 
     scheduler = BackgroundScheduler(timezone="Africa/Johannesburg")
+    scheduler.add_job(lambda: _job_client_emails(app), IntervalTrigger(minutes=15),
+                      id="client_emails", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(lambda: _job_query_funnel(app), IntervalTrigger(minutes=1),
                       id='query_funnel',replace_existing=True,max_instances=1,coalesce=True)
     scheduler.add_job(lambda: _job_fitness_allocations(app), IntervalTrigger(minutes=1),
